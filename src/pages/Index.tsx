@@ -62,7 +62,7 @@ const Index = () => {
           <div className="container relative z-10 text-center">
             <FadeIn>
               <h1 className="mx-auto max-w-3xl text-4xl font-black leading-tight text-primary-foreground md:text-5xl lg:text-6xl">
-                Find a Home Service Pro in Santa Clarita
+                Santa Clarita Home Service Directory
               </h1>
             </FadeIn>
             <FadeIn delay={0.15}>
