@@ -20,3 +20,10 @@
 - **Type Safety Strategy**: Systematically replacing `any` with specific interfaces (`Lead`, `Post`) and using `unknown as Json` for Supabase metadata ensures robust code and clean lint reports.
 - **GA4 Transition**: Moving real-time tracking from Supabase Edge Functions to GA4 (gtag.js) is a high-impact solution for reducing critical database server load (resolving 99% CPU/IO spikes).
 - **Deployment Flow**: Strict adherence to `drift_check.cjs`, `security_scan.cjs`, and automated versioning (`release.cjs patch`) ensures high-quality production releases in bidirectional sync environments.
+
+## Session - 2026-07-19
+
+- **Vitest Workspace Integration**: Including `tests/` paths explicitly in `vitest.config.ts` allows test files separated from `src/` to be detected and run cleanly by the local runner.
+- **Mocking Contexts in Vitest**: Using detailed mocks for Supabase hooks (`useAuth`, `useIsAdmin`, `useIsProvider`) and React Query providers prevents query client context errors and unhandled state transitions during unit tests.
+- **Git State Hygiene**: When working with shared workspaces that contain untracked or modified files, staging changes precisely and utilizing `git stash --keep-index` allows safe committing and pushing without polluting the remote with unrelated work.
+
