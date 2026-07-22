@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, LogOut, Sparkles, MessageSquare } from "lucide-react";
+import { InteractiveRevenueCalculator } from "@/components/ProviderDashboard/InteractiveRevenueCalculator";
 
 export default function ProviderDashboard() {
   const [user, setUser] = useState<User | null>(null);
@@ -186,26 +187,10 @@ export default function ProviderDashboard() {
           <Button variant="outline" size="sm" onClick={handleSignOut}><LogOut className="mr-2 h-4 w-4" /> Sign Out</Button>
         </div>
 
-        <Card className="border-2 border-primary/20 bg-primary/5 shadow-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-xl text-primary">
-              <Sparkles className="h-5 w-5" /> ServiceStack OS Status: Inactive
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-muted-foreground">
-              You are currently on the free directory tier. Upgrade to ServiceStack OS for $297/mo or opt-in to our 20% Revenue Share program to unlock:
-            </p>
-            <ul className="list-disc pl-5 space-y-1 text-sm text-muted-foreground">
-              <li>Instant Missed-Call Text-Back</li>
-              <li>Automated 5-Star Review Funnel</li>
-              <li>Exclusive Sherman Oaks Tree Service Leads</li>
-            </ul>
-            <Button onClick={() => window.location.href = 'mailto:setup@shermanoakshomepros.com'} className="mt-2 bg-primary text-primary-foreground hover:bg-primary/90">
-              Schedule Setup Call to Activate
-            </Button>
-          </CardContent>
-        </Card>
+        <InteractiveRevenueCalculator 
+          businessName={buyer?.business_name}
+          email={user?.email}
+        />
 
         <Card>
           <CardHeader>

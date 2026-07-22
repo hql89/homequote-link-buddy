@@ -27,3 +27,16 @@
 - **Mocking Contexts in Vitest**: Using detailed mocks for Supabase hooks (`useAuth`, `useIsAdmin`, `useIsProvider`) and React Query providers prevents query client context errors and unhandled state transitions during unit tests.
 - **Git State Hygiene**: When working with shared workspaces that contain untracked or modified files, staging changes precisely and utilizing `git stash --keep-index` allows safe committing and pushing without polluting the remote with unrelated work.
 
+
+## Sherman Oaks Home Pros Pivot
+- Replaced multi-vertical SCV logic with single-vertical SFV tree service focus.
+- Deprecated plumbing/hvac/electrical pages, added deep-dive SEO tree pages.
+- Updated ProviderLogin/Dashboard to pitch ServiceStack OS and missed-call text-back.
+- Configured initial Supabase schema migration to enforce new vertical constraints.
+- Deployed v0.0.10 to Vercel.
+
+## Mivos.ai Integration (Connor Cahill Blueprint)
+- Aligned HomeQuoteLink provider funnel with Connor Cahill's $43K/mo AI Receptionist framework.
+- Built interactive revenue calculator component (`InteractiveRevenueCalculator.tsx`) with real-time sliders for Daily Missed Calls, Conversion Rate, and Ticket Value.
+- Integrated dynamic revenue loss math and "Upgrade Now ($497/mo)" Mivos upsell into `ProviderDashboard.tsx`.
+- Deployed v0.0.11 to Vercel.
