@@ -40,6 +40,59 @@ const METRIC_LABELS: Record<string, string> = {
 const LEAD_METRICS = ["leads_all", "leads_scored", "leads_sold", "leads_routed", "leads_paid"];
 const BLOG_METRICS = ["blog_views", "blog_today", "blog_posts"];
 
+interface AnalyticsEvent {
+  id: string;
+  created_at: string;
+  visitor_id?: string | null;
+  session_id?: string | null;
+  event_type?: string | null;
+  event_name?: string | null;
+  page_path?: string | null;
+  referrer?: string | null;
+  utm_source?: string | null;
+  user_agent?: string | null;
+  screen_width?: number | null;
+  screen_height?: number | null;
+  ip_address?: string | null;
+  language?: string | null;
+  timezone?: string | null;
+  page_title?: string | null;
+  page_url?: string | null;
+  connection_type?: string | null;
+  is_touch_device?: boolean | null;
+  [key: string]: unknown;
+}
+
+interface AnalyticsLead {
+  id: string;
+  created_at: string;
+  lead_score?: number | null;
+  status?: string | null;
+  assigned_buyer_id?: string | null;
+  gclid?: string | null;
+  utm_source?: string | null;
+  source?: string | null;
+  [key: string]: unknown;
+}
+
+interface BlogPost {
+  id: string;
+  published_at: string;
+  title: string;
+  slug: string;
+  [key: string]: unknown;
+}
+
+interface BlogMetric {
+  post_id: string;
+  viewed_at: string;
+  referrer?: string | null;
+  session_id?: string | null;
+  [key: string]: unknown;
+}
+
+type AnalyticsDataRow = Record<string, unknown>;
+
 export default function AnalyticsDetailPage() {
   const { metric } = useParams<{ metric: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -88,7 +141,7 @@ export default function AnalyticsDetailPage() {
         .order("created_at", { ascending: false })
         .limit(5000);
       if (error) throw error;
-      return data || [];
+      return (data as AnalyticsEvent[]) || [];
     },
     enabled: isEventMetric,
   });
@@ -111,7 +164,7 @@ export default function AnalyticsDetailPage() {
         .order("created_at", { ascending: false })
         .limit(5000);
       if (error) throw error;
-      return data || [];
+      return (data as AnalyticsLead[]) || [];
     },
     enabled: isLeadMetric,
   });
@@ -129,7 +182,7 @@ export default function AnalyticsDetailPage() {
         .gte("viewed_at", blogSince)
         .order("viewed_at", { ascending: false });
       if (error) throw error;
-      return data || [];
+      return (data as BlogMetric[]) || [];
     },
     enabled: isBlogMetric && metric !== "blog_posts",
   });
@@ -163,7 +216,7 @@ export default function AnalyticsDetailPage() {
         .eq("status", "published")
         .order("published_at", { ascending: false });
       if (error) throw error;
-      return data || [];
+      return (data as BlogPost[]) || [];
     },
     enabled: isBlogMetric,
   });
@@ -172,24 +225,24 @@ export default function AnalyticsDetailPage() {
 
   // Process data based on metric type
   const processed = useMemo(() => {
-    let data: any[] = [];
+    let data: AnalyticsDataRow[] = [];
 
     // Blog-based metrics
     if (isBlogMetric) {
       if (metric === "blog_posts") {
-        data = (blogPosts || []).map((p: any) => ({
+        data = (blogPosts || []).map((p) => ({
           ...p,
           created_at: p.published_at,
         }));
       } else {
         // blog_views or blog_today — join with post data and add derived fields
-        const postMap = new Map((blogPosts || []).map((p: any) => [p.id, p]));
-        data = (blogMetrics || []).map((m: any) => ({
+        const postMap = new Map((blogPosts || []).map((p) => [p.id, p]));
+        data = (blogMetrics || []).map((m) => ({
           ...m,
           created_at: m.viewed_at,
           post_title: postMap.get(m.post_id)?.title || "Unknown",
           post_slug: postMap.get(m.post_id)?.slug || "",
-          referrer_host: getHostname(m.referrer),
+          referrer_host: getHostname(m.referrer || ""),
         }));
       }
     }
@@ -204,7 +257,7 @@ export default function AnalyticsDetailPage() {
       else if (metric === "leads_paid") baseLeads = leads.filter((l) => l.gclid);
       
       // Add derived lead_source field
-      data = baseLeads.map((l: any) => ({
+      data = baseLeads.map((l) => ({
         ...l,
         lead_source: l.utm_source || l.source || "direct",
       }));
@@ -214,11 +267,11 @@ export default function AnalyticsDetailPage() {
       if (!events) return [];
 
       // Add derived fields to all events
-      const enrichedEvents = events.map((e: any) => ({
+      const enrichedEvents = events.map((e) => ({
         ...e,
         traffic_source: e.utm_source || (e.referrer ? "referral" : "direct"),
-        referrer_host: getHostname(e.referrer),
-        device_type: getDeviceType(e.screen_width),
+        referrer_host: getHostname(e.referrer || ""),
+        device_type: getDeviceType(e.screen_width || 0),
       }));
 
       if (metric === "form_completions") {
@@ -240,15 +293,15 @@ export default function AnalyticsDetailPage() {
       } else if (metric === "conversions") {
         data = enrichedEvents.filter((e) => e.event_type === "conversion");
       } else if (metric === "visitors") {
-        const grouped = new Map<string, any[]>();
+        const grouped = new Map<string, AnalyticsEvent[]>();
         enrichedEvents.forEach((e) => {
           const vid = e.visitor_id || "unknown";
           if (!grouped.has(vid)) grouped.set(vid, []);
           grouped.get(vid)!.push(e);
         });
         data = Array.from(grouped.entries()).map(([visitor_id, evts]) => {
-          const sorted = evts.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-          const pages = new Set(evts.map((e: any) => e.page_path));
+          const sorted = evts.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+          const pages = new Set(evts.map((e) => e.page_path));
           return {
             visitor_id,
             first_seen: sorted[0].created_at,
@@ -275,20 +328,20 @@ export default function AnalyticsDetailPage() {
           };
         });
       } else if (metric === "sessions" || metric === "bounce" || metric === "pages_per_session") {
-        const grouped = new Map<string, any[]>();
+        const grouped = new Map<string, AnalyticsEvent[]>();
         enrichedEvents.forEach((e) => {
           const sid = e.session_id || "unknown";
           if (!grouped.has(sid)) grouped.set(sid, []);
           grouped.get(sid)!.push(e);
         });
         const sessionRows = Array.from(grouped.entries()).map(([session_id, evts]) => {
-          const sorted = evts.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-          const pageViews = evts.filter((e: any) => e.event_type === "page_view").length;
+          const sorted = evts.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+          const pageViews = evts.filter((e) => e.event_type === "page_view").length;
           const startTime = new Date(sorted[0].created_at).getTime();
           const endTime = new Date(sorted[sorted.length - 1].created_at).getTime();
           const durationSec = Math.round((endTime - startTime) / 1000);
           const isBounce = pageViews <= 1;
-          const pages = new Set(evts.map((e: any) => e.page_path));
+          const pages = new Set(evts.map((e) => e.page_path));
           return {
             session_id,
             visitor_id: sorted[0].visitor_id,

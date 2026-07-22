@@ -94,7 +94,7 @@ export default function LeadDetail() {
 
   useEffect(() => {
     if (lead) setReviewReason(lead.review_reason || "");
-  }, [lead]);
+  }, [lead, setReviewReason]);
 
   if (isLoading) {
     return (
@@ -112,9 +112,9 @@ export default function LeadDetail() {
     );
   }
 
-  async function handleUpdate(field: string, value: any) {
+  async function handleUpdate(field: string, value: unknown) {
     try {
-      await updateLead.mutateAsync({ id: lead!.id, [field]: value });
+      await updateLead.mutateAsync({ id: lead!.id, [field]: value } as import("@/types").LeadUpdate & { id: string });
       await insertEvent.mutateAsync({
         lead_id: lead!.id,
         event_type: "field_update",
@@ -122,8 +122,10 @@ export default function LeadDetail() {
         created_by_user_id: user?.id,
       });
       toast({ title: "Updated" });
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      }
     }
   }
 
@@ -147,8 +149,10 @@ export default function LeadDetail() {
       });
       setNoteText("");
       toast({ title: "Note added" });
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      }
     }
   }
 
@@ -161,11 +165,14 @@ export default function LeadDetail() {
       if (error) {
         let msg = error.message || "Unknown error";
         try {
-          if ("context" in error && (error as any).context instanceof Response) {
-            const body = await (error as any).context.json();
+          const errCtx = error as { context?: unknown };
+          if (errCtx.context instanceof Response) {
+            const body = await errCtx.context.json() as { error?: string };
             if (body?.error) msg = body.error;
           }
-        } catch {}
+        } catch (e) {
+          console.warn("Could not parse error response", e);
+        }
         throw new Error(msg);
       }
 
@@ -193,14 +200,18 @@ export default function LeadDetail() {
           queryClient.invalidateQueries({ queryKey: ["nurture_emails", lead!.id] });
           queryClient.invalidateQueries({ queryKey: ["lead_feedback", lead!.id] });
           toast({ title: "Nurture sequence started", description: "Confirmation email sent to lead. Follow-up and feedback emails scheduled." });
-        } catch (nurtureErr: any) {
-          toast({ title: "Nurture failed", description: nurtureErr.message, variant: "destructive" });
+        } catch (nurtureErr: unknown) {
+          if (nurtureErr instanceof Error) {
+            toast({ title: "Nurture failed", description: nurtureErr.message, variant: "destructive" });
+          }
         } finally {
           setSendingNurture(false);
         }
       }
-    } catch (err: any) {
-      toast({ title: "Failed to send", description: err.message || "Please try again", variant: "destructive" });
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        toast({ title: "Failed to send", description: err.message || "Please try again", variant: "destructive" });
+      }
     } finally {
       setSendingBuyerNotif(false);
     }
@@ -218,8 +229,10 @@ export default function LeadDetail() {
       toast({ title: "AI Analysis Complete", description: `Score: ${data.score} — ${data.reason}` });
       // Refetch lead data
       queryClient.invalidateQueries({ queryKey: ["lead", lead!.id] });
-    } catch (err: any) {
-      toast({ title: "Analysis failed", description: err.message || "Please try again", variant: "destructive" });
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        toast({ title: "Analysis failed", description: err.message || "Please try again", variant: "destructive" });
+      }
     } finally {
       setAnalyzingLead(false);
     }
@@ -254,8 +267,10 @@ export default function LeadDetail() {
 
       queryClient.invalidateQueries({ queryKey: ["lead", lead!.id] });
       toast({ title: "Marked as spam", description: "Contact has been blocklisted." });
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        toast({ title: "Error", description: err.message, variant: "destructive" });
+      }
     } finally {
       setMarkingSpam(false);
     }

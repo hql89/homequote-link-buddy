@@ -8,12 +8,15 @@ import { DollarSign, Users, Zap, Target } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
-import { KpiCard } from "./KpiCard";
+import { Database } from "@/integrations/supabase/types";
+
+type LeadRow = Partial<Database["public"]["Tables"]["leads"]["Row"]>;
+type BuyerRow = Partial<Database["public"]["Tables"]["buyers"]["Row"]>;
 
 interface Props {
-  leads: any[];
-  prevLeads: any[];
-  buyers: any[];
+  leads: LeadRow[];
+  prevLeads: LeadRow[];
+  buyers: BuyerRow[];
   verticalFilter: string;
   onVerticalFilterChange: (v: string) => void;
   verticals: string[];

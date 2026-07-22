@@ -43,8 +43,9 @@ export default function Feedback() {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
       setSubmitted(true);
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast({ title: "Error", description: msg, variant: "destructive" });
     } finally {
       setSubmitting(false);
     }

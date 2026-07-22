@@ -1,4 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { User } from "@supabase/supabase-js";
+import { Database } from "@/integrations/supabase/types";
+
+type HomeownerProfile = Database["public"]["Tables"]["homeowner_profiles"]["Row"];
+type PartialLead = Partial<Database["public"]["Tables"]["leads"]["Row"]>;
+type ReviewRow = Database["public"]["Tables"]["reviews"]["Row"];
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Header } from "@/components/public/Header";
@@ -13,21 +19,17 @@ import { Loader2, LogOut } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Account() {
-  const [user, setUser] = useState<any>(null);
-  const [profile, setProfile] = useState<any>(null);
-  const [leads, setLeads] = useState<any[]>([]);
-  const [myReviews, setMyReviews] = useState<any[]>([]);
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<HomeownerProfile | null>(null);
+  const [leads, setLeads] = useState<PartialLead[]>([]);
+  const [myReviews, setMyReviews] = useState<ReviewRow[]>([]);
   const [buyers, setBuyers] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [reviewingLead, setReviewingLead] = useState<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  useEffect(() => {
-    checkAuth();
-  }, []);
-
-  const checkAuth = async () => {
+  const checkAuth = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { navigate("/login"); return; }
     setUser(user);
@@ -50,7 +52,7 @@ export default function Account() {
       setLeads(userLeads || []);
 
       // Load buyer names
-      const buyerIds = [...new Set((userLeads || []).map(l => l.assigned_buyer_id).filter(Boolean))];
+      const buyerIds = [...new Set((userLeads || []).map(l => l.assigned_buyer_id).filter((id): id is string => !!id))];
       if (buyerIds.length > 0) {
         const { data: buyerData } = await supabase
           .from("buyers")
@@ -70,7 +72,11 @@ export default function Account() {
     setMyReviews(reviews || []);
 
     setLoading(false);
-  };
+  }, [navigate]);
+
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -138,7 +144,7 @@ export default function Account() {
             <CardHeader><CardTitle>Write a Review</CardTitle></CardHeader>
             <CardContent>
               <ReviewForm
-                buyerId={leads.find(l => l.id === reviewingLead)?.assigned_buyer_id!}
+                buyerId={leads.find(l => l.id === reviewingLead)?.assigned_buyer_id || ""}
                 leadId={reviewingLead}
                 onSuccess={() => {
                   setReviewingLead(null);

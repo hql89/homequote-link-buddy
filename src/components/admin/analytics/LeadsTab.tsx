@@ -9,19 +9,23 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid,
 } from "recharts";
 import { KpiCard } from "./KpiCard";
+import { Database } from "@/integrations/supabase/types";
+
+type LeadRow = Partial<Database["public"]["Tables"]["leads"]["Row"]>;
+type EventRow = Partial<Database["public"]["Tables"]["analytics_events"]["Row"]>;
 
 interface Props {
-  leads: any[];
-  prevLeads: any[];
-  events: any[];
-  prevEvents: any[];
+  leads: LeadRow[];
+  prevLeads: LeadRow[];
+  events: EventRow[];
+  prevEvents: EventRow[];
   verticalFilter: string;
   onVerticalFilterChange: (v: string) => void;
   verticals: string[];
   range?: string;
 }
 
-function computeFormAbandonment(events: any[]) {
+function computeFormAbandonment(events: EventRow[]) {
   const formSteps = events.filter((e) => e.event_type === "form_step");
   const step1 = formSteps.filter((e) => e.event_name === "form_step_1_complete").length;
   const step3 = formSteps.filter((e) => e.event_name === "form_step_3_submit").length;
@@ -29,10 +33,10 @@ function computeFormAbandonment(events: any[]) {
   return { step1, step3, rate };
 }
 
-function computeAvgScore(leads: any[]) {
+function computeAvgScore(leads: LeadRow[]) {
   const scored = leads.filter((l) => l.lead_score != null);
   if (scored.length === 0) return 0;
-  return Math.round(scored.reduce((a: number, l: any) => a + l.lead_score, 0) / scored.length);
+  return Math.round(scored.reduce((a: number, l: LeadRow) => a + (l.lead_score || 0), 0) / scored.length);
 }
 
 export function LeadsTab({ leads, prevLeads, events, prevEvents, verticalFilter, onVerticalFilterChange, verticals, range = "30d" }: Props) {
@@ -67,7 +71,7 @@ export function LeadsTab({ leads, prevLeads, events, prevEvents, verticalFilter,
   // Leads by vertical
   const byVertical = useMemo(() => {
     const counts = new Map<string, number>();
-    leads.forEach((l) => counts.set(l.vertical, (counts.get(l.vertical) || 0) + 1));
+    leads.forEach((l) => { if (l.vertical) counts.set(l.vertical, (counts.get(l.vertical) || 0) + 1); });
     return Array.from(counts.entries())
       .sort((a, b) => b[1] - a[1])
       .map(([vertical, count]) => ({ vertical, count }));

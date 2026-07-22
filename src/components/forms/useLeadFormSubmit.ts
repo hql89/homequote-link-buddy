@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useInsertLead } from "@/hooks/useLeads";
@@ -47,7 +47,7 @@ export function useLeadFormSubmit(vertical: VerticalKey) {
   const [mathAnswer, setMathAnswer] = useState("");
   const [mathError, setMathError] = useState("");
 
-  async function savePartialLead(watchedPhone: string, watchedEmail: string, getValues: () => LeadFormValues) {
+  const savePartialLead = useCallback(async (watchedPhone: string, watchedEmail: string, getValues: () => LeadFormValues) => {
     if (partialLeadId.current || savingPartial.current) return;
 
     const phoneDigits = watchedPhone?.replace(/\D/g, "") || "";
@@ -97,7 +97,7 @@ export function useLeadFormSubmit(vertical: VerticalKey) {
       console.error("Partial save failed:", error);
     }
     savingPartial.current = false;
-  }
+  }, [tracking, vertical]);
 
   async function onSubmit(values: LeadFormValues) {
     setInlineSuccess(false);
@@ -181,8 +181,8 @@ export function useLeadFormSubmit(vertical: VerticalKey) {
       consent_to_contact: true,
       phone_normalized: normalizePhone(values.phone),
       email_normalized: normalizeEmail(values.email) || null,
-      lead_score: scoreLead(values as any),
-      duplicate_flag: checkDuplicate(values as any).isDuplicate,
+      lead_score: scoreLead(values),
+      duplicate_flag: checkDuplicate(values).isDuplicate,
       vertical,
       utm_source: tracking.utm_source,
       utm_medium: tracking.utm_medium,
@@ -228,9 +228,10 @@ export function useLeadFormSubmit(vertical: VerticalKey) {
       setInlineSuccess(true);
       await new Promise((r) => setTimeout(r, 900));
       navigate("/thank-you");
-    } catch (error: any) {
+    } catch (error: unknown) {
       setInlineSuccess(false);
-      toast({ title: "Something went wrong", description: error.message || "Please try again or call us directly.", variant: "destructive" });
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      toast({ title: "Something went wrong", description: errorMessage || "Please try again or call us directly.", variant: "destructive" });
     }
   }
 

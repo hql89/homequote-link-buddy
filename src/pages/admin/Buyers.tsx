@@ -53,8 +53,10 @@ export default function BuyersPage() {
       }
       setDialogOpen(false);
       toast({ title: isEditing ? "Buyer updated" : "Buyer created" });
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      }
     }
   }
 
@@ -66,8 +68,10 @@ export default function BuyersPage() {
         .eq("assigned_buyer_id", buyer.id);
       if (error) throw error;
       setDeleteTarget({ id: buyer.id, name: buyer.business_name, leadCount: count ?? 0 });
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      }
     }
   }
 
@@ -76,8 +80,10 @@ export default function BuyersPage() {
     try {
       await deleteBuyer.mutateAsync(deleteTarget.id);
       toast({ title: "Buyer deleted" });
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      }
     }
     setDeleteTarget(null);
   }

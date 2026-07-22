@@ -1,14 +1,14 @@
 # HomeQuote Link - Architecture & Gap Analysis
 
 ## 1. Project Overview
-HomeQuote Link is a Lovable Native application built with React, Vite, TypeScript, Tailwind CSS, and Shadcn UI. It serves as a lead generation and routing platform connecting homeowners with service providers (plumbers, HVAC, landscaping, electrical). Data and authentication are powered by Supabase.
+HomeQuote Link is a web application built with React, Vite, TypeScript, Tailwind CSS, and Shadcn UI, deployed on Vercel. It serves as a lead generation and routing platform connecting homeowners with service providers (plumbers, HVAC, landscaping, electrical). Data and authentication are powered by Supabase.
 
 ## 2. Core Architecture
 - **Frontend Framework**: React 18 / Vite / TypeScript
 - **State Management & Data Fetching**: React Query (`@tanstack/react-query`)
 - **Styling UI**: Tailwind CSS + Shadcn UI components + Framer Motion for animations
 - **Routing**: `react-router-dom` (Public landing pages, Service pages, Blog, Provider/Admin Dashboards)
-- **Database & Backend**: Supabase (PostgreSQL). Types are auto-generated and reside in `src/integrations/supabase/types.ts`.
+- **Database & Backend**: Supabase (PostgreSQL) hosted independently. Types reside in `src/integrations/supabase/types.ts`.
 
 ## 3. Database Schema Overview
 The database supports three core pillars:
@@ -22,5 +22,5 @@ The database supports three core pillars:
 - **Security Check**: Spam monitoring exists (`blocked_emails`, `blocked_phones`), but further gap analysis may be needed if new IP banning features are deployed.
 
 ## 5. Next Steps
-- Implement any required DB changes via dead-drop migrations into `supabase/migrations/`.
-- Ensure new features adhere to the Lovable bidirectional sync (frontend is open, Supabase auto-generated folder is forbidden).
+- Implement any required DB changes via SQL migration scripts in `supabase/migrations/` and apply them to the connected database.
+- Ensure new features adhere to standard React/Vite development patterns and deploy to Vercel via GitHub integration.

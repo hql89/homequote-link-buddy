@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
     }
 
     // 1. Cron jobs status
-    let cronJobs: any[] = [];
+    let cronJobs: Record<string, unknown>[] = [];
     try {
       const { data } = await adminClient.rpc("get_cron_jobs");
       cronJobs = data ?? [];
@@ -83,15 +83,15 @@ Deno.serve(async (req) => {
     );
 
     // 3. Storage usage
-    let storageBuckets: any[] = [];
+    let storageBuckets: Array<{ name: string; public: boolean; fileCount: number; totalSizeBytes: number }> = [];
     try {
       const { data: buckets } = await adminClient.storage.listBuckets();
       if (buckets) {
         storageBuckets = await Promise.all(
-          buckets.map(async (bucket: any) => {
+          buckets.map(async (bucket: { name: string; public: boolean }) => {
             const { data: files } = await adminClient.storage.from(bucket.name).list("", { limit: 1000 });
             const fileCount = files?.length ?? 0;
-            const totalSize = files?.reduce((sum: number, f: any) => sum + (f.metadata?.size || 0), 0) ?? 0;
+            const totalSize = files?.reduce((sum: number, f: { metadata?: { size?: number } }) => sum + (f.metadata?.size || 0), 0) ?? 0;
             return {
               name: bucket.name,
               public: bucket.public,

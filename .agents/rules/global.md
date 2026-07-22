@@ -1,5 +1,5 @@
 - **500-Line Limit:** Refactor any file exceeding 500 lines before editing to prevent corruption.
 - **Two-Strike Rule:** You are allowed exactly TWO attempts to fix a bug. If Attempt 2 fails, STOP and spawn a Research Agent.
 - **Artifact Generation:** Always generate visual artifacts (screenshots/videos) via the Browser Agent to prove UI features work.
-- **The Push Catch:** You cannot mark a feature as COMPLETE until `git status` is clean and `git push origin main` has been successfully executed to trigger Lovable sync.
+- **The Push Catch:** You cannot mark a feature as COMPLETE until `git status` is clean and `git push origin main` has been successfully executed to trigger Vercel deployment.
 - **YAML Parser Safety:** You are FORBIDDEN from using single quotes (`'`) inside the `description:` field of any `.agents/workflows/*.md` file. It breaks the IDE parser. Use double quotes (`"`) only.

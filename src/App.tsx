@@ -11,13 +11,10 @@ import { Loader2 } from "lucide-react";
 
 // --- Public pages ---
 const Index = lazy(() => import("./pages/Index"));
-const PlumbingCityLanding = lazy(() => import("./pages/PlumbingCityLanding"));
-const PlumbersLanding = lazy(() => import("./pages/PlumbersLanding"));
 const ThankYou = lazy(() => import("./pages/ThankYou"));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
 const TermsOfService = lazy(() => import("./pages/TermsOfService"));
 const FAQ = lazy(() => import("./pages/FAQ"));
-const CostGuides = lazy(() => import("./pages/CostGuides"));
 const Blog = lazy(() => import("./pages/Blog"));
 const BlogPost = lazy(() => import("./pages/BlogPost"));
 const BlogByTag = lazy(() => import("./pages/BlogByTag"));
@@ -28,9 +25,9 @@ const ProviderDetail = lazy(() => import("./pages/ProviderDetail"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 // --- Service pages ---
-const HVACPage = lazy(() => import("./pages/services/HVAC"));
-const LandscapingPage = lazy(() => import("./pages/services/Landscaping"));
-const ElectricalPage = lazy(() => import("./pages/services/Electrical"));
+const EmergencyTreeRemoval = lazy(() => import("./pages/services/EmergencyTreeRemoval"));
+const BrushClearing = lazy(() => import("./pages/services/BrushClearing"));
+const PalmTreeTrimming = lazy(() => import("./pages/services/PalmTreeTrimming"));
 
 // --- Auth pages ---
 const Login = lazy(() => import("./pages/Login"));
@@ -93,16 +90,13 @@ const App = () => (
           <Suspense fallback={<PageLoader />}>
             <Routes>
               <Route path="/" element={<Index />} />
-              <Route path="/plumbing/santa-clarita" element={<PlumbingCityLanding />} />
-              <Route path="/plumbers" element={<PlumbersLanding />} />
               <Route path="/thank-you" element={<ThankYou />} />
-              <Route path="/services/hvac" element={<HVACPage />} />
-              <Route path="/services/landscaping" element={<LandscapingPage />} />
-              <Route path="/services/electrical" element={<ElectricalPage />} />
+              <Route path="/services/emergency-tree-removal" element={<EmergencyTreeRemoval />} />
+              <Route path="/services/brush-clearing" element={<BrushClearing />} />
+              <Route path="/services/palm-tree-trimming" element={<PalmTreeTrimming />} />
               <Route path="/privacy" element={<PrivacyPolicy />} />
               <Route path="/terms" element={<TermsOfService />} />
               <Route path="/faq" element={<FAQ />} />
-              <Route path="/cost-guides" element={<CostGuides />} />
               <Route path="/blog" element={<Blog />} />
               <Route path="/blog/tag/:tag" element={<BlogByTag />} />
               <Route path="/blog/category/:category" element={<BlogByCategory />} />

@@ -71,7 +71,7 @@ export function LeadCaptureForm({ vertical = "plumbing" }: LeadCaptureFormProps)
   const watchedEmail = form.watch("email");
   useEffect(() => {
     savePartialLead(watchedPhone, watchedEmail, form.getValues);
-  }, [watchedPhone, watchedEmail]);
+  }, [watchedPhone, watchedEmail, savePartialLead, form]);
 
   // Auto-suggest city from ZIP
   const watchedZip = form.watch("zip_code");
@@ -80,11 +80,11 @@ export function LeadCaptureForm({ vertical = "plumbing" }: LeadCaptureFormProps)
       const suggested = cityFromZip(watchedZip);
       if (suggested) form.setValue("city", suggested);
     }
-  }, [watchedZip]);
+  }, [watchedZip, form]);
 
   async function handleNext() {
     const fields = FORM_STEPS[step].fields;
-    const valid = await form.trigger(fields as any);
+    const valid = await form.trigger(fields as (keyof LeadFormValues)[]);
     if (valid) {
       trackFormStep(`form_step_${step + 1}_complete`, { step: FORM_STEPS[step].label });
       setStep((s) => Math.min(s + 1, FORM_STEPS.length - 1));

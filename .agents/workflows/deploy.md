@@ -10,6 +10,6 @@ description: "Secure Release, Version Bump, and Lovable Sync Guard"
    Run `node scripts/release.cjs patch`.
 4. **Deploy:**
    Commit changes securely.
-   Run `git push origin main` to trigger Lovable bidirectional sync.
+   Run `git push origin main` to trigger Vercel deployment.
 5. **Silent Learning:**
    Append session summary to `docs/logs/LESSONS_LEARNED.md`.

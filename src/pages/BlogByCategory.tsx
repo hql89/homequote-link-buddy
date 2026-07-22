@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { PageMeta } from "@/components/PageMeta";
@@ -36,7 +36,7 @@ export default function BlogByCategory() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
 
-  async function loadPosts(offset = 0, append = false) {
+  const loadPosts = useCallback(async (offset = 0, append = false) => {
     if (append) setLoadingMore(true); else setLoading(true);
 
     const { data } = await supabase
@@ -56,9 +56,9 @@ export default function BlogByCategory() {
     setHasMore(fetched.length === PAGE_SIZE);
     setLoading(false);
     setLoadingMore(false);
-  }
+  }, [decodedCategory]);
 
-  useEffect(() => { loadPosts(); }, [decodedCategory]);
+  useEffect(() => { loadPosts(); }, [loadPosts]);
 
   return (
     <>

@@ -11,6 +11,20 @@ import { toast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { CheckCircle, Trash2, XCircle } from "lucide-react";
 
+interface ReviewWithBuyer {
+  id: string;
+  reviewer_user_id: string;
+  buyer_id: string;
+  rating: number;
+  review_text: string | null;
+  buyer_response: string | null;
+  is_verified: boolean;
+  created_at: string;
+  buyers: {
+    business_name: string;
+  } | null;
+}
+
 export default function Reviews() {
   const [ratingFilter, setRatingFilter] = useState<string>("all");
   const queryClient = useQueryClient();
@@ -23,7 +37,7 @@ export default function Reviews() {
         .select("*, buyers(business_name)")
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return data;
+      return data as ReviewWithBuyer[];
     },
   });
 
@@ -105,7 +119,7 @@ export default function Reviews() {
               ) : filtered?.length === 0 ? (
                 <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground">No reviews</TableCell></TableRow>
               ) : (
-                filtered?.map((r: any) => {
+                filtered?.map((r) => {
                   const reviewer = homeowners?.get(r.reviewer_user_id);
                   return (
                     <TableRow key={r.id}>

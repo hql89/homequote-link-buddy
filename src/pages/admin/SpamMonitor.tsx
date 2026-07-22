@@ -27,8 +27,8 @@ function useSpamEvents(range: TimeRange) {
       const hours = range === "24h" ? 24 : range === "7d" ? 168 : 720;
       const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
 
-      const { data, error } = await (supabase as any)
-        .from("spam_events")
+      const { data, error } = await supabase
+        .from("spam_events" as never)
         .select("*")
         .gte("created_at", since)
         .order("created_at", { ascending: false })
@@ -73,8 +73,8 @@ export default function SpamMonitor() {
       if (error) throw error;
       toast({ title: "Email blocked", description: `${normalized} has been added to the blocklist.` });
       queryClient.invalidateQueries({ queryKey: ["spam-events"] });
-    } catch (err: any) {
-      toast({ title: "Failed to block email", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      toast({ title: "Failed to block email", description: (err as Error).message, variant: "destructive" });
     } finally {
       setBlocking((p) => ({ ...p, [key]: false }));
     }
@@ -92,8 +92,8 @@ export default function SpamMonitor() {
       if (error) throw error;
       toast({ title: "Phone blocked", description: `${normalized} has been added to the blocklist.` });
       queryClient.invalidateQueries({ queryKey: ["spam-events"] });
-    } catch (err: any) {
-      toast({ title: "Failed to block phone", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      toast({ title: "Failed to block phone", description: (err as Error).message, variant: "destructive" });
     } finally {
       setBlocking((p) => ({ ...p, [key]: false }));
     }

@@ -13,6 +13,31 @@ import { toast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Building, ExternalLink, Search } from "lucide-react";
 
+interface BuyerData {
+  business_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  is_active?: boolean | null;
+}
+
+interface BuyerProfile {
+  id: string;
+  company_description?: string | null;
+  website?: string | null;
+  license_number?: string | null;
+  years_in_business?: number | null;
+  ai_enriched_data?: Record<string, unknown> | null;
+  created_at?: string | null;
+  buyers?: BuyerData | null;
+}
+
+interface ProfileEditForm {
+  company_description: string;
+  website: string;
+  license_number: string;
+  years_in_business: string;
+}
+
 export default function BuyerProfiles() {
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -26,15 +51,20 @@ export default function BuyerProfiles() {
         .select("*, buyers(business_name, email, phone, is_active)")
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return data;
+      return (data as unknown) as BuyerProfile[];
     },
   });
 
   const selected = profiles?.find((p) => p.id === selectedId);
 
-  const [editForm, setEditForm] = useState<any>({});
+  const [editForm, setEditForm] = useState<ProfileEditForm>({
+    company_description: "",
+    website: "",
+    license_number: "",
+    years_in_business: "",
+  });
 
-  const openDetail = (profile: any) => {
+  const openDetail = (profile: BuyerProfile) => {
     setSelectedId(profile.id);
     setEditForm({
       company_description: profile.company_description || "",
@@ -64,7 +94,7 @@ export default function BuyerProfiles() {
     },
   });
 
-  const filtered = profiles?.filter((p: any) => {
+  const filtered = profiles?.filter((p) => {
     if (!search) return true;
     const q = search.toLowerCase();
     return p.buyers?.business_name?.toLowerCase().includes(q) || p.website?.toLowerCase().includes(q);
@@ -102,7 +132,7 @@ export default function BuyerProfiles() {
               ) : filtered?.length === 0 ? (
                 <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground">No profiles</TableCell></TableRow>
               ) : (
-                filtered?.map((p: any) => (
+                filtered?.map((p) => (
                   <TableRow key={p.id} className="cursor-pointer" onClick={() => openDetail(p)}>
                     <TableCell className="font-medium">{p.buyers?.business_name || "—"}</TableCell>
                     <TableCell className="max-w-[200px] truncate">{p.company_description || "—"}</TableCell>
@@ -131,7 +161,7 @@ export default function BuyerProfiles() {
         <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Building className="h-5 w-5" /> {(selected as any)?.buyers?.business_name || "Profile"}
+              <Building className="h-5 w-5" /> {selected?.buyers?.business_name || "Profile"}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">

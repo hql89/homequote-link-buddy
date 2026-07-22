@@ -1,6 +1,7 @@
 # Project Context
-- **Mode:** LOVABLE NATIVE (Bidirectional Sync)
-- **Database:** Supabase (Dead-Drop Migrations)
-- **Environment:** Google Antigravity + lovable-mcp-server
+- **Mode:** Vercel Deployment (Git-integrated)
+- **Database:** Supabase (Migrations)
+- **Environment:** Google Antigravity + Vercel
 - **Testing:** TDD Swarm (Accumulation Principle)
-- **URL:** PENDING
+- **URL:** https://homequotelink.com
+

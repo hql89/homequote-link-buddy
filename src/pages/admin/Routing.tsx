@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
-import { SCV_CITIES, VERTICALS, getServiceTypes } from "@/lib/constants";
+import { SFV_CITIES, VERTICALS, getServiceTypes } from "@/lib/constants";
 import { Loader2, Plus, Pencil, Trash2 } from "lucide-react";
 import type { RoutingSetting, RoutingSettingInsert } from "@/types";
 
@@ -42,8 +42,8 @@ export default function RoutingPage() {
       }
       setDialogOpen(false);
       toast({ title: isEditing ? "Routing updated" : "Routing created" });
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } catch (error: unknown) {
+      toast({ title: "Error", description: (error as Error).message, variant: "destructive" });
     }
   }
 
@@ -52,8 +52,8 @@ export default function RoutingPage() {
     try {
       await deleteSetting.mutateAsync(id);
       toast({ title: "Routing rule deleted" });
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } catch (error: unknown) {
+      toast({ title: "Error", description: (error as Error).message, variant: "destructive" });
     }
   }
 
@@ -89,7 +89,7 @@ export default function RoutingPage() {
                   <TableRow key={s.id}>
                     <TableCell>{s.city}</TableCell>
                     <TableCell>{s.service_type}</TableCell>
-                    <TableCell>{(s as any).buyers?.business_name || "—"}</TableCell>
+                    <TableCell>{(s as RoutingSetting & { buyers?: { business_name: string } }).buyers?.business_name || "—"}</TableCell>
                     <TableCell>{s.max_daily_leads ?? "—"}</TableCell>
                     <TableCell>{s.is_active ? "✓" : "—"}</TableCell>
                     <TableCell>
@@ -118,7 +118,7 @@ export default function RoutingPage() {
                 <Label>City *</Label>
                 <Select value={editing.city} onValueChange={(v) => setEditing({ ...editing, city: v })}>
                   <SelectTrigger><SelectValue placeholder="Select city" /></SelectTrigger>
-                  <SelectContent>{SCV_CITIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                  <SelectContent>{SFV_CITIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div>

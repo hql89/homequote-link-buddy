@@ -88,7 +88,7 @@ export default function ProviderApplications() {
       toast({ title: "Provider approved", description: "Buyer record created and profile linked." });
       setSelectedApp(null);
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     },
   });
@@ -107,7 +107,7 @@ export default function ProviderApplications() {
       toast({ title: "Application rejected", description: "Profile has been removed." });
       setRejectTarget(null);
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     },
   });

@@ -19,6 +19,12 @@ interface Post {
   published_at: string;
   tags: string[] | null;
   category: string | null;
+  meta_title?: string | null;
+  meta_description?: string | null;
+  og_image_width?: number | null;
+  og_image_height?: number | null;
+  twitter_card_type?: string | null;
+  canonical_url?: string | null;
 }
 
 interface NavPost {
@@ -97,7 +103,7 @@ export default function BlogPost() {
   // SEO meta tags
   useEffect(() => {
     if (!post) return;
-    const seoTitle = (post as any).meta_title || post.title;
+    const seoTitle = post.meta_title || post.title;
     document.title = `${seoTitle} | HomeQuoteLink Blog`;
 
     const setMeta = (name: string, content: string, property = false) => {
@@ -107,26 +113,26 @@ export default function BlogPost() {
       el.setAttribute("content", content);
     };
 
-    const seoDesc = (post as any).meta_description || post.excerpt;
+    const seoDesc = post.meta_description || post.excerpt;
     if (seoDesc) setMeta("description", seoDesc);
     setMeta("og:title", seoTitle, true);
     if (seoDesc) setMeta("og:description", seoDesc, true);
     setMeta("og:type", "article", true);
     if (post.featured_image_url) {
       setMeta("og:image", post.featured_image_url, true);
-      const ogW = (post as any).og_image_width;
-      const ogH = (post as any).og_image_height;
+      const ogW = post.og_image_width;
+      const ogH = post.og_image_height;
       if (ogW) setMeta("og:image:width", String(ogW), true);
       if (ogH) setMeta("og:image:height", String(ogH), true);
     }
-    const twitterCard = (post as any).twitter_card_type || "summary_large_image";
+    const twitterCard = post.twitter_card_type || "summary_large_image";
     setMeta("twitter:card", twitterCard, true);
     setMeta("twitter:title", seoTitle, true);
     if (seoDesc) setMeta("twitter:description", seoDesc, true);
 
     let canonical = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
     if (!canonical) { canonical = document.createElement("link"); canonical.rel = "canonical"; document.head.appendChild(canonical); }
-    canonical.href = (post as any).canonical_url || `${window.location.origin}/blog/${post.slug}`;
+    canonical.href = post.canonical_url || `${window.location.origin}/blog/${post.slug}`;
 
     const siteUrl = window.location.origin;
     const breadcrumbSchema = {

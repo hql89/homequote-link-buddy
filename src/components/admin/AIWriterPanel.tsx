@@ -53,8 +53,9 @@ export function AIWriterPanel({ title, content, onInsert, onClose }: AIWriterPan
       } else {
         setResult(data?.result || "No result generated.");
       }
-    } catch (err: any) {
-      toast({ title: "AI Error", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast({ title: "Generation failed", description: msg, variant: "destructive" });
     } finally {
       setLoading(false);
     }

@@ -29,7 +29,7 @@ interface SystemStatus {
     postMetrics: number;
     postVersions: number;
   };
-  cronJobs: any[];
+  cronJobs: { jobname?: string; name?: string; schedule?: string; [key: string]: unknown }[];
 }
 
 function formatBytes(bytes: number): string {
@@ -202,7 +202,7 @@ export default function SystemStatusPage() {
                   </p>
                 ) : (
                   <div className="space-y-2">
-                    {status.cronJobs.map((job: any, i: number) => (
+                    {status.cronJobs.map((job, i) => (
                       <div key={i} className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card">
                         <CheckCircle2 className="h-4 w-4 text-green-500" />
                         <div>

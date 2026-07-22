@@ -84,7 +84,7 @@ Deno.serve(async (req) => {
         .eq('setting_key', 'excluded_ips')
         .maybeSingle();
 
-      let ipList: string[] = Array.isArray(existing?.setting_value) ? existing.setting_value : [];
+      const ipList: string[] = Array.isArray(existing?.setting_value) ? existing.setting_value : [];
 
       if (callerIp !== 'unknown' && !ipList.includes(callerIp)) {
         ipList.push(callerIp);

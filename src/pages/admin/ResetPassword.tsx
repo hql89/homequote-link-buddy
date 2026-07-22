@@ -47,8 +47,8 @@ export default function ResetPassword() {
       if (error) throw error;
       toast({ title: "Password updated", description: "You can now sign in with your new password." });
       navigate("/admin");
-    } catch (error: any) {
-      toast({ title: "Failed to update password", description: error.message, variant: "destructive" });
+    } catch (error: unknown) {
+      toast({ title: "Failed to update password", description: (error as Error).message, variant: "destructive" });
     } finally {
       setLoading(false);
     }

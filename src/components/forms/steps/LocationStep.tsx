@@ -1,5 +1,5 @@
 import { UseFormReturn } from "react-hook-form";
-import { SCV_CITIES } from "@/lib/constants";
+import { SFV_CITIES } from "@/lib/constants";
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -19,7 +19,11 @@ export function LocationStep({ form, stepRef }: LocationStepProps) {
           <Select onValueChange={field.onChange} value={field.value}>
             <FormControl><SelectTrigger><SelectValue placeholder="Select city" /></SelectTrigger></FormControl>
             <SelectContent>
-              {SCV_CITIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+              {SFV_CITIES.map((city) => (
+                <SelectItem key={city} value={city}>
+                  {city}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <FormMessage />

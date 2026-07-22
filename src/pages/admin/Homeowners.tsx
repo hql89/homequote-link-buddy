@@ -9,6 +9,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { format } from "date-fns";
 import { Search, User } from "lucide-react";
 
+interface Review {
+  id: string;
+  rating: number;
+  review_text?: string | null;
+  buyers?: { business_name?: string | null } | null;
+}
+
 export default function Homeowners() {
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -36,7 +43,7 @@ export default function Homeowners() {
         .select("*, buyers(business_name)")
         .eq("reviewer_user_id", selected!.user_id);
       if (error) throw error;
-      return data;
+      return (data as unknown) as Review[];
     },
   });
 
@@ -151,7 +158,7 @@ export default function Homeowners() {
                 <h3 className="font-semibold mb-2">Reviews ({selectedReviews?.length ?? 0})</h3>
                 {selectedReviews?.length ? (
                   <div className="space-y-1">
-                    {selectedReviews.map((r: any) => (
+                    {selectedReviews.map((r) => (
                       <div key={r.id} className="rounded bg-muted p-2">
                         <div className="flex items-center justify-between">
                           <span className="font-medium">{r.buyers?.business_name || "Unknown"}</span>

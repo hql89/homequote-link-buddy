@@ -70,15 +70,38 @@ export default function ProviderLogin() {
 
   return (
     <>
-      <PageMeta title="Provider Login | HomeQuoteLink" description="Log in to manage your provider profile and respond to reviews." />
+      <PageMeta title="Provider Login | Sherman Oaks Home Pros" description="Log in to manage your leads and access ServiceStack OS." />
       <Header />
       <main className="container flex justify-center py-16">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <CardTitle className="text-2xl font-serif text-primary">Provider Portal</CardTitle>
-            <CardDescription>Manage your profile, respond to reviews, and get more customers</CardDescription>
-          </CardHeader>
-          <CardContent>
+        <div className="w-full max-w-4xl grid md:grid-cols-2 gap-8 items-start">
+          
+          <div className="space-y-6 pt-4">
+            <h1 className="text-4xl font-black text-primary leading-tight">Stop Losing $3,000 Jobs to Missed Calls.</h1>
+            <p className="text-lg text-muted-foreground">
+              When a homeowner has an emergency and you don't answer, they call the next guy on Google.
+            </p>
+            <ul className="space-y-4">
+              <li className="flex gap-3">
+                <div className="mt-1 h-2 w-2 rounded-full bg-accent flex-shrink-0" />
+                <p><strong>Instant Missed-Call Text-Back:</strong> The second you miss a call, our system texts the client to lock them in.</p>
+              </li>
+              <li className="flex gap-3">
+                <div className="mt-1 h-2 w-2 rounded-full bg-accent flex-shrink-0" />
+                <p><strong>Automated Review Funnel:</strong> Automatically request 5-star reviews after every job.</p>
+              </li>
+              <li className="flex gap-3">
+                <div className="mt-1 h-2 w-2 rounded-full bg-accent flex-shrink-0" />
+                <p><strong>20% Revenue Share Leads:</strong> We send you pre-qualified Sherman Oaks tree service leads. You only pay when you close.</p>
+              </li>
+            </ul>
+          </div>
+
+          <Card className="w-full shadow-lg border-2 border-primary/20">
+            <CardHeader className="text-center bg-primary/5 pb-6">
+              <CardTitle className="text-2xl font-serif text-primary">ServiceStack OS Portal</CardTitle>
+              <CardDescription>Log in or claim your free directory listing.</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-6">
             <Tabs defaultValue="login">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="login">Log In</TabsTrigger>
@@ -115,11 +138,12 @@ export default function ProviderLogin() {
                 </form>
               </TabsContent>
             </Tabs>
-            <div className="mt-4 text-center text-sm text-muted-foreground">
-              Are you a homeowner? <Link to="/login" className="text-primary hover:underline">Homeowner login →</Link>
-            </div>
-          </CardContent>
-        </Card>
+              <div className="mt-6 text-center text-sm text-muted-foreground">
+                Are you a homeowner? <Link to="/login" className="text-primary hover:underline font-semibold">Homeowner login →</Link>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </main>
       <Footer />
     </>

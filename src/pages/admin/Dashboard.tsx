@@ -12,11 +12,17 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { SCV_CITIES, LEAD_STATUSES, URGENCY_LEVELS, VERTICALS, getServiceTypes } from "@/lib/constants";
+import { SFV_CITIES, LEAD_STATUSES, URGENCY_LEVELS, VERTICALS, getServiceTypes } from "@/lib/constants";
 import { Search, Loader2, ScanSearch, ShieldBan, X } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
+import type { Lead } from "@/types";
+
+interface LeadWithRelations extends Lead {
+  buyers?: { business_name?: string | null } | null;
+  ai_authenticity_score?: number | null;
+}
 
 const statusColors: Record<string, string> = {
   new: "bg-blue-100 text-blue-800",
@@ -35,7 +41,7 @@ const statusColors: Record<string, string> = {
 const PAGE_SIZE = 50;
 
 function LeadsTable({ leads, isLoading, page, setPage, totalCount, navigate, selectedIds, onToggle, onToggleAll }: {
-  leads: any[] | undefined;
+  leads: LeadWithRelations[] | undefined;
   isLoading: boolean;
   page: number;
   setPage: (fn: (p: number) => number) => void;
@@ -107,21 +113,21 @@ function LeadsTable({ leads, isLoading, page, setPage, totalCount, navigate, sel
                     {lead.status}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-sm">{(lead as any).buyers?.business_name || "—"}</TableCell>
+                <TableCell className="text-sm">{lead.buyers?.business_name || "—"}</TableCell>
                 <TableCell className="text-sm">{lead.lead_score ?? "—"}</TableCell>
                 <TableCell>
-                  {(lead as any).ai_authenticity_score != null ? (
+                  {lead.ai_authenticity_score != null ? (
                     <Badge
                       variant="secondary"
                       className={
-                        (lead as any).ai_authenticity_score >= 70
+                        lead.ai_authenticity_score >= 70
                           ? "bg-green-100 text-green-800"
-                          : (lead as any).ai_authenticity_score >= 40
+                          : lead.ai_authenticity_score >= 40
                           ? "bg-yellow-100 text-yellow-800"
                           : "bg-red-100 text-red-800"
                       }
                     >
-                      {(lead as any).ai_authenticity_score}
+                      {lead.ai_authenticity_score}
                     </Badge>
                   ) : (
                     <span className="text-muted-foreground text-xs">—</span>
@@ -398,7 +404,7 @@ export default function AdminDashboard() {
               <SelectTrigger className="w-[160px]"><SelectValue placeholder="City" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Cities</SelectItem>
-                {SCV_CITIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                {SFV_CITIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={vertical} onValueChange={(v) => { handleFilterChange(setVertical)(v); setServiceType(""); }}>

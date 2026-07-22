@@ -5,23 +5,23 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Checkbox } from "@/components/ui/checkbox";
 import { ArrowUpDown, Settings } from "lucide-react";
 
-export interface ColumnDef {
-  key: string;
+export interface ColumnDef<T> {
+  key: Extract<keyof T, string>;
   label: string;
   visible: boolean; // default visibility
-  render?: (value: any, row: any) => React.ReactNode;
+  render?: (value: unknown, row: T) => React.ReactNode;
 }
 
-interface ConfigurableTableProps {
-  columns: ColumnDef[];
-  data: any[];
+interface ConfigurableTableProps<T> {
+  columns: ColumnDef<T>[];
+  data: T[];
   storageKey: string;
   searchValue?: string;
 }
 
 type SortDir = "asc" | "desc";
 
-export function ConfigurableTable({ columns, data, storageKey, searchValue = "" }: ConfigurableTableProps) {
+export function ConfigurableTable<T extends Record<string, unknown>>({ columns, data, storageKey, searchValue = "" }: ConfigurableTableProps<T>) {
   const localStorageKey = `hql_cols_${storageKey}`;
 
   // Initialize visibility by merging stored values with column defaults
@@ -74,14 +74,14 @@ export function ConfigurableTable({ columns, data, storageKey, searchValue = "" 
   const filtered = useMemo(() => {
     if (!searchValue) return data;
     const q = searchValue.toLowerCase();
-    return data.filter((row: any) =>
+    return data.filter((row: T) =>
       Object.values(row).some((v) => v != null && String(v).toLowerCase().includes(q))
     );
   }, [data, searchValue]);
 
   // Sort data
   const sorted = useMemo(() => {
-    return [...filtered].sort((a: any, b: any) => {
+    return [...filtered].sort((a: T, b: T) => {
       const aVal = a[sortCol];
       const bVal = b[sortCol];
       if (aVal == null && bVal == null) return 0;
@@ -163,8 +163,8 @@ export function ConfigurableTable({ columns, data, storageKey, searchValue = "" 
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sorted.map((row: any, i: number) => (
-              <TableRow key={row.id || i}>
+            {sorted.map((row: T, i: number) => (
+              <TableRow key={String(row.id || i)}>
                 {visibleColumns.map((col) => {
                   const value = row[col.key];
                   return (

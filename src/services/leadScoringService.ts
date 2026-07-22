@@ -64,7 +64,7 @@ function scoreServiceType(serviceType: string, vertical?: string): number {
   return scores[serviceType] ?? 0;
 }
 
-function scoreDataCompleteness(lead: LeadInsert): number {
+function scoreDataCompleteness(lead: Partial<LeadInsert>): number {
   let score = 0;
   if (lead.email) score += 10;
   const descLen = (lead.description ?? "").length;
@@ -73,16 +73,16 @@ function scoreDataCompleteness(lead: LeadInsert): number {
   return score;
 }
 
-function scoreSourceQuality(lead: LeadInsert): number {
+function scoreSourceQuality(lead: Partial<LeadInsert>): number {
   if (lead.gclid) return 5; // paid search
   if (!lead.utm_source) return 10; // direct / organic
   return 0;
 }
 
-export function scoreLead(lead: LeadInsert): number {
+export function scoreLead(lead: Partial<LeadInsert>): number {
   return (
-    scoreUrgency(lead.urgency) +
-    scoreServiceType(lead.service_type, lead.vertical) +
+    scoreUrgency(lead.urgency || "") +
+    scoreServiceType(lead.service_type || "", lead.vertical) +
     scoreDataCompleteness(lead) +
     scoreSourceQuality(lead)
   );

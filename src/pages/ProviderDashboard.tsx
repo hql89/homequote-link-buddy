@@ -1,4 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
+import { User } from "@supabase/supabase-js";
+import { Database } from "@/integrations/supabase/types";
+
+type BuyerProfile = Database["public"]["Tables"]["buyer_profiles"]["Row"];
+type Buyer = Database["public"]["Tables"]["buyers"]["Row"];
+type ReviewRow = Database["public"]["Tables"]["reviews"]["Row"];
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Header } from "@/components/public/Header";
@@ -15,10 +21,10 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, LogOut, Sparkles, MessageSquare } from "lucide-react";
 
 export default function ProviderDashboard() {
-  const [user, setUser] = useState<any>(null);
-  const [buyerProfile, setBuyerProfile] = useState<any>(null);
-  const [buyer, setBuyer] = useState<any>(null);
-  const [reviews, setReviews] = useState<any[]>([]);
+  const [user, setUser] = useState<User | null>(null);
+  const [buyerProfile, setBuyerProfile] = useState<BuyerProfile | null>(null);
+  const [buyer, setBuyer] = useState<Buyer | null>(null);
+  const [reviews, setReviews] = useState<ReviewRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
@@ -33,9 +39,7 @@ export default function ProviderDashboard() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  useEffect(() => { checkAuth(); }, []);
-
-  const checkAuth = async () => {
+  const checkAuth = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { navigate("/provider/login"); return; }
     setUser(user);
@@ -48,7 +52,7 @@ export default function ProviderDashboard() {
 
     if (profile) {
       setBuyerProfile(profile);
-      setBuyer((profile as any).buyers);
+      setBuyer(profile.buyers as unknown as Buyer);
       setForm({
         company_description: profile.company_description || "",
         website: profile.website || "",
@@ -65,7 +69,9 @@ export default function ProviderDashboard() {
     }
 
     setLoading(false);
-  };
+  }, [navigate]);
+
+  useEffect(() => { checkAuth(); }, [checkAuth]);
 
   const handleSave = async () => {
     if (!buyerProfile) return;
@@ -109,8 +115,9 @@ export default function ProviderDashboard() {
         }));
         toast({ title: "AI auto-fill complete", description: "Review the filled fields and save." });
       }
-    } catch (e: any) {
-      toast({ title: "AI lookup failed", description: e.message, variant: "destructive" });
+    } catch (e: unknown) {
+      const err = e instanceof Error ? e.message : String(e);
+      toast({ title: "AI lookup failed", description: err, variant: "destructive" });
     }
     setAiLoading(false);
   };
@@ -178,6 +185,27 @@ export default function ProviderDashboard() {
           </div>
           <Button variant="outline" size="sm" onClick={handleSignOut}><LogOut className="mr-2 h-4 w-4" /> Sign Out</Button>
         </div>
+
+        <Card className="border-2 border-primary/20 bg-primary/5 shadow-sm">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-xl text-primary">
+              <Sparkles className="h-5 w-5" /> ServiceStack OS Status: Inactive
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-muted-foreground">
+              You are currently on the free directory tier. Upgrade to ServiceStack OS for $297/mo or opt-in to our 20% Revenue Share program to unlock:
+            </p>
+            <ul className="list-disc pl-5 space-y-1 text-sm text-muted-foreground">
+              <li>Instant Missed-Call Text-Back</li>
+              <li>Automated 5-Star Review Funnel</li>
+              <li>Exclusive Sherman Oaks Tree Service Leads</li>
+            </ul>
+            <Button onClick={() => window.location.href = 'mailto:setup@shermanoakshomepros.com'} className="mt-2 bg-primary text-primary-foreground hover:bg-primary/90">
+              Schedule Setup Call to Activate
+            </Button>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>

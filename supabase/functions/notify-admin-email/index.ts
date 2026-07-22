@@ -167,7 +167,17 @@ ${ctaButton("View Lead Context →", "https://homequotelink.com/admin/leads/{{le
 
 /* ── Dynamic Template Parser ───────────────────────────────────── */
 
-function fillTemplate(template: string, data: Record<string, any>): string {
+type TemplateData = Record<string, unknown> & {
+  vertical?: string;
+  service_areas?: string[];
+  service_types?: string[];
+  cityCoverage?: string;
+  serviceTypes?: string;
+  urgency?: string;
+  city?: string;
+};
+
+function fillTemplate(template: string, data: TemplateData): string {
   return template.replace(/\{\{([^}]+)\}\}/g, (_, key) => {
     return data[key] !== undefined && data[key] !== null ? String(data[key]).replace(/\n/g, "<br>") : "";
   });
@@ -175,7 +185,7 @@ function fillTemplate(template: string, data: Record<string, any>): string {
 
 function buildDynamicHtml(
   type: "new_lead" | "buyer_notification" | "buyer_inquiry" | "feedback_submitted",
-  data: Record<string, any>,
+  data: TemplateData,
   customTemplates?: Record<string, { subject: string; body: string }>
 ): { subject: string; html: string } {
   const tpl = customTemplates?.[type] || DEFAULT_TEMPLATES[type];

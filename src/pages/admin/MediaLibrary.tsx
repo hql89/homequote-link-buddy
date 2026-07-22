@@ -56,7 +56,7 @@ export default function MediaLibraryPage() {
       toast({ title: "Asset deleted" });
       setDeleteId(null);
     },
-    onError: (err: any) => {
+    onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     },
   });

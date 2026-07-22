@@ -10,7 +10,7 @@ import { ServiceCard } from "@/components/public/ServiceCard";
 import { LeadCaptureForm } from "@/components/forms/LeadCaptureForm";
 import { FAQSection } from "@/components/public/FAQSection";
 import { StickyMobileCTA } from "@/components/public/StickyMobileCTA";
-import { SCV_CITIES } from "@/lib/constants";
+import { SFV_CITIES } from "@/lib/constants";
 import { SITE_URL } from "@/lib/constants";
 import type { VerticalKey } from "@/lib/constants";
 import { VERTICAL_CONTENT } from "@/lib/verticalContent";
@@ -53,7 +53,7 @@ export function ServiceLanding({ vertical, showInlineForm = false }: ServiceLand
       name: "HomeQuoteLink",
       description: content.metaDescription,
       url: `https://homequotelink.com/services/${vertical}`,
-      areaServed: SCV_CITIES.filter((c) => c !== "Other / Outside SCV").map((name) => ({
+      areaServed: SFV_CITIES.filter((c) => c !== "Other / Outside SFV").map((name) => ({
         "@type": "City",
         name,
       })),
@@ -76,7 +76,7 @@ export function ServiceLanding({ vertical, showInlineForm = false }: ServiceLand
     return () => {
       script.remove();
     };
-  }, [vertical]);
+  }, [vertical, content.jsonLdServiceType, content.metaDescription]);
 
   return (
     <>
@@ -135,9 +135,9 @@ export function ServiceLanding({ vertical, showInlineForm = false }: ServiceLand
         {/* Service Areas */}
         <section className="py-16">
           <div className="container">
-            <h2 className="text-3xl font-bold text-center mb-10 text-foreground">We Serve the Entire SCV</h2>
+            <h2 className="text-3xl font-bold text-center mb-10 text-foreground">We Serve the Entire SFV</h2>
             <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
-              {SCV_CITIES.map((city) => (
+              {SFV_CITIES.map((city) => (
                 <div key={city} className="flex items-center gap-2 rounded-lg border bg-card p-4">
                   <MapPin className="h-5 w-5 text-accent flex-shrink-0" aria-hidden="true" />
                   <span className="font-medium text-card-foreground">{city}</span>

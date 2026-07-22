@@ -1,5 +1,11 @@
 import { supabase } from "@/integrations/supabase/client";
 
+declare global {
+  interface Window {
+    gtag?: (command: string, action: string, params?: Record<string, unknown>) => void;
+  }
+}
+
 // Check if tracking is disabled (admin exclusion)
 function isTrackingDisabled(): boolean {
   return localStorage.getItem("hql_ignore_tracking") === "true";
@@ -70,11 +76,11 @@ export async function trackEvent({ eventType, eventName, pagePath, metadata }: T
       return;
     }
 
-    if (typeof (window as any).gtag !== 'function') {
+    if (typeof window.gtag !== 'function') {
       return;
     }
 
-    const { gtag } = window as any;
+    const { gtag } = window;
 
     if (eventType === "page_view") {
       gtag('event', 'page_view', {

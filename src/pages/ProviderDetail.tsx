@@ -1,4 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { Database } from "@/integrations/supabase/types";
+
+type BuyerProfile = Database["public"]["Tables"]["buyer_profiles"]["Row"];
+type Buyer = Database["public"]["Tables"]["buyers"]["Row"];
+type ReviewRow = Database["public"]["Tables"]["reviews"]["Row"];
 import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Header } from "@/components/public/Header";
@@ -12,27 +17,28 @@ import { MapPin, Wrench, Globe, Shield, Clock, Loader2 } from "lucide-react";
 
 export default function ProviderDetail() {
   const { id } = useParams<{ id: string }>();
-  const [buyer, setBuyer] = useState<any>(null);
-  const [profile, setProfile] = useState<any>(null);
-  const [reviews, setReviews] = useState<any[]>([]);
+  const [buyer, setBuyer] = useState<Buyer | null>(null);
+  const [profile, setProfile] = useState<BuyerProfile | null>(null);
+  const [reviews, setReviews] = useState<ReviewRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (id) loadProvider();
-  }, [id]);
-
-  const loadProvider = async () => {
+  const loadProvider = useCallback(async () => {
+    if (!id) return;
     const [buyerRes, profileRes, reviewsRes] = await Promise.all([
-      supabase.from("buyers").select("*").eq("id", id!).single(),
-      supabase.from("buyer_profiles").select("*").eq("buyer_id", id!).maybeSingle(),
-      supabase.from("reviews").select("*").eq("buyer_id", id!).order("created_at", { ascending: false }),
+      supabase.from("buyers").select("*").eq("id", id).single(),
+      supabase.from("buyer_profiles").select("*").eq("buyer_id", id).maybeSingle(),
+      supabase.from("reviews").select("*").eq("buyer_id", id).order("created_at", { ascending: false }),
     ]);
 
     setBuyer(buyerRes.data);
     setProfile(profileRes.data);
     setReviews(reviewsRes.data || []);
     setLoading(false);
-  };
+  }, [id]);
+
+  useEffect(() => {
+    if (id) loadProvider();
+  }, [id, loadProvider]);
 
   if (loading) {
     return (

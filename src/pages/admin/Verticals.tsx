@@ -36,7 +36,7 @@ export default function VerticalsPage() {
   const insertVertical = useInsertVertical();
   const deleteVertical = useDeleteVertical();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<any>(emptyVertical);
+  const [editing, setEditing] = useState<Partial<Vertical> & typeof emptyVertical>(emptyVertical);
   const [isEditing, setIsEditing] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Vertical | null>(null);
 
@@ -62,8 +62,8 @@ export default function VerticalsPage() {
       }
       setDialogOpen(false);
       toast({ title: isEditing ? "Vertical updated" : "Vertical created" });
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } catch (error: unknown) {
+      toast({ title: "Error", description: (error as Error).message, variant: "destructive" });
     }
   }
 
@@ -72,8 +72,8 @@ export default function VerticalsPage() {
     try {
       await deleteVertical.mutateAsync(deleteTarget.id);
       toast({ title: "Vertical deleted" });
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } catch (error: unknown) {
+      toast({ title: "Error", description: (error as Error).message, variant: "destructive" });
     }
     setDeleteTarget(null);
   }

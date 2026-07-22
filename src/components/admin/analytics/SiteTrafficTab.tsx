@@ -12,9 +12,13 @@ import { KpiCard } from "./KpiCard";
 
 const COLORS = ["hsl(var(--primary))", "hsl(var(--accent))", "hsl(var(--secondary))", "hsl(150 60% 40%)", "hsl(0 70% 55%)", "hsl(270 50% 55%)", "hsl(180 50% 45%)"];
 
+import { Database } from "@/integrations/supabase/types";
+
+type EventRow = Partial<Database["public"]["Tables"]["analytics_events"]["Row"]>;
+
 interface Props {
-  events: any[];
-  prevEvents: any[];
+  events: EventRow[];
+  prevEvents: EventRow[];
 }
 
 // Helper to extract hostname from URL
@@ -35,7 +39,7 @@ function getDeviceType(screenWidth: number | null): string {
   return "Desktop";
 }
 
-function computeStats(events: any[]) {
+function computeStats(events: EventRow[]) {
   if (!events || events.length === 0) return null;
 
   const pageViews = events.filter((e) => e.event_type === "page_view");

@@ -1,75 +1,24 @@
 export const SITE_URL = "https://homequotelink.com";
-export const SITE_NAME = "HomeQuoteLink";
+export const SITE_NAME = "Sherman Oaks Home Pros";
 export const SITE_PHONE = "(310) 861-3314";
 export const SITE_PHONE_E164 = "+13108613314";
 export const OG_IMAGE = "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/eeda3ab0-0240-43cf-bfec-33f9c0132fc2/id-preview-1ad2cd53--2be06244-1b45-4531-bf8f-a430691ac172.lovable.app-1772304743071.png";
 
 export const VERTICALS = {
-  plumbing: {
-    label: "Plumbing",
-    slug: "plumbing",
+  tree_service: {
+    label: "Tree Service & Removal",
+    slug: "tree-service",
     serviceTypes: [
-      "General Plumbing",
-      "Drain Cleaning",
-      "Water Heater",
-      "Leak Detection",
-      "Sewer Line",
-      "Repiping",
-      "Fixture Installation",
-      "Emergency Plumbing",
+      "Emergency Tree Removal",
+      "Precision Trimming & Pruning",
+      "Stump Grinding & Root Removal",
+      "Hillside Brush Clearing",
+      "Palm Tree Skinning",
+      "Arborist Consultation",
       "Other",
     ],
-    professionalLabel: "plumber",
-    professionalLabelPlural: "plumbers",
-  },
-  hvac: {
-    label: "HVAC / AC",
-    slug: "hvac",
-    serviceTypes: [
-      "AC Repair",
-      "AC Installation",
-      "Furnace Repair",
-      "Furnace Installation",
-      "Duct Cleaning",
-      "Heat Pump",
-      "Thermostat Installation",
-      "Emergency HVAC",
-      "Other",
-    ],
-    professionalLabel: "HVAC technician",
-    professionalLabelPlural: "HVAC technicians",
-  },
-  landscaping: {
-    label: "Yard & Landscaping",
-    slug: "landscaping",
-    serviceTypes: [
-      "Lawn Care",
-      "Tree Trimming",
-      "Sprinkler Systems",
-      "Landscape Design",
-      "Hardscaping",
-      "Fence Installation",
-      "Garden Maintenance",
-      "Other",
-    ],
-    professionalLabel: "landscaper",
-    professionalLabelPlural: "landscapers",
-  },
-  electrical: {
-    label: "Electrical",
-    slug: "electrical",
-    serviceTypes: [
-      "General Electrical",
-      "Panel Upgrade",
-      "Outlet & Switch Install",
-      "Lighting Installation",
-      "Ceiling Fan Install",
-      "EV Charger Install",
-      "Emergency Electrical",
-      "Other",
-    ],
-    professionalLabel: "electrician",
-    professionalLabelPlural: "electricians",
+    professionalLabel: "tree service pro",
+    professionalLabelPlural: "tree service pros",
   },
 } as const;
 
@@ -88,7 +37,7 @@ export function getServiceTypes(vertical?: string): readonly string[] {
 
 /** Get vertical config by key */
 export function getVertical(key: string) {
-  return VERTICALS[key as VerticalKey] ?? VERTICALS.plumbing;
+  return VERTICALS[key as VerticalKey] ?? VERTICALS.tree_service;
 }
 
 /** Get vertical key from a service type */
@@ -98,20 +47,20 @@ export function verticalFromServiceType(serviceType: string): VerticalKey {
       return key as VerticalKey;
     }
   }
-  return "plumbing";
+  return "tree_service";
 }
 
 // Legacy exports for backward compatibility
-export const SERVICE_TYPES = VERTICALS.plumbing.serviceTypes;
+export const SERVICE_TYPES = VERTICALS.tree_service.serviceTypes;
 
-export const SCV_CITIES = [
-  "Santa Clarita",
-  "Valencia",
-  "Saugus",
-  "Canyon Country",
-  "Newhall",
-  "Stevenson Ranch",
-  "Other / Outside SCV",
+export const SFV_CITIES = [
+  "Sherman Oaks",
+  "Encino",
+  "Studio City",
+  "Tarzana",
+  "Valley Village",
+  "Toluca Lake",
+  "Other / Outside SFV",
 ] as const;
 
 export const URGENCY_LEVELS = [

@@ -36,8 +36,10 @@ export default function AdminLogin() {
         await signIn(email, password);
         navigate("/admin");
       }
-    } catch (error: any) {
-      toast({ title: isForgot ? "Reset failed" : isSignUp ? "Sign-up failed" : "Login failed", description: error.message, variant: "destructive" });
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        toast({ title: isForgot ? "Reset failed" : isSignUp ? "Sign-up failed" : "Login failed", description: error.message, variant: "destructive" });
+      }
     } finally {
       setLoading(false);
     }

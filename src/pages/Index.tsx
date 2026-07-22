@@ -10,7 +10,7 @@ import { HowItWorks } from "@/components/public/HowItWorks";
 import { StickyMobileCTA } from "@/components/public/StickyMobileCTA";
 import { LeadCaptureForm } from "@/components/forms/LeadCaptureForm";
 import { FadeIn } from "@/components/public/FadeIn";
-import { SCV_CITIES, VERTICALS } from "@/lib/constants";
+import { SFV_CITIES, VERTICALS } from "@/lib/constants";
 import type { VerticalKey } from "@/lib/constants";
 import { useActiveVerticals } from "@/hooks/useVerticals";
 import {
@@ -35,7 +35,7 @@ function getIcon(iconName: string | null): LucideIcon {
 
 const Index = () => {
   const { data: verticals } = useActiveVerticals();
-  const [selectedVertical, setSelectedVertical] = useState<VerticalKey>("plumbing");
+  const [selectedVertical, setSelectedVertical] = useState<VerticalKey>("tree_service");
 
   const scrollToForm = () => {
     const formSection = document.getElementById("quote-form");
@@ -47,8 +47,8 @@ const Index = () => {
   return (
     <>
       <PageMeta
-        title="HomeQuoteLink — Free Home Service Quotes in Santa Clarita"
-        description="Get free quotes from trusted local home service pros in Santa Clarita Valley. Plumbing, HVAC, electrical, landscaping — fast, free, no obligation."
+        title="Sherman Oaks Home Pros — Expert Tree Service & Removal"
+        description="Trusted local arborists in Sherman Oaks, CA. Emergency tree removal, precision trimming, and hillside fire mitigation. Fast, free quotes."
         canonicalPath="/"
       />
       <JsonLd />
@@ -62,17 +62,23 @@ const Index = () => {
           <div className="container relative z-10 text-center">
             <FadeIn>
               <h1 className="mx-auto max-w-3xl text-4xl font-black leading-tight text-primary-foreground md:text-5xl lg:text-6xl">
-                Santa Clarita Home Service Directory
+                Expert Tree Service & Removal in Sherman Oaks, CA
               </h1>
             </FadeIn>
             <FadeIn delay={0.15}>
               <p className="mx-auto mt-5 max-w-xl text-lg text-primary-foreground/80">
-                Tell us what you need. We'll connect you with a trusted local professional — free, fast, and no obligation.
+                Trusted Local Arborists for the San Fernando Valley. Tell us what you need or call for emergency removal.
               </p>
             </FadeIn>
             <FadeIn delay={0.3}>
-              <div className="mt-8">
-                <CTAButton onClick={scrollToForm}>Get Your Free Quote</CTAButton>
+              <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
+                <a 
+                  href="tel:+13108613314" 
+                  className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 h-14 px-8 text-lg bg-green-500 text-white hover:bg-green-600 shadow-lg w-full sm:w-auto"
+                >
+                  Call Now (310) 861-3314
+                </a>
+                <CTAButton onClick={scrollToForm}>Get a Free Quote</CTAButton>
               </div>
             </FadeIn>
           </div>
@@ -124,35 +130,63 @@ const Index = () => {
         <section className="py-16">
           <div className="container">
             <FadeIn>
-              <h2 className="text-3xl font-bold text-center mb-4 text-foreground">What Do You Need Help With?</h2>
+              <h2 className="text-3xl font-bold text-center mb-4 text-foreground">Our Core Tree Care Services</h2>
               <p className="text-center text-muted-foreground mb-10 max-w-lg mx-auto">
-                Choose a service below to get matched with a local pro who specializes in exactly what you need.
+                Specialized arborist services for Sherman Oaks and the San Fernando Valley.
               </p>
             </FadeIn>
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-              {verticals?.map((v, i) => {
-                const Icon = getIcon(v.icon_name);
-                const href = v.slug === "plumbing" ? "/" : `/services/${v.slug}`;
-                return (
-                  <FadeIn key={v.id} delay={i * 0.1}>
-                    <Link
-                      to={href}
-                      className="group flex flex-col items-center rounded-xl border-2 border-border bg-card p-8 text-center transition-all hover:border-accent hover:shadow-lg"
-                    >
-                      <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-accent/10 text-accent transition-colors group-hover:bg-accent group-hover:text-accent-foreground">
-                        <Icon className="h-8 w-8" aria-hidden="true" />
-                      </div>
-                      <h3 className="mb-2 text-xl font-bold text-card-foreground font-sans">{v.label}</h3>
-                      <p className="text-sm text-muted-foreground mb-4">
-                        {v.service_types.slice(0, 3).join(" · ")} & more
-                      </p>
-                      <span className="mt-auto flex items-center gap-1 text-sm font-semibold text-accent group-hover:underline">
-                        Get a Quote <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                      </span>
-                    </Link>
-                  </FadeIn>
-                );
-              })}
+            <div className="grid gap-6 sm:grid-cols-3">
+              <FadeIn delay={0.1}>
+                <Link
+                  to="/services/emergency-tree-removal"
+                  className="group flex flex-col items-center rounded-xl border-2 border-border bg-card p-8 text-center transition-all hover:border-accent hover:shadow-lg"
+                >
+                  <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-100 text-red-600 transition-colors group-hover:bg-red-600 group-hover:text-white">
+                    <Zap className="h-8 w-8" aria-hidden="true" />
+                  </div>
+                  <h3 className="mb-2 text-xl font-bold text-card-foreground font-sans">Emergency Tree Removal</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    24/7 storm damage and hazardous fallen limb removal.
+                  </p>
+                  <span className="mt-auto flex items-center gap-1 text-sm font-semibold text-accent group-hover:underline">
+                    View Details <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                </Link>
+              </FadeIn>
+              <FadeIn delay={0.2}>
+                <Link
+                  to="/services/brush-clearing"
+                  className="group flex flex-col items-center rounded-xl border-2 border-border bg-card p-8 text-center transition-all hover:border-accent hover:shadow-lg"
+                >
+                  <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-accent/10 text-accent transition-colors group-hover:bg-accent group-hover:text-accent-foreground">
+                    <TreePine className="h-8 w-8" aria-hidden="true" />
+                  </div>
+                  <h3 className="mb-2 text-xl font-bold text-card-foreground font-sans">Hillside Brush Clearing</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    LAFD brush clearance and fire mitigation.
+                  </p>
+                  <span className="mt-auto flex items-center gap-1 text-sm font-semibold text-accent group-hover:underline">
+                    View Details <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                </Link>
+              </FadeIn>
+              <FadeIn delay={0.3}>
+                <Link
+                  to="/services/palm-tree-trimming"
+                  className="group flex flex-col items-center rounded-xl border-2 border-border bg-card p-8 text-center transition-all hover:border-accent hover:shadow-lg"
+                >
+                  <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-accent/10 text-accent transition-colors group-hover:bg-accent group-hover:text-accent-foreground">
+                    <Wind className="h-8 w-8" aria-hidden="true" />
+                  </div>
+                  <h3 className="mb-2 text-xl font-bold text-card-foreground font-sans">Palm Tree Trimming</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Aesthetic maintenance and dead frond removal.
+                  </p>
+                  <span className="mt-auto flex items-center gap-1 text-sm font-semibold text-accent group-hover:underline">
+                    View Details <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                </Link>
+              </FadeIn>
             </div>
           </div>
         </section>
@@ -163,10 +197,10 @@ const Index = () => {
         <section className="py-16">
           <div className="container">
             <FadeIn>
-              <h2 className="text-3xl font-bold text-center mb-10 text-foreground">We Serve the Entire SCV</h2>
+              <h2 className="text-3xl font-bold text-center mb-10 text-foreground">We Serve the Entire San Fernando Valley</h2>
             </FadeIn>
             <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
-              {SCV_CITIES.map((city, i) => (
+              {SFV_CITIES.map((city, i) => (
                 <FadeIn key={city} delay={i * 0.05}>
                   <div className="flex items-center gap-2 rounded-lg border bg-card p-4">
                     <MapPin className="h-5 w-5 text-accent flex-shrink-0" aria-hidden="true" />
@@ -184,7 +218,7 @@ const Index = () => {
             <FadeIn>
               <h2 className="text-3xl font-bold text-foreground">Ready to Get Started?</h2>
               <p className="text-muted-foreground max-w-md mx-auto">
-                Whether it's a leaky faucet, a broken AC, or a backyard makeover — we'll connect you with the right pro.
+                Whether it's an overgrown oak or a hazardous palm tree, we'll connect you with the right pro.
               </p>
               <CTAButton onClick={scrollToForm}>Get Your Free Quote Now</CTAButton>
             </FadeIn>

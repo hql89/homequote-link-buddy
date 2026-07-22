@@ -55,8 +55,9 @@ export function AIImageModal({ open, onOpenChange, title, slug, onImageGenerated
       } else {
         throw new Error("No image URL returned");
       }
-    } catch (err: any) {
-      toast({ title: "Image Generation Failed", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast({ title: "Failed to generate image", description: msg, variant: "destructive" });
     } finally {
       setLoading(false);
     }
