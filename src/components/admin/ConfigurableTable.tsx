@@ -5,11 +5,22 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Checkbox } from "@/components/ui/checkbox";
 import { ArrowUpDown, Settings } from "lucide-react";
 
-export interface ColumnDef<T> {
+// Defaults to a loose row shape so call sites that don't care about the row
+// type can write `ColumnDef[]` without supplying a type argument.
+export interface ColumnDef<T = Record<string, unknown>> {
   key: Extract<keyof T, string>;
   label: string;
   visible: boolean; // default visibility
   render?: (value: unknown, row: T) => React.ReactNode;
+}
+
+/** Cell values come off the row as `unknown`; coerce them to something React can render. */
+function renderCellValue(value: unknown): React.ReactNode {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "string" || typeof value === "number") return value;
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (value instanceof Date) return value.toLocaleString();
+  return String(value);
 }
 
 interface ConfigurableTableProps<T> {
@@ -87,7 +98,10 @@ export function ConfigurableTable<T extends Record<string, unknown>>({ columns, 
       if (aVal == null && bVal == null) return 0;
       if (aVal == null) return 1;
       if (bVal == null) return -1;
-      const cmp = typeof aVal === "number" ? aVal - bVal : String(aVal).localeCompare(String(bVal));
+      const cmp =
+        typeof aVal === "number" && typeof bVal === "number"
+          ? aVal - bVal
+          : String(aVal).localeCompare(String(bVal));
       return sortDir === "asc" ? cmp : -cmp;
     });
   }, [filtered, sortCol, sortDir]);
@@ -169,7 +183,7 @@ export function ConfigurableTable<T extends Record<string, unknown>>({ columns, 
                   const value = row[col.key];
                   return (
                     <TableCell key={col.key}>
-                      {col.render ? col.render(value, row) : value ?? "—"}
+                      {col.render ? col.render(value, row) : renderCellValue(value)}
                     </TableCell>
                   );
                 })}

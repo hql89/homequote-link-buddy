@@ -20,7 +20,7 @@ interface LeadCaptureFormProps {
   vertical?: VerticalKey;
 }
 
-export function LeadCaptureForm({ vertical = "plumbing" }: LeadCaptureFormProps) {
+export function LeadCaptureForm({ vertical = "tree_service" }: LeadCaptureFormProps) {
   const stepContainerRef = useRef<HTMLDivElement>(null);
   const [step, setStep] = useState(0);
 
@@ -84,7 +84,7 @@ export function LeadCaptureForm({ vertical = "plumbing" }: LeadCaptureFormProps)
 
   async function handleNext() {
     const fields = FORM_STEPS[step].fields;
-    const valid = await form.trigger(fields as (keyof LeadFormValues)[]);
+    const valid = await form.trigger([...fields] as (keyof LeadFormValues)[]);
     if (valid) {
       trackFormStep(`form_step_${step + 1}_complete`, { step: FORM_STEPS[step].label });
       setStep((s) => Math.min(s + 1, FORM_STEPS.length - 1));

@@ -79,11 +79,11 @@ export default function Providers() {
 
   return (
     <>
-      <PageMeta title="Find Local Plumbers in Santa Clarita | HomeQuoteLink" description="Browse verified plumbing providers in Santa Clarita Valley. Read reviews, compare services, and find the best plumber near you." canonicalPath="/providers" />
+      <PageMeta title="Find Local Tree Service Pros in Sherman Oaks | Sherman Oaks Home Pros" description="Browse verified tree service providers in Sherman Oaks and the San Fernando Valley. Read reviews, compare services, and find the right arborist near you." canonicalPath="/providers" />
       <Header />
       <main className="container py-10 space-y-8">
         <div className="space-y-2">
-          <h1 className="text-3xl font-bold font-serif text-primary">Find a Plumber</h1>
+          <h1 className="text-3xl font-bold font-serif text-primary">Find a Tree Service Pro</h1>
           <p className="text-muted-foreground">Browse verified providers and read reviews from real customers.</p>
         </div>
 

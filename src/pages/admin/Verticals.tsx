@@ -55,7 +55,8 @@ export default function VerticalsPage() {
   async function handleSave() {
     try {
       if (isEditing && editing.id) {
-        await updateVertical.mutateAsync(editing);
+        // Re-assert id so the Partial<> satisfies the mutation's required { id }.
+        await updateVertical.mutateAsync({ ...editing, id: editing.id });
       } else {
         const { id, created_at, updated_at, ...rest } = editing;
         await insertVertical.mutateAsync(rest);

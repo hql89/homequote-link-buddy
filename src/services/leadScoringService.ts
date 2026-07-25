@@ -10,46 +10,15 @@ const URGENCY_SCORES: Record<string, number> = {
 };
 
 const SERVICE_TYPE_SCORES: Record<VerticalKey, Record<string, number>> = {
-  plumbing: {
-    "Sewer Line": 20,
-    "Repiping": 20,
-    "Water Heater": 15,
-    "Leak Detection": 15,
-    "Emergency Plumbing": 15,
-    "Drain Cleaning": 5,
-    "Fixture Installation": 5,
-    "General Plumbing": 5,
-    "Other": 0,
-  },
-  hvac: {
-    "AC Installation": 20,
-    "Furnace Installation": 20,
-    "Heat Pump": 15,
-    "AC Repair": 15,
-    "Furnace Repair": 15,
-    "Emergency HVAC": 15,
-    "Duct Cleaning": 5,
-    "Thermostat Installation": 5,
-    "Other": 0,
-  },
-  landscaping: {
-    "Landscape Design": 20,
-    "Hardscaping": 20,
-    "Sprinkler Systems": 15,
-    "Fence Installation": 15,
-    "Tree Trimming": 10,
-    "Lawn Care": 5,
-    "Garden Maintenance": 5,
-    "Other": 0,
-  },
-  electrical: {
-    "Panel Upgrade": 20,
-    "EV Charger Install": 20,
-    "Emergency Electrical": 15,
-    "Lighting Installation": 10,
-    "Outlet & Switch Install": 5,
-    "Ceiling Fan Install": 5,
-    "General Electrical": 5,
+  tree_service: {
+    // Highest intent: emergencies and large removals. Keys must match
+    // VERTICALS.tree_service.serviceTypes in lib/constants.ts.
+    "Emergency Tree Removal": 20,
+    "Hillside Brush Clearing": 20,
+    "Stump Grinding & Root Removal": 15,
+    "Precision Trimming & Pruning": 10,
+    "Palm Tree Skinning": 10,
+    "Arborist Consultation": 5,
     "Other": 0,
   },
 };
@@ -60,7 +29,7 @@ function scoreUrgency(urgency: string): number {
 
 function scoreServiceType(serviceType: string, vertical?: string): number {
   const vKey = vertical as VerticalKey || verticalFromServiceType(serviceType);
-  const scores = SERVICE_TYPE_SCORES[vKey] ?? SERVICE_TYPE_SCORES.plumbing;
+  const scores = SERVICE_TYPE_SCORES[vKey] ?? SERVICE_TYPE_SCORES.tree_service;
   return scores[serviceType] ?? 0;
 }
 

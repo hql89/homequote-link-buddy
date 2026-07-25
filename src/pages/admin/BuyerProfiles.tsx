@@ -70,7 +70,8 @@ export default function BuyerProfiles() {
       company_description: profile.company_description || "",
       website: profile.website || "",
       license_number: profile.license_number || "",
-      years_in_business: profile.years_in_business ?? "",
+      // Stored as a number; the form field is a string input.
+      years_in_business: profile.years_in_business?.toString() ?? "",
     });
   };
 

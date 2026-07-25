@@ -16,7 +16,11 @@
     "drift": "node scripts/drift_check.cjs",
     "handoff": "node scripts/handoff.cjs",
     "release": "node scripts/release.cjs",
-    "visual:audit": "node scripts/visual_audit.cjs"
+    "visual:audit": "node scripts/visual_audit.cjs",
+    "sb:deploy": "node scripts/supabase_deploy.cjs",
+    "sb:deploy:all": "node scripts/supabase_deploy.cjs --all",
+    "sb:push": "supabase db push --linked",
+    "sb:status": "node scripts/supabase_deploy.cjs --dry-run"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

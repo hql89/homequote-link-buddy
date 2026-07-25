@@ -4,13 +4,38 @@ import Index from "../../src/pages/Index";
 import { BrowserRouter } from "react-router-dom";
 import { vi, describe, it, expect } from "vitest";
 
-// Mock framer-motion to avoid animation issues in tests
-vi.mock("framer-motion", () => ({
-  motion: {
-    div: ({ children, ...props }: any) => <div {...props}>{children}</div>,
-  },
-  AnimatePresence: ({ children }: any) => <>{children}</>,
-}));
+// Mock framer-motion to avoid animation issues in tests. Motion-only props are
+// stripped so React doesn't warn about unknown DOM attributes.
+type MotionDivProps = React.PropsWithChildren<
+  React.HTMLAttributes<HTMLDivElement> & Record<string, unknown>
+>;
+
+vi.mock("framer-motion", () => {
+  // Declared inside the factory: vi.mock is hoisted above module-scope consts.
+  const MOTION_ONLY_PROPS = new Set([
+    "initial",
+    "animate",
+    "exit",
+    "transition",
+    "variants",
+    "whileInView",
+    "whileHover",
+    "whileTap",
+    "viewport",
+  ]);
+
+  return {
+    motion: {
+      div: ({ children, ...props }: MotionDivProps) => {
+        const domProps = Object.fromEntries(
+          Object.entries(props).filter(([key]) => !MOTION_ONLY_PROPS.has(key)),
+        );
+        return <div {...domProps}>{children}</div>;
+      },
+    },
+    AnimatePresence: ({ children }: React.PropsWithChildren) => <>{children}</>,
+  };
+});
 
 // Mock auth & role hooks to avoid Supabase calls
 vi.mock("../../src/hooks/useAuth", () => ({
@@ -36,8 +61,13 @@ vi.mock("../../src/hooks/useIsProvider", () => ({
 vi.mock("../../src/hooks/useVerticals", () => ({
   useActiveVerticals: () => ({
     data: [
-      { id: "1", label: "Plumbing", slug: "plumbing", icon_name: "Droplets", service_types: ["Drain cleaning"] },
-      { id: "2", label: "HVAC", slug: "hvac", icon_name: "Wind", service_types: ["AC repair"] },
+      {
+        id: "1",
+        label: "Tree Service & Removal",
+        slug: "tree-service",
+        icon_name: "TreePine",
+        service_types: ["Emergency Tree Removal", "Precision Trimming & Pruning"],
+      },
     ],
     isLoading: false,
     error: null,
@@ -76,8 +106,10 @@ describe("Index page", () => {
       </BrowserRouter>
     );
 
+    // Hero copy as of the Sherman Oaks / tree-service pivot.
     const heading = screen.getByRole("heading", {
-      name: /Santa Clarita Home Service Directory/i,
+      level: 1,
+      name: /Expert Tree Service & Removal in Sherman Oaks, CA/i,
     });
     expect(heading).toBeInTheDocument();
   });
