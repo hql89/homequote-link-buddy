@@ -25,3 +25,6 @@ dist-ssr
 
 # Agent configuration (symlink to global template)
 .agent
+
+# Supabase CLI state (machine-specific: linked project ref, versions, pooler url)
+supabase/.temp/

@@ -24,6 +24,10 @@ const Providers = lazy(() => import("./pages/Providers"));
 const ProviderDetail = lazy(() => import("./pages/ProviderDetail"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
+// --- Directory engine ---
+const DirectoryListing = lazy(() => import("./pages/DirectoryListing"));
+const ClaimListing = lazy(() => import("./pages/ClaimListing"));
+
 // --- Service pages ---
 const EmergencyTreeRemoval = lazy(() => import("./pages/services/EmergencyTreeRemoval"));
 const BrushClearing = lazy(() => import("./pages/services/BrushClearing"));
@@ -108,6 +112,8 @@ const App = () => (
               <Route path="/provider/dashboard" element={<ProviderDashboard />} />
               <Route path="/providers" element={<Providers />} />
               <Route path="/providers/:id" element={<ProviderDetail />} />
+              <Route path="/directory/:city/:slug/claim" element={<ClaimListing />} />
+              <Route path="/directory/:city/:slug" element={<DirectoryListing />} />
               <Route path="/admin/login" element={<AdminLogin />} />
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />

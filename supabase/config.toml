@@ -1,4 +1,4 @@
-project_id = "cjdhbiuhzrpruqbbnnqz"
+project_id = "lrqdbpphallqehpdqalr"
 
 [functions.notify-admin-email]
 verify_jwt = false
@@ -31,4 +31,21 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.migrate-helper]
+verify_jwt = false
+
+# --- Directory & Retell demo engine ---
+# These run their own authorization (service-role/admin check, or the
+# claim_token bearer credential), so the platform JWT gate is left off to match
+# the rest of this project.
+
+[functions.ingest-business]
+verify_jwt = false
+
+[functions.send-outreach-drip]
+verify_jwt = false
+
+[functions.claim-listing]
+verify_jwt = false
+
+[functions.submit-directory-lead]
 verify_jwt = false

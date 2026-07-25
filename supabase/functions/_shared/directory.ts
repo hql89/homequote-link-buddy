@@ -1,0 +1,127 @@
+/**
+ * Shared helpers for the directory / outreach engine.
+ */
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
+
+export const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+};
+
+export function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+/** URL-safe slug. Returns "" for input that has no usable characters. */
+export function slugify(input: string): string {
+  return input
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
+/** Replaces {{variable}} tokens. Unknown tokens collapse to an empty string. */
+export function renderTemplate(template: string, vars: Record<string, string>): string {
+  return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_m, key: string) => vars[key] ?? "");
+}
+
+/**
+ * Very small E.164 normaliser for US numbers. Returns null when the input
+ * cannot be confidently converted — callers must treat null as "do not call".
+ */
+export function toE164(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (/^\+[1-9]\d{7,14}$/.test(trimmed)) return trimmed;
+
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return null;
+}
+
+export interface OutreachTemplate {
+  subject: string;
+  body: string;
+}
+
+/**
+ * Blueprint-specified copy. Email 1 deliberately contains no links or HTML to
+ * maximise deliverability on a cold send; Email 2 carries the claim link.
+ */
+export const DEFAULT_OUTREACH_TEMPLATES: Record<string, OutreachTemplate> = {
+  outreach_verify: {
+    subject: "Quick question about {{business_name}} in {{city}}",
+    body:
+      "Hi {{owner_name}},\n\n" +
+      "I built a local directory for {{city}} businesses and added {{business_name}}. " +
+      "I want to make sure your phone number ({{phone}}) is correct before we push it live.\n\n" +
+      "If it is correct, please reply YES. If not, let me know what to change.\n\n" +
+      "Best,\n{{sender_name}}",
+  },
+  outreach_preview: {
+    subject: "Your {{city}} listing is ready for preview",
+    body:
+      "Hi {{owner_name}},\n\n" +
+      "Here is the live listing we set up for you:\n{{claim_url}}\n\n" +
+      "You can claim it for free to keep your services and contact details up to date, " +
+      "and quote requests from the page come straight to you.\n\n" +
+      "Best,\n{{sender_name}}",
+  },
+};
+
+/**
+ * Loads admin-editable outreach templates, falling back to the defaults above
+ * for any template the admin has not customised.
+ */
+export async function loadOutreachTemplates(
+  supabase: SupabaseClient,
+): Promise<Record<string, OutreachTemplate>> {
+  const { data } = await supabase
+    .from("admin_settings")
+    .select("setting_value")
+    .eq("setting_key", "outreach_templates")
+    .maybeSingle();
+
+  const custom = (data?.setting_value ?? {}) as Record<string, Partial<OutreachTemplate>>;
+  const merged: Record<string, OutreachTemplate> = {};
+
+  for (const [key, fallback] of Object.entries(DEFAULT_OUTREACH_TEMPLATES)) {
+    merged[key] = {
+      subject: custom[key]?.subject?.trim() || fallback.subject,
+      body: custom[key]?.body?.trim() || fallback.body,
+    };
+  }
+  return merged;
+}
+
+/** Writes a row to the shared job_run_logs table, matching existing functions. */
+export async function logRun(
+  supabase: SupabaseClient,
+  jobName: string,
+  status: "success" | "failure" | "partial",
+  durationMs: number,
+  errorMessage: string | null,
+  metadata: Record<string, unknown>,
+): Promise<void> {
+  try {
+    await supabase.from("job_run_logs").insert({
+      job_name: jobName,
+      status,
+      attempts: 1,
+      duration_ms: durationMs,
+      error_message: errorMessage,
+      metadata,
+    });
+  } catch (err) {
+    console.error(`[${jobName}] failed to write job_run_logs:`, err);
+  }
+}
