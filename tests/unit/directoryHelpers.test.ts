@@ -5,7 +5,12 @@ import {
   toE164,
   DEFAULT_OUTREACH_TEMPLATES,
 } from "../../supabase/functions/_shared/directory";
-import { parseServices, isFeatured } from "../../src/integrations/supabase/directory";
+import {
+  parseServices,
+  isFeatured,
+  formatPhoneDisplay,
+  toTelHref,
+} from "../../src/integrations/supabase/directory";
 
 describe("slugify", () => {
   it("lowercases and hyphenates", () => {
@@ -93,6 +98,29 @@ describe("parseServices", () => {
 
   it("drops empty entries", () => {
     expect(parseServices(["Trimming", "", null])).toEqual(["Trimming"]);
+  });
+});
+
+describe("formatPhoneDisplay", () => {
+  it("renders a stored E.164 number readably", () => {
+    // Listings store E.164; showing "+18185550102" raw is what this fixes.
+    expect(formatPhoneDisplay("+18185550102")).toBe("(818) 555-0102");
+  });
+
+  it("handles a bare 10-digit number", () => {
+    expect(formatPhoneDisplay("8185550102")).toBe("(818) 555-0102");
+  });
+
+  it("passes through anything it can't confidently format", () => {
+    expect(formatPhoneDisplay("ext. 4")).toBe("ext. 4");
+    expect(formatPhoneDisplay("+448185550123")).toBe("+448185550123");
+  });
+});
+
+describe("toTelHref", () => {
+  it("builds a dialable href from either stored form", () => {
+    expect(toTelHref("+18185550102")).toBe("tel:+18185550102");
+    expect(toTelHref("(818) 555-0102")).toBe("tel:+18185550102");
   });
 });
 

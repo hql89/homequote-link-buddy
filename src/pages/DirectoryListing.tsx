@@ -11,27 +11,15 @@ import { Phone, Globe, MapPin, Wrench, Loader2, AlertCircle, BadgeCheck, ShieldC
 import { SITE_URL } from "@/lib/constants";
 import {
   directoryDb,
+  formatPhoneDisplay,
   isFeatured,
   parseServices,
+  toTelHref,
   type PublicBusinessListing,
 } from "@/integrations/supabase/directory";
 import { DirectoryQuoteForm } from "@/components/directory/DirectoryQuoteForm";
 
 type LoadState = "loading" | "ready" | "notfound" | "error";
-
-function formatPhoneDisplay(raw: string): string {
-  const d = raw.replace(/\D/g, "");
-  const ten = d.length === 11 && d.startsWith("1") ? d.slice(1) : d;
-  if (ten.length !== 10) return raw;
-  return `(${ten.slice(0, 3)}) ${ten.slice(3, 6)}-${ten.slice(6)}`;
-}
-
-function toTelHref(raw: string): string {
-  const d = raw.replace(/\D/g, "");
-  if (d.length === 10) return `tel:+1${d}`;
-  if (d.length === 11 && d.startsWith("1")) return `tel:+${d}`;
-  return `tel:${raw}`;
-}
 
 export default function DirectoryListing() {
   const { city, slug } = useParams<{ city: string; slug: string }>();

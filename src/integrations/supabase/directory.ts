@@ -100,6 +100,22 @@ export interface DirectoryLead {
   created_at: string;
 }
 
+/** Renders a stored E.164 number as (818) 555-0123. Falls back to the raw input. */
+export function formatPhoneDisplay(raw: string): string {
+  const d = raw.replace(/\D/g, "");
+  const ten = d.length === 11 && d.startsWith("1") ? d.slice(1) : d;
+  if (ten.length !== 10) return raw;
+  return `(${ten.slice(0, 3)}) ${ten.slice(3, 6)}-${ten.slice(6)}`;
+}
+
+/** `tel:` href for a stored number, normalising to E.164 where possible. */
+export function toTelHref(raw: string): string {
+  const d = raw.replace(/\D/g, "");
+  if (d.length === 10) return `tel:+1${d}`;
+  if (d.length === 11 && d.startsWith("1")) return `tel:+${d}`;
+  return `tel:${raw}`;
+}
+
 /** Normalises the `services` JSONB column, which may arrive as a JSON string. */
 export function parseServices(raw: unknown): string[] {
   // Null/undefined entries must be dropped *before* String(), otherwise they

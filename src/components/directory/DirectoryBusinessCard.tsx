@@ -1,7 +1,13 @@
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { BadgeCheck, Phone, Star, Wrench } from "lucide-react";
-import { isFeatured, parseServices, type PublicBusinessListing } from "@/integrations/supabase/directory";
+import {
+  formatPhoneDisplay,
+  isFeatured,
+  parseServices,
+  toTelHref,
+  type PublicBusinessListing,
+} from "@/integrations/supabase/directory";
 
 const MAX_SERVICES_SHOWN = 3;
 
@@ -56,7 +62,9 @@ export function DirectoryBusinessCard({ business }: { business: PublicBusinessLi
       {business.phone && (
         <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
           <Phone className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          {business.phone}
+          <a className="hover:underline" href={toTelHref(business.phone)}>
+            {formatPhoneDisplay(business.phone)}
+          </a>
         </p>
       )}
     </li>
