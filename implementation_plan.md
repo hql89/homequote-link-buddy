@@ -1,128 +1,171 @@
-# Implementation Plan — Directory Paid Tier (Upsell)
+# Implementation Plan — "Valley Home Pros" Directory Pivot
 
 **Status:** Draft — awaiting approval
 **Date:** 2026-07-25
-**Replaces:** the Retell.ai "lease an AI agent" upsell (removed 2026-07-24, see [[homequote-blueprint-direction]])
+**Supersedes:** the single-niche Sherman Oaks tree-service homepage
+**Related:** [docs/plans/directory-paid-tier.md](docs/plans/directory-paid-tier.md) (Phase 1 shipped; Stripe phase still pending)
 
 ## Why
 
-The directory pipeline (ingest → auto-generated page → cold-email drip → claim) is live and gets a
-business into the directory for free. The blueprint's next step — the actual monetization — was
-Retell.ai voice-agent leasing, which was pulled out because it wasn't connected to this project.
-Nothing replaced it. This plan defines that replacement: a paid listing tier with concrete,
-non-AI features, sold as a monthly subscription via Stripe.
+The live homepage is a single-business tree-service landing page ("Expert Tree Service &
+Removal in Sherman Oaks") with its own phone CTA, sitting one click from other contractors'
+listings. That is the exact brand-hijacking pattern the hybrid model exists to eliminate: a
+contractor who visits sees us competing for the same call.
 
-**Confirmed with user:** monthly subscription; no Stripe account exists yet (manual prerequisite);
-feature direction is paid placement/features, not AI.
+This pivots the site into a regional directory portal under a single master brand, with
+per-business listing pages that route exclusively to their owner.
 
-## A naming conflict to resolve first
+**Timing is favorable:** `businesses`, `buyers`, and `reviews` are all **0 rows**; only 6 test
+leads exist. There is no live funnel to break. This is the cheapest possible moment to do this.
 
-This session shipped a **"Verified owner" badge** as a *free* trust signal — it appears on any
-listing where `is_claimed = true`, specifically to reassure a business that claiming costs nothing
-and isn't a paywall in disguise (see the trust-building work in `DirectoryListing.tsx`,
-`ClaimListing.tsx`). The paid-tier feature list discussed ("verified badge, ranking, photos,
-booking widget") can't reuse "verified" for the paid perk — that would contradict what claiming
-currently means and risks looking like pay-to-play trust, the exact perception problem we just
-spent this session avoiding.
+---
 
-**Proposal:** keep "Verified owner" exactly as-is (free, tied to `is_claimed`). The paid tier gets
-a visually distinct label — "Featured" or "Premium" — never "Verified." Flagging this now for
-sign-off before it's built into the schema and copy.
+## ⚠️ Two conflicts with work already shipped — read before approving
 
-## Scope (this plan)
+### Conflict 1: CallRail tracking numbers vs. the trust copy now in production
 
-Two phases. Phase 1 has no external dependency and can ship standalone. Phase 2 is blocked on you
-creating a Stripe account (account creation itself is not something I can do on your behalf).
+Last session, to solve *"businesses will think we're trying to steal their leads,"* the following
+copy shipped to production and is live on every claimed listing:
 
-### Phase 1 — Schema, gating, and static upsell surface (buildable now)
+> **"Calls go directly to {Business} — no tracking number, no middleman."**
 
-**Database migration** (new file under `supabase/migrations/`):
-- `businesses.listing_tier` — `text`, `not null default 'free'`, `check (listing_tier in ('free','featured'))`
-- `businesses.featured_until` — `timestamptz`, nullable — subscription period end; a cron-friendly
-  expiry so a lapsed/canceled subscription silently reverts to `free` without a webhook race
-- Index on `(city_slug, listing_tier)` since city listing pages will sort featured-first once a
-  `/directory/:city` index exists (it doesn't yet — out of scope here, noted under Open Questions)
-- No RLS change needed: both columns are readable through the existing `public_business_listings`
-  view (add them to the view's column list), writes stay service-role-only
+and on the claim page:
 
-**Rollback:** `ALTER TABLE businesses DROP COLUMN listing_tier, DROP COLUMN featured_until;` — safe,
-additive-only migration, no data transformation, nothing else reads these columns yet.
+> **"Calls already go to your number directly."**
 
-**Frontend — `src/pages/DirectoryListing.tsx`:**
-- Featured listings get: an extra photo slot (schema already has no photo storage at all —
-  see Open Questions), a "Featured" badge distinct from "Verified owner," and priority treatment
-  once a city index page exists
-- Free listings unaffected — current call-only/claimed behavior untouched
+The answer above specifies **CallRail dynamic number swapping on individual listing pages**. A
+tracking number is, precisely, a middleman number — so shipping that would make live copy false,
+and would reintroduce the exact fear the copy was written to defuse. A contractor who discovers
+the number on "their" page is ours, after reading that line, is a contractor lost permanently.
 
-**Frontend — `src/pages/ClaimListing.tsx`:**
-- Add a static "Upgrade to Featured" card after the lead-log card, describing the perks, with a
-  disabled/"Coming soon" button — this is the upsell surface, wired to nothing yet in Phase 1
-- No payment collection in Phase 1. Do not add a fake-functioning button — per the Development
-  Critic Mindset, a dead button is exactly the kind of thing to flag, not ship
+**Proposed resolution — split by who owns the page.** This preserves *both* plays without lying:
 
-**Test strategy:**
-- Unit test for the new `listing_tier` default and check constraint (migration test, matching the
-  pattern already used for other directory-table constraints)
-- Extend `directoryHelpers.test.ts` if any shared helper changes (e.g. a `isFeatured(business)` util)
-- Manual verification: same pattern used this session — create a temp `featured` row via service
-  role, screenshot the listing page, delete the row
+| Page | Number shown | Rationale |
+|---|---|---|
+| `/directory/:city/:slug` (a business's own listing) | **Their real number.** Copy stays as-is. | Their page, their traffic. This is the trust asset. |
+| `/directory/tree-service/palm-tree-trimming` (our SEO guides) | **Tracking number.** | Our content, our rankings, our traffic — tracking is entirely legitimate. |
+| Homepage / category / city index | **Valley hotline.** | Ours. |
 
-**Acceptance criteria (Phase 1):**
-- [ ] Migration applies cleanly against production schema, columns default correctly for all
-      existing rows
-- [ ] Free listings render identically to today — zero visual regression
-- [ ] A `listing_tier = 'featured'` test row renders the Featured badge and does not show
-      "Verified owner" language for the paid perk
-- [ ] Claim page shows the upgrade card; button is visibly disabled, not a dead-looking active button
-- [ ] All existing tests still pass; new tests cover the tier default/constraint
+This is also a *stronger* leasing pitch: "here are the calls **our** page generated last month,
+want them routed to your cell for $297/mo" is cleaner than tracking calls on a page we gave them
+for free. The leasing play lives on our SEO pages — which is where the answer above already
+places it (Step 3).
 
-### Phase 2 — Stripe checkout + webhook (blocked on your Stripe account)
+**Override me if you disagree** — but if tracking goes on business listing pages, the trust copy
+must be rewritten in the same change. I will not leave a claim in production that the
+implementation contradicts.
 
-Not started until Phase 1 ships and you've created the Stripe account. Sketch, for sign-off now so
-Phase 1's schema doesn't need revisiting:
+### Conflict 2: Retell.ai is not connected to this project
 
-- New edge function `create-checkout-session` — authenticated by claim token (same bearer model as
-  `claim-listing`), creates a Stripe Checkout session for the monthly Featured price
-- New edge function `stripe-webhook` — handles `checkout.session.completed` (set `listing_tier =
-  'featured'`, `featured_until` = period end) and `customer.subscription.deleted` /
-  `invoice.payment_failed` (revert to `free`)
-- Stripe Customer Portal link (not a custom billing UI) for cancel/update-card, linked from the
-  claimed listing's post-claim view — reuse Stripe's own portal rather than building one
-  (Component Reuse First)
-- Secrets required: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_FEATURED_PRICE_ID` — all
-  as Supabase edge function secrets, never in source
+The hotline is described as answered by a **Retell.ai voice agent**. Retell was deliberately
+removed on 2026-07-24 (`20260724150000_remove_retell_integration.sql`) after you confirmed it
+wasn't plugged in, along with the TCPA consent capture that existed only to authorise it.
 
-**Rollback (Phase 2):** delete the two edge functions; `listing_tier` rows simply stop updating and
-existing featured rows expire naturally via `featured_until` — no destructive rollback needed.
+Nothing in this plan re-adds Retell. The hotline is built as a **plain phone number** that works
+today. If/when a Retell account exists, the number can point at it with no frontend change — the
+page never knows what answers the call. Flagging so the plan isn't read as delivering an AI
+receptionist it does not deliver.
 
-## Open questions — resolved 2026-07-25
+---
 
-1. **Photos → deferred.** No photo storage exists anywhere in the schema; it needs its own
-   storage-bucket design. Not part of Phase 1, and therefore not part of the Featured perk list
-   until that follow-up plan happens.
-2. **Booking widget → simplest option.** A "preferred time" form field, not a calendar
-   integration. `directory_leads.preferred_time` already exists and `submit-directory-lead`
-   already accepts, stores, and emails it — only the form doesn't render it. So this perk is
-   pure frontend gating over plumbing that already works end to end.
-3. **`/directory` city index → build it.** Included in Phase 1, since featured-first ranking is
-   meaningless without a page to rank within. Also closes an item flagged in the earlier
-   deployment report.
-4. **Price point → deferred to Phase 2** (needed only when the Stripe price object is created).
+## Good news found while scoping
 
-### Revised Featured perk list (Phase 1)
+**The extra verticals already exist.** `public.verticals` already holds fully-configured rows for
+Plumbing, HVAC/AC, Yard & Landscaping, and Electrical — hero titles, meta, service type lists,
+professional labels — all sitting at `is_active = false`. Only `tree-service` is active.
 
-Given the above, Featured = **priority placement on the city index** + **a Featured badge** +
-**the preferred-time field on the quote form**. Photos and any real booking integration are
-explicitly out until their own plans exist. This is a deliberately thin first tier — enough to
-have something real to sell, not enough to over-promise.
+**And the homepage already fetches them and throws the result away.** [Index.tsx:37](src/pages/Index.tsx:37)
+calls `useActiveVerticals()`, then renders the dropdown from the hardcoded `VERTICALS` object in
+[constants.ts:7](src/lib/constants.ts:7) which contains only `tree_service`. That is why the footer
+advertises Plumbing/HVAC/Landscaping/Electrical while the form can't select them — a live bug this
+pivot fixes for free.
 
-## Files touched (Phase 1)
+Caveat: their copy says **"Santa Clarita"** (pre-SFV-pivot leftover) and needs rewriting for the
+Valley. Pest Control and Mold/Water Mitigation are not present and are new rows.
 
-| File | Change |
-|---|---|
-| `supabase/migrations/<new>.sql` | add `listing_tier`, `featured_until`; extend `public_business_listings` view |
-| `src/pages/DirectoryListing.tsx` | Featured badge, gated photo/priority treatment |
-| `src/pages/ClaimListing.tsx` | static upgrade card (disabled CTA) |
-| `src/integrations/supabase/directory.ts` | add `listing_tier`/`featured_until` to `PublicBusinessListing` / `ClaimBusiness` types |
-| `tests/unit/directoryHelpers.test.ts` | tier-related test coverage if a shared helper is added |
-| `docs/architecture/DECISIONS.md` | new ADR recording the Retell.ai → paid-tier upsell pivot |
+---
+
+## Scope
+
+### Phase 1 — Master brand + directory homepage
+
+**Brand (`src/lib/constants.ts`):**
+- `SITE_NAME`: `"Sherman Oaks Home Pros"` → `"Valley Home Pros"`
+- Retire the `HomeQuoteLink` wordmark from the header (domain is unaffected — brand ≠ domain)
+- Add `SITE_REGION = "San Fernando Valley"` for reuse in copy
+- Nested page-title helper so titles read `Sherman Oaks Home Pros | Valley Home Pros`,
+  `{Business} — {City} Tree Service | Valley Home Pros`
+
+**New homepage (`src/pages/Index.tsx`, full rewrite):**
+- Local search bar (service + city)
+- Service category grid, rendered from **active DB verticals** (fixes the dead-code bug)
+- **Featured businesses** strip — reuses `tier_rank` ordering from the paid tier already shipped,
+  so Featured listings surface on the homepage automatically
+- Community-matching form: *"Need work done in the Valley? Tell us your project and we'll match
+  you with a local specialist."* → writes to the existing **`leads`** table (not
+  `directory_leads`), preserving the scoring/routing/buyer machinery and making the
+  "hand a contractor a free live lead" hook executable
+- Cities served → links to `/directory/:city`
+
+**Header (`src/components/public/Header.tsx`):**
+- Replace the boolean `minimal` prop with a `variant` of `portal | listing`:
+  - `portal` (home, category, city index): Valley hotline + directory nav
+  - `listing` (a business's page): no site phone at all — unchanged from what shipped last session
+- Retire the `Providers`/`Pricing` marketplace nav in favor of directory nav
+
+**Tests:** title-builder helper, vertical-to-category mapping, matching-form submission target
+(`leads` not `directory_leads`), header variant rendering.
+
+### Phase 2 — Category expansion
+
+- Activate Plumbing, HVAC, Landscaping, Electrical (`is_active = true`)
+- Rewrite their hero/meta copy from Santa Clarita → San Fernando Valley
+- Add **Pest Control** and **Mold / Water Mitigation** rows
+- `/directory/category/:slug` pages listing businesses in that vertical
+- Migration + rollback: `is_active` flips are trivially reversible; new rows are deletable
+
+**Note:** `businesses` has no `vertical` column. Categorising listings needs one (or a join
+table). This is real schema work, not a config flip — the only genuinely new modelling in Phase 2.
+
+### Phase 3 — SEO page migration
+
+- Move `/services/emergency-tree-removal` → `/directory/tree-service/emergency-tree-removal`
+  (same for brush-clearing, palm-tree-trimming)
+- **301s via `vercel.json`**, not React Router. `vercel.json` currently has only a catch-all
+  rewrite; a `redirects` array must be added *above* it (Vercel evaluates redirects before
+  rewrites). A React Router `<Navigate>` is client-side and passes **no** ranking signal — using
+  one here would silently discard the SEO equity this phase exists to preserve.
+- CTA reframe: hotline + "browse local specialists below", per the answer above
+- Keep content identical so rankings transfer
+
+### Phase 4 — Seed the directory
+
+An empty directory undermines the outreach pitch ("I added your business to my Valley directory"
+→ they click → nothing there). `ingest-business` already exists; this is a data task, not a build
+task. Baseline public listings across all categories, outbound focused on tree service only.
+
+---
+
+## Acceptance criteria (Phase 1)
+
+- [ ] No page presents the site as a single tree-service business
+- [ ] Homepage renders categories from active DB verticals; no hardcoded single-vertical list
+- [ ] Featured (paid-tier) businesses surface above free ones on the homepage
+- [ ] Matching form writes to `leads`; per-business forms still write to `directory_leads`
+- [ ] A business listing page shows **no** site-wide phone — only that business's
+- [ ] "no tracking number, no middleman" copy remains **true** everywhere it appears
+- [ ] Zero lint/type/test failures; build succeeds
+- [ ] Empty states are graceful (directory is currently 0 rows)
+
+## Rollback
+
+Frontend-only for Phase 1 — revert the commit and Vercel redeploys. No schema change in Phase 1.
+Phase 2 rollback: flip `is_active` back to false, drop new rows/column. Phase 3 rollback: remove
+the `redirects` block from `vercel.json`.
+
+## Open decisions
+
+1. **Tracking numbers on business listing pages** — Conflict 1 above. Recommend: no.
+2. **Retell** — build hotline as a plain number now? (Recommend: yes.)
+3. **Wordmark** — confirm the header should read "Valley Home Pros" and drop "HomeQuoteLink"
+   entirely, given the domain stays `homequotelink.com`.

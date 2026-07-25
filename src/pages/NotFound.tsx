@@ -14,7 +14,7 @@ const NotFound = () => {
   return (
     <>
       <PageMeta
-        title="Page Not Found | HomeQuoteLink"
+        title="Page Not Found | Valley Home Pros"
         description="The page you're looking for doesn't exist."
         noIndex
       />

@@ -1,5 +1,5 @@
 import { UseFormReturn } from "react-hook-form";
-import { VERTICALS, CONTACT_METHODS } from "@/lib/constants";
+import { getVertical, CONTACT_METHODS } from "@/lib/constants";
 import type { VerticalKey } from "@/lib/constants";
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
@@ -10,12 +10,16 @@ import type { LeadFormValues } from "../leadFormSchema";
 
 interface ContactStepProps {
   form: UseFormReturn<LeadFormValues>;
-  vertical: VerticalKey;
+  vertical: VerticalKey | string;
+  /** Display label for the chosen category, when it came from the `verticals` table. */
+  categoryLabel?: string;
   stepRef: React.RefObject<HTMLDivElement | null>;
 }
 
-export function ContactStep({ form, vertical, stepRef }: ContactStepProps) {
-  const verticalConfig = VERTICALS[vertical];
+export function ContactStep({ form, vertical, categoryLabel, stepRef }: ContactStepProps) {
+  // getVertical() falls back safely; a bare VERTICALS[vertical] lookup returns
+  // undefined for any DB-backed category (e.g. "plumbing") and throws on .label.
+  const label = categoryLabel ?? getVertical(vertical).label;
 
   return (
     <div className="space-y-4" ref={stepRef} tabIndex={-1}>
@@ -73,7 +77,7 @@ export function ContactStep({ form, vertical, stepRef }: ContactStepProps) {
           </FormControl>
           <div className="space-y-1 leading-none">
             <FormLabel className="font-normal text-sm">
-              I agree to be contacted about my {verticalConfig.label.toLowerCase()} request. *
+              I agree to be contacted about my {label.toLowerCase()} request. *
             </FormLabel>
             <FormMessage />
           </div>

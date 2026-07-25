@@ -1,18 +1,18 @@
 import { useEffect } from "react";
-import { SITE_URL, SITE_PHONE_E164 } from "@/lib/constants";
+import { SITE_URL, SITE_PHONE_E164, SITE_NAME, SITE_REGION } from "@/lib/constants";
 
 const organizationSchema = {
   "@context": "https://schema.org",
   "@type": "Organization",
   "@id": `${SITE_URL}/#organization`,
-  name: "HomeQuoteLink",
+  name: SITE_NAME,
   url: SITE_URL,
   telephone: SITE_PHONE_E164,
   description:
-    "Connecting Santa Clarita Valley homeowners with trusted local home service professionals. Free quotes, no obligation.",
+    `A local directory of independent home service businesses across the ${SITE_REGION}. Browse listings and contact businesses directly.`,
   areaServed: {
-    "@type": "City",
-    name: "Santa Clarita",
+    "@type": "AdministrativeArea",
+    name: SITE_REGION,
     containedInPlace: { "@type": "AdministrativeArea", name: "California" },
   },
   contactPoint: {
@@ -28,22 +28,22 @@ const localBusinessSchema = {
   "@context": "https://schema.org",
   "@type": "LocalBusiness",
   "@id": `${SITE_URL}/#business`,
-  name: "HomeQuoteLink",
+  name: SITE_NAME,
   description:
-    "Connecting Santa Clarita Valley homeowners with local home service professionals. Free quotes for plumbing, HVAC, electrical, and landscaping.",
+    `A local directory of independent ${SITE_REGION} home service businesses — tree service, plumbing, HVAC, electrical and landscaping.`,
   url: SITE_URL,
   telephone: SITE_PHONE_E164,
   areaServed: [
-    { "@type": "City", name: "Santa Clarita" },
-    { "@type": "City", name: "Valencia" },
-    { "@type": "City", name: "Saugus" },
-    { "@type": "City", name: "Canyon Country" },
-    { "@type": "City", name: "Newhall" },
-    { "@type": "City", name: "Stevenson Ranch" },
+    { "@type": "City", name: "Sherman Oaks" },
+    { "@type": "City", name: "Encino" },
+    { "@type": "City", name: "Studio City" },
+    { "@type": "City", name: "Tarzana" },
+    { "@type": "City", name: "Valley Village" },
+    { "@type": "City", name: "Toluca Lake" },
   ],
   address: {
     "@type": "PostalAddress",
-    addressLocality: "Santa Clarita",
+    addressLocality: "Sherman Oaks",
     addressRegion: "CA",
     addressCountry: "US",
   },
@@ -52,6 +52,7 @@ const localBusinessSchema = {
     "@type": "OfferCatalog",
     name: "Home Services",
     itemListElement: [
+      { "@type": "Offer", itemOffered: { "@type": "Service", name: "Tree Service & Removal" } },
       { "@type": "Offer", itemOffered: { "@type": "Service", name: "Plumbing" } },
       { "@type": "Offer", itemOffered: { "@type": "Service", name: "HVAC / Air Conditioning" } },
       { "@type": "Offer", itemOffered: { "@type": "Service", name: "Electrical" } },
@@ -64,9 +65,9 @@ const websiteSchema = {
   "@context": "https://schema.org",
   "@type": "WebSite",
   "@id": `${SITE_URL}/#website`,
-  name: "HomeQuoteLink",
+  name: SITE_NAME,
   url: SITE_URL,
-  description: "Free home service quotes in Santa Clarita Valley.",
+  description: `Local home service directory for the ${SITE_REGION}.`,
   publisher: { "@id": `${SITE_URL}/#organization` },
   potentialAction: {
     "@type": "SearchAction",

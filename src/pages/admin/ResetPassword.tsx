@@ -1,3 +1,4 @@
+import { SITE_NAME } from "@/lib/constants";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -56,12 +57,12 @@ export default function ResetPassword() {
 
   return (
     <>
-      <PageMeta title="Reset Password | HomeQuoteLink" description="Set a new password for your admin account." />
+      <PageMeta title="Reset Password | Valley Home Pros" description="Set a new password for your admin account." />
       <div className="flex min-h-screen items-center justify-center bg-muted p-4">
         <div className="w-full max-w-sm rounded-xl border bg-card p-8 shadow-lg">
           <div className="mb-6 flex items-center justify-center gap-2">
             <Wrench className="h-6 w-6 text-accent" />
-            <span className="text-xl font-bold text-primary font-serif">HomeQuoteLink</span>
+            <span className="text-xl font-bold text-primary font-serif">{SITE_NAME}</span>
           </div>
           <h1 className="mb-6 text-center text-2xl font-bold font-sans">Set New Password</h1>
           {!ready ? (

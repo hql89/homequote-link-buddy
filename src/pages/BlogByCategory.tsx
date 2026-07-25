@@ -63,8 +63,8 @@ export default function BlogByCategory() {
   return (
     <>
       <PageMeta
-        title={`${decodedCategory} Articles | HomeQuoteLink Blog`}
-        description={`Browse all ${decodedCategory} articles on the HomeQuoteLink blog.`}
+        title={`${decodedCategory} Articles | Valley Home Pros Blog`}
+        description={`Browse all ${decodedCategory} articles on the Valley Home Pros blog.`}
       />
       <Header />
       <main className="min-h-screen bg-background">

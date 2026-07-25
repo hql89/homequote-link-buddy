@@ -31,7 +31,7 @@ async function isBlocked(email?: string, phone?: string): Promise<boolean> {
   }
 }
 
-export function useLeadFormSubmit(vertical: VerticalKey) {
+export function useLeadFormSubmit(vertical: VerticalKey | string) {
   const navigate = useNavigate();
   const tracking = useTrackingParams();
   const insertLead = useInsertLead();

@@ -155,7 +155,7 @@ export default function ClaimListing() {
     return (
       <>
         <PageMeta title="Claim your listing" description="Claim your free directory listing." noIndex />
-        <Header minimal />
+        <Header variant="listing" />
         <div className="flex min-h-[50vh] items-center justify-center" role="status" aria-live="polite">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-hidden="true" />
           <span className="sr-only">Loading…</span>
@@ -170,7 +170,7 @@ export default function ClaimListing() {
     return (
       <>
         <PageMeta title="Claim link unavailable" description="This claim link could not be used." noIndex />
-        <Header minimal />
+        <Header variant="listing" />
         <div className="container mx-auto max-w-xl py-20 text-center">
           <AlertCircle className="mx-auto h-10 w-10 text-destructive" aria-hidden="true" />
           <h1 className="mt-4 text-2xl font-bold">
@@ -196,7 +196,7 @@ export default function ClaimListing() {
         description={`Claim the free ${business.city} directory listing for ${business.business_name}.`}
         noIndex
       />
-      <Header minimal />
+      <Header variant="listing" />
 
       <main className="container mx-auto max-w-2xl px-4 py-12">
         <p className="text-sm text-muted-foreground">{business.city}</p>

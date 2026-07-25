@@ -68,6 +68,13 @@ vi.mock("../../src/hooks/useVerticals", () => ({
         icon_name: "TreePine",
         service_types: ["Emergency Tree Removal", "Precision Trimming & Pruning"],
       },
+      {
+        id: "2",
+        label: "Plumbing",
+        slug: "plumbing",
+        icon_name: "Droplets",
+        service_types: ["Drain Cleaning", "Water Heater"],
+      },
     ],
     isLoading: false,
     error: null,
@@ -91,6 +98,19 @@ vi.mock("../../src/components/forms/useLeadFormSubmit", () => ({
   }),
 }));
 
+// Mock the directory data layer — the homepage now loads featured listings
+// and cities. Returning empty exercises the empty-state paths.
+vi.mock("../../src/integrations/supabase/directory", async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  const builder = {
+    select: () => builder,
+    order: () => builder,
+    limit: () => Promise.resolve({ data: [], error: null }),
+    then: (resolve: (v: unknown) => unknown) => resolve({ data: [], error: null }),
+  };
+  return { ...actual, directoryDb: { from: () => builder } };
+});
+
 // Mock analytics service
 vi.mock("../../src/services/analyticsService", () => ({
   trackClick: vi.fn(),
@@ -106,11 +126,36 @@ describe("Index page", () => {
       </BrowserRouter>
     );
 
-    // Hero copy as of the Sherman Oaks / tree-service pivot.
+    // Directory portal hero — deliberately not a single-business headline.
     const heading = screen.getByRole("heading", {
       level: 1,
-      name: /Expert Tree Service & Removal in Sherman Oaks, CA/i,
+      name: /Find a Trusted Home Service Pro in the San Fernando Valley/i,
     });
     expect(heading).toBeInTheDocument();
+  });
+
+  it("does not present the site as a single tree-service business", () => {
+    render(
+      <BrowserRouter>
+        <Index />
+      </BrowserRouter>
+    );
+    // The old homepage sold one niche in one city, which is what made listing
+    // other contractors alongside it read as traffic hijacking.
+    expect(
+      screen.queryByRole("heading", { level: 1, name: /Expert Tree Service & Removal/i }),
+    ).toBeNull();
+  });
+
+  it("renders service categories from the verticals table, not a hardcoded list", () => {
+    render(
+      <BrowserRouter>
+        <Index />
+      </BrowserRouter>
+    );
+    // "Plumbing" exists only in the mocked DB response below-the-fold; if the
+    // page regressed to the hardcoded VERTICALS map it would be absent.
+    expect(screen.getByRole("button", { name: /Plumbing/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Tree Service & Removal/i })).toBeInTheDocument();
   });
 });

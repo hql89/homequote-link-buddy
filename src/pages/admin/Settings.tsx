@@ -18,7 +18,7 @@ const DEFAULT_CONFIG: SmtpConfig = {
   smtpUsername: "",
   smtpPassword: "",
   fromEmail: "",
-  fromName: "HomeQuoteLink",
+  fromName: "Valley Home Pros",
   adminNotificationEmail: "",
   enabled: true,
 };
@@ -68,7 +68,7 @@ export default function SettingsPage() {
 
   return (
     <>
-      <PageMeta title="Settings | HomeQuoteLink Admin" description="Admin settings." />
+      <PageMeta title="Settings | Valley Home Pros Admin" description="Admin settings." />
       <AdminLayout>
         <h1 className="text-2xl font-bold mb-6 font-sans">Settings</h1>
 

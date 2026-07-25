@@ -63,8 +63,8 @@ export default function BlogByTag() {
   return (
     <>
       <PageMeta
-        title={`Posts tagged "${decodedTag}" | HomeQuoteLink Blog`}
-        description={`Browse all articles tagged with "${decodedTag}" on the HomeQuoteLink blog.`}
+        title={`Posts tagged "${decodedTag}" | Valley Home Pros Blog`}
+        description={`Browse all articles tagged with "${decodedTag}" on the Valley Home Pros blog.`}
       />
       <Header />
       <main className="min-h-screen bg-background">

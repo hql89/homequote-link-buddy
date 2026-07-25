@@ -14,7 +14,7 @@ const EmergencyTreeRemoval = () => {
   return (
     <>
       <PageMeta
-        title="24/7 Emergency Tree Removal Sherman Oaks | Sherman Oaks Home Pros"
+        title="24/7 Emergency Tree Removal Sherman Oaks | Valley Home Pros"
         description="Hazardous fallen limb and storm damage tree removal in Sherman Oaks. Fast response times, LADWP compliance, and hillside stabilization."
       />
       <Header />

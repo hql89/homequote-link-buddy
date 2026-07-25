@@ -69,7 +69,7 @@ export default function ProviderDetail() {
   return (
     <>
       <PageMeta
-        title={`${buyer.business_name} | HomeQuoteLink`}
+        title={`${buyer.business_name} | Valley Home Pros`}
         description={profile?.company_description || `View reviews for ${buyer.business_name}`}
       />
       <Header />

@@ -2,6 +2,7 @@ import { Header } from "@/components/public/Header";
 import { Footer } from "@/components/public/Footer";
 import { PageMeta } from "@/components/PageMeta";
 import { FAQJsonLd } from "@/components/public/JsonLd";
+import { SITE_NAME, SITE_REGION, SITE_PHONE, SFV_DIRECTORY_CITIES } from "@/lib/constants";
 import {
   Accordion,
   AccordionContent,
@@ -9,100 +10,96 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 
+const CITIES = SFV_DIRECTORY_CITIES.join(", ");
+
+/**
+ * Rewritten for the directory model.
+ *
+ * The previous copy described this site as "a residential plumbing lead
+ * generation service" that sells "exclusive leads" to "buyers" in the Santa
+ * Clarita Valley — wrong brand, wrong region, wrong vertical, and worst of
+ * all, exactly the lead-broker positioning the directory exists to avoid. Any
+ * contractor doing diligence before claiming their listing would have landed
+ * here and found us describing the thing we promise them we don't do.
+ */
 const homeownerFAQs = [
   {
-    q: "What is HomeQuoteLink?",
-    a: "HomeQuoteLink is a free service that connects Santa Clarita Valley homeowners with local licensed plumbing professionals. You describe your issue, we match you with a plumber who covers your area and service type, and they reach out to provide a quote. You are never charged for using HomeQuoteLink.",
+    q: `What is ${SITE_NAME}?`,
+    a: `${SITE_NAME} is a free local directory of independent home service businesses across the ${SITE_REGION}. You can browse listings and call businesses directly on their own number, or tell us about your project and we'll point you to a local specialist. It's free for homeowners either way.`,
   },
   {
-    q: "Is there any cost to submit a request?",
-    a: "No. Submitting a request is completely free. HomeQuoteLink is paid by the plumbing professionals in our network, not by homeowners.",
+    q: "Does it cost anything to use?",
+    a: "No. Browsing the directory and requesting a match are both free, with no obligation to hire anyone.",
   },
   {
-    q: "How quickly will I hear from a plumber?",
-    a: "For emergency requests, we prioritize connecting you immediately. For urgent requests you should expect contact within a few hours. For flexible or quote-only requests expect contact within one business day. Response times depend on plumber availability in your area.",
+    q: "What happens when I call a business in the directory?",
+    a: "You reach that business directly. The number on a listing is the business's own number — there's no call routing or middleman in between.",
   },
   {
-    q: "What happens after I submit my request?",
-    a: "Your request goes to our team for review. We verify it looks legitimate, match it to an available plumber in our network who covers your city and service type, and send them your contact information. The plumber then reaches out to you directly to discuss your issue and provide a quote.",
+    q: "What happens when I use the matching form instead?",
+    a: "Your project details come to us, and we pass them to a local business that handles that type of work in your area. They contact you directly to discuss the job and quote it.",
   },
   {
-    q: "Will I be contacted by multiple plumbers?",
-    a: "No. We send your request to one plumber at a time. You will not be spammed by multiple companies.",
+    q: "Will I get calls from a bunch of different companies?",
+    a: "No. We don't blast your details out to a list of companies competing for the same job.",
   },
   {
-    q: "Am I obligated to hire the plumber who contacts me?",
-    a: "Not at all. The quote is free and there is no obligation. If the plumber is not the right fit for any reason, let us know and we will try to find another match.",
+    q: "What areas do you cover?",
+    a: `We focus on the ${SITE_REGION}: ${CITIES}. If you're just outside that, submit a request anyway and we'll help if we can.`,
   },
   {
-    q: "What areas do you serve?",
-    a: "We currently serve Santa Clarita, Valencia, Saugus, Canyon Country, Newhall, and Stevenson Ranch. We are expanding to additional areas — if you are outside the SCV, submit a request anyway and we will do our best to help.",
+    q: "What kinds of work can I find here?",
+    a: "Tree service and removal, plumbing, HVAC and air conditioning, electrical, and landscaping. Tree service is our deepest category today and the rest are growing.",
   },
   {
-    q: "What types of plumbing issues do you handle?",
-    a: "We handle most residential plumbing services including drain cleaning, water heater repair and replacement, leak detection, sewer line inspection and repair, repiping, fixture installation, and general plumbing maintenance. For commercial plumbing inquiries, contact us directly.",
-  },
-  {
-    q: "What if it is an emergency?",
-    a: 'Select "Emergency — Need help now" as your urgency level. This flags your request for priority handling. You can also call us directly at the number listed on the site.',
-  },
-  {
-    q: "What information will be shared with the plumber?",
-    a: "We share your name, phone number, email (if provided), city, service type, and the description you submitted. We do not share your address unless you provide it in your description.",
+    q: "What information gets shared when I request a match?",
+    a: "Your name, phone number, email if you provided one, city, service type, and the description you wrote. Nothing else — and we don't sell your information to anyone.",
   },
 ];
 
-const buyerFAQs = [
+const businessFAQs = [
   {
-    q: "What is HomeQuoteLink and how do I become a buyer?",
-    a: "HomeQuoteLink is a residential plumbing lead generation service serving the Santa Clarita Valley. As a buyer, you pay for exclusive leads — homeowners who have requested a quote for plumbing services in your coverage area. To join, contact us directly to discuss your service area, the types of jobs you want, and your capacity.",
+    q: "What is this, and what's the catch?",
+    a: `${SITE_NAME} is a local directory for ${SITE_REGION} home service businesses. Your listing is free. There's no catch and no commission — we don't take a cut of any job that comes from it.`,
   },
   {
-    q: "What is a lead?",
-    a: "A lead is a homeowner who has submitted a request through HomeQuoteLink describing a plumbing issue they need help with. Each lead includes the homeowner's name, phone number, email (when provided), city, service type, urgency level, and a description of the issue in their own words.",
+    q: "Do you sell my leads?",
+    a: "No. We don't sell, resell, or share the requests that come through your listing. They go to you and nobody else. We're not a lead broker and we don't operate an auction.",
   },
   {
-    q: "Are leads exclusive?",
-    a: "Yes. When we send you a lead, we are sending it to you only. We do not sell the same lead to multiple buyers. This is a core part of our value proposition.",
+    q: "Whose phone number is on my listing?",
+    a: "Yours. Calls from your listing page ring your phone directly — no tracking number and nothing in between. That's deliberate: your listing should send you your own customers, not route them through us.",
   },
   {
-    q: "How are leads delivered?",
-    a: "When we match a lead to you, you receive an email notification with the homeowner's contact information and job details. The email comes from notifications@homequotelink.com. Add this to your safe senders list to avoid it going to spam.",
+    q: "My business is already listed. How did that happen, and how do I control it?",
+    a: "We build listings from publicly available business information so the directory is useful from day one. Your listing is yours — claim it to confirm your details are right, update your services, and take control of the page. Claiming is free and takes about a minute.",
   },
   {
-    q: "How quickly should I contact the lead?",
-    a: "As fast as possible — ideally within the hour for standard leads, and immediately for emergency leads. Homeowners who request emergency plumbing are actively calling multiple services. Speed of response is the single biggest factor in whether you win the job.",
+    q: "What changes when I claim my listing?",
+    a: "Your listing gets a verified badge, quote requests through the page are turned on and delivered straight to you, and you can see every request your listing has generated. Before a listing is claimed we don't collect quote requests on it at all — only the business's phone number is shown.",
   },
   {
-    q: "What if the lead is a duplicate or bad contact information?",
-    a: "Contact us within 24 hours of receiving the lead. We review every refund request manually. Legitimate reasons for a refund or replacement include disconnected phone numbers, duplicate contact information matching a lead you already received, or a homeowner who is clearly outside your service area. We do not issue refunds for leads that did not convert — lead generation is not a guarantee of work.",
+    q: "Is there anything paid?",
+    a: "There's an optional Featured upgrade that places your listing above the free ones in your city and adds a Featured badge. It's entirely optional — a free listing stays free and fully functional forever, and the leads it generates are yours either way.",
   },
   {
-    q: "What service areas can I cover?",
-    a: "Your coverage is configured when you set up your account. You can cover one or more of our active cities: Santa Clarita, Valencia, Saugus, Canyon Country, Newhall, Stevenson Ranch. You can also specify which service types you want to receive — for example, if you only want water heater and sewer line jobs, we will filter leads accordingly.",
+    q: "Do I have to pay to get the requests from my own listing?",
+    a: "No. Every request from your claimed listing goes to you for free, whether or not you ever upgrade.",
   },
   {
-    q: "Is there a daily limit on how many leads I receive?",
-    a: "Yes. Your daily lead cap is set when we configure your account. This prevents you from being overwhelmed and ensures lead quality. If you want to increase or decrease your cap, contact us.",
-  },
-  {
-    q: "What does the lead score mean?",
-    a: "Each lead receives an automated quality score from 0 to 100 based on urgency, service type, data completeness, and traffic source. A score of 70 or above indicates a high-intent lead — typically an emergency or urgent request with full contact details. A score below 40 indicates a flexible or information-gathering request. Higher-scored leads are prioritized in our routing.",
-  },
-  {
-    q: "Can I pause lead delivery?",
-    a: "Yes. Contact us and we will temporarily pause your account. We ask for at least 24 hours notice so we can adjust routing for your coverage area.",
+    q: "How do I get my listing removed?",
+    a: `Call us at ${SITE_PHONE} or use the feedback form and we'll take it down. No argument, no retention pitch.`,
   },
 ];
 
-const allFAQs = [...homeownerFAQs, ...buyerFAQs];
+const allFAQs = [...homeownerFAQs, ...businessFAQs];
 
 export default function FAQ() {
   return (
     <>
       <PageMeta
-        title="FAQ — HomeQuoteLink | Santa Clarita Home Service Questions"
-        description="Answers to common questions about HomeQuoteLink for homeowners and plumbing professionals in Santa Clarita Valley. Learn how free quotes work."
+        title={`FAQ — ${SITE_NAME} | ${SITE_REGION} Home Service Directory`}
+        description={`Common questions about the ${SITE_NAME} directory, for ${SITE_REGION} homeowners and for business owners with a listing.`}
         canonicalPath="/faq"
       />
       <FAQJsonLd faqs={allFAQs} />
@@ -113,7 +110,7 @@ export default function FAQ() {
             Frequently Asked Questions
           </h1>
           <p className="text-muted-foreground">
-            Everything you need to know about HomeQuoteLink.
+            Everything you need to know about {SITE_NAME}.
           </p>
         </div>
 
@@ -131,13 +128,13 @@ export default function FAQ() {
           </Accordion>
         </section>
 
-        <section aria-labelledby="buyer-faq-heading">
-          <h2 id="buyer-faq-heading" className="text-xl font-semibold font-serif text-primary mb-4">
-            For Plumbers
+        <section aria-labelledby="business-faq-heading">
+          <h2 id="business-faq-heading" className="text-xl font-semibold font-serif text-primary mb-4">
+            For Business Owners
           </h2>
           <Accordion type="single" collapsible className="w-full">
-            {buyerFAQs.map((faq, i) => (
-              <AccordionItem key={i} value={`buyer-${i}`}>
+            {businessFAQs.map((faq, i) => (
+              <AccordionItem key={i} value={`business-${i}`}>
                 <AccordionTrigger>{faq.q}</AccordionTrigger>
                 <AccordionContent>{faq.a}</AccordionContent>
               </AccordionItem>

@@ -173,7 +173,7 @@ export default function ProviderDashboard() {
 
   return (
     <>
-      <PageMeta title="Provider Dashboard | HomeQuoteLink" description="Manage your provider profile and respond to reviews." />
+      <PageMeta title="Provider Dashboard | Valley Home Pros" description="Manage your provider profile and respond to reviews." />
       <Header />
       <main className="container py-10 space-y-8 max-w-3xl">
         <div className="flex items-center justify-between">

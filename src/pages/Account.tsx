@@ -96,7 +96,7 @@ export default function Account() {
 
   return (
     <>
-      <PageMeta title="My Account | HomeQuoteLink" description="View your service requests and leave reviews." />
+      <PageMeta title="My Account | Valley Home Pros" description="View your service requests and leave reviews." />
       <Header />
       <main className="container py-10 space-y-8 max-w-3xl">
         <div className="flex items-center justify-between">

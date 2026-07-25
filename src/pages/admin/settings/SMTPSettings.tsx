@@ -200,7 +200,7 @@ export function SMTPSettings({ config, setConfig, addLog }: SMTPSettingsProps) {
           </div>
           <div>
             <Label className="text-xs text-muted-foreground">From Name</Label>
-            <Input value={config.fromName} onChange={(e) => updateField("fromName", e.target.value)} placeholder="HomeQuoteLink" />
+            <Input value={config.fromName} onChange={(e) => updateField("fromName", e.target.value)} placeholder="Valley Home Pros" />
           </div>
         </div>
 

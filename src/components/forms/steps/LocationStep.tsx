@@ -30,16 +30,18 @@ export function LocationStep({ form, stepRef }: LocationStepProps) {
         </FormItem>
       )} />
 
-      {form.watch("city") === "Other / Outside SCV" && (
+      {/* Compared against "Other / Outside SCV" until now, while SFV_CITIES
+          offers "Other / Outside SFV" — so this notice could never render. */}
+      {form.watch("city") === "Other / Outside SFV" && (
         <p className="text-sm text-muted-foreground bg-muted rounded-md p-3">
-          We're currently focused on the Santa Clarita Valley but expanding soon. Submit your request and we'll do our best to help or point you in the right direction.
+          We're currently focused on the San Fernando Valley but expanding soon. Submit your request and we'll do our best to help or point you in the right direction.
         </p>
       )}
 
       <FormField control={form.control} name="zip_code" render={({ field }) => (
         <FormItem>
           <FormLabel>ZIP Code *</FormLabel>
-          <FormControl><Input placeholder="91354" {...field} /></FormControl>
+          <FormControl><Input placeholder="91403" {...field} /></FormControl>
           <FormMessage />
         </FormItem>
       )} />

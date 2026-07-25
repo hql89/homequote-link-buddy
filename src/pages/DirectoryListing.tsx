@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Phone, Globe, MapPin, Wrench, Loader2, AlertCircle, BadgeCheck, ShieldCheck, Star } from "lucide-react";
-import { SITE_URL } from "@/lib/constants";
+import { SITE_URL, pageTitle } from "@/lib/constants";
 import {
   directoryDb,
   formatPhoneDisplay,
@@ -81,7 +81,7 @@ export default function DirectoryListing() {
   if (state === "loading") {
     return (
       <>
-        <Header minimal />
+        <Header variant="listing" />
         <div className="flex min-h-[50vh] items-center justify-center" role="status" aria-live="polite">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-hidden="true" />
           <span className="sr-only">Loading listing…</span>
@@ -96,7 +96,7 @@ export default function DirectoryListing() {
     return (
       <>
         <PageMeta title="Something went wrong" description="We couldn't load this listing." noIndex />
-        <Header minimal />
+        <Header variant="listing" />
         <div className="container mx-auto max-w-xl py-20 text-center">
           <AlertCircle className="mx-auto h-10 w-10 text-destructive" aria-hidden="true" />
           <h1 className="mt-4 text-2xl font-bold">We couldn't load this listing</h1>
@@ -115,7 +115,7 @@ export default function DirectoryListing() {
     return (
       <>
         <PageMeta title="Listing not found" description="This directory listing does not exist." noIndex />
-        <Header minimal />
+        <Header variant="listing" />
         <div className="container mx-auto max-w-xl py-20 text-center">
           <h1 className="text-2xl font-bold">Listing not found</h1>
           <p className="mt-2 text-muted-foreground">
@@ -137,13 +137,13 @@ export default function DirectoryListing() {
   return (
     <>
       <PageMeta
-        title={`${business.business_name} — ${business.city} | Local Pros Directory`}
+        title={pageTitle(`${business.business_name} — ${business.city} Home Services`)}
         description={metaDescription}
         canonicalPath={`/directory/${business.city_slug}/${business.slug}`}
         ogType="profile"
       />
       <BreadcrumbJsonLd items={breadcrumbs} />
-      <Header minimal />
+      <Header variant="listing" />
 
       <main>
         {/* ── Above the fold: dual-intent CRO ───────────────────────────── */}

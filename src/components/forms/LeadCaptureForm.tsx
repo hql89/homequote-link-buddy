@@ -17,10 +17,21 @@ import { LocationStep } from "./steps/LocationStep";
 import { ContactStep } from "./steps/ContactStep";
 
 interface LeadCaptureFormProps {
-  vertical?: VerticalKey;
+  vertical?: VerticalKey | string;
+  /**
+   * Service options for the chosen category. Passed through when the category
+   * comes from the `verticals` table so the options match what was picked.
+   */
+  serviceTypes?: readonly string[];
+  /** Display label for the chosen category, used in the consent copy. */
+  categoryLabel?: string;
 }
 
-export function LeadCaptureForm({ vertical = "tree_service" }: LeadCaptureFormProps) {
+export function LeadCaptureForm({
+  vertical = "tree_service",
+  serviceTypes,
+  categoryLabel,
+}: LeadCaptureFormProps) {
   const stepContainerRef = useRef<HTMLDivElement>(null);
   const [step, setStep] = useState(0);
 
@@ -128,9 +139,23 @@ export function LeadCaptureForm({ vertical = "tree_service" }: LeadCaptureFormPr
         </div>
 
         {/* Steps */}
-        {step === 0 && <ServiceStep form={form} vertical={vertical} stepRef={stepContainerRef} />}
+        {step === 0 && (
+          <ServiceStep
+            form={form}
+            vertical={vertical}
+            serviceTypes={serviceTypes}
+            stepRef={stepContainerRef}
+          />
+        )}
         {step === 1 && <LocationStep form={form} stepRef={stepContainerRef} />}
-        {step === 2 && <ContactStep form={form} vertical={vertical} stepRef={stepContainerRef} />}
+        {step === 2 && (
+          <ContactStep
+            form={form}
+            vertical={vertical}
+            categoryLabel={categoryLabel}
+            stepRef={stepContainerRef}
+          />
+        )}
 
         {/* Math challenge */}
         {mathChallenge && step === FORM_STEPS.length - 1 && (

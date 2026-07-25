@@ -7,12 +7,19 @@ import type { LeadFormValues } from "../leadFormSchema";
 
 interface ServiceStepProps {
   form: UseFormReturn<LeadFormValues>;
-  vertical: VerticalKey;
+  vertical: VerticalKey | string;
+  /**
+   * Service options for the selected category, supplied by the caller when the
+   * category comes from the `verticals` table. Without this the list falls back
+   * to the hardcoded VERTICALS map, which only knows tree service — so a
+   * homeowner picking "Plumbing" would be offered stump grinding.
+   */
+  serviceTypes?: readonly string[];
   stepRef: React.RefObject<HTMLDivElement | null>;
 }
 
-export function ServiceStep({ form, vertical, stepRef }: ServiceStepProps) {
-  const serviceTypes = getServiceTypes(vertical);
+export function ServiceStep({ form, vertical, serviceTypes, stepRef }: ServiceStepProps) {
+  const options = serviceTypes?.length ? serviceTypes : getServiceTypes(vertical);
 
   return (
     <div className="space-y-4" ref={stepRef} tabIndex={-1}>
@@ -22,7 +29,7 @@ export function ServiceStep({ form, vertical, stepRef }: ServiceStepProps) {
           <Select onValueChange={field.onChange} value={field.value}>
             <FormControl><SelectTrigger><SelectValue placeholder="Select service" /></SelectTrigger></FormControl>
             <SelectContent>
-              {serviceTypes.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              {options.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
             </SelectContent>
           </Select>
           <FormMessage />

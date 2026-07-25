@@ -6,7 +6,7 @@ import { PageMeta } from "@/components/PageMeta";
 import { BreadcrumbJsonLd } from "@/components/public/JsonLd";
 import { Button } from "@/components/ui/button";
 import { Loader2, AlertCircle, MapPin, ChevronRight } from "lucide-react";
-import { SITE_URL } from "@/lib/constants";
+import { SITE_URL, pageTitle } from "@/lib/constants";
 import { directoryDb, type DirectoryCity } from "@/integrations/supabase/directory";
 
 type LoadState = "loading" | "ready" | "error";
@@ -43,7 +43,7 @@ export default function DirectoryIndex() {
   if (state === "loading") {
     return (
       <>
-        <Header minimal />
+        <Header variant="portal" />
         <div className="flex min-h-[50vh] items-center justify-center" role="status" aria-live="polite">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-hidden="true" />
           <span className="sr-only">Loading directory…</span>
@@ -57,7 +57,7 @@ export default function DirectoryIndex() {
     return (
       <>
         <PageMeta title="Something went wrong" description="We couldn't load the directory." noIndex />
-        <Header minimal />
+        <Header variant="portal" />
         <div className="container mx-auto max-w-xl py-20 text-center">
           <AlertCircle className="mx-auto h-10 w-10 text-destructive" aria-hidden="true" />
           <h1 className="mt-4 text-2xl font-bold">We couldn't load the directory</h1>
@@ -72,7 +72,7 @@ export default function DirectoryIndex() {
   return (
     <>
       <PageMeta
-        title="Local Home Service Pros Directory"
+        title={pageTitle("Home Service Directory")}
         description="Browse local home service businesses by city. Call directly — no middleman."
         canonicalPath="/directory"
       />
@@ -82,7 +82,7 @@ export default function DirectoryIndex() {
           { name: "Directory", url: `${SITE_URL}/directory` },
         ]}
       />
-      <Header minimal />
+      <Header variant="portal" />
 
       <main className="container mx-auto max-w-4xl px-4 py-12">
         <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Local pros directory</h1>

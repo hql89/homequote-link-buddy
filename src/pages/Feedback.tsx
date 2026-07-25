@@ -23,7 +23,7 @@ export default function Feedback() {
   if (!token) {
     return (
       <>
-        <PageMeta title="Feedback | HomeQuoteLink" description="Share your feedback." />
+        <PageMeta title="Feedback | Valley Home Pros" description="Share your feedback." />
         <Header />
         <main className="container max-w-lg mx-auto py-20 text-center">
           <p className="text-muted-foreground">Invalid feedback link.</p>
@@ -54,7 +54,7 @@ export default function Feedback() {
   if (submitted) {
     return (
       <>
-        <PageMeta title="Thank You | HomeQuoteLink" description="Thank you for your feedback." />
+        <PageMeta title="Thank You | Valley Home Pros" description="Thank you for your feedback." />
         <Header />
         <main className="container max-w-lg mx-auto py-20 text-center space-y-4">
           <CheckCircle className="h-16 w-16 text-green-500 mx-auto" />
@@ -68,7 +68,7 @@ export default function Feedback() {
 
   return (
     <>
-      <PageMeta title="Share Your Feedback | HomeQuoteLink" description="Tell us about your experience." />
+      <PageMeta title="Share Your Feedback | Valley Home Pros" description="Tell us about your experience." />
       <Header />
       <main className="container max-w-lg mx-auto py-12 px-4">
         <h1 className="text-2xl font-bold mb-2">How Was Your Experience?</h1>

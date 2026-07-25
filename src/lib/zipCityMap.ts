@@ -1,22 +1,33 @@
 /**
- * Maps SCV ZIP codes to city names matching the SCV_CITIES constant.
+ * Maps San Fernando Valley ZIP codes to city names matching SFV_CITIES.
+ *
+ * This previously held Santa Clarita Valley ZIPs (91350–91390), left over from
+ * before the SFV pivot. Because `cityFromZip` returns null on a miss and the
+ * caller only autofills on a hit, every Valley homeowner typing a real ZIP got
+ * no city autofill and the failure was completely silent.
  */
 export const ZIP_TO_CITY: Record<string, string> = {
-  "91350": "Santa Clarita",
-  "91351": "Canyon Country",
-  "91354": "Valencia",
-  "91355": "Valencia",
-  "91380": "Santa Clarita",
-  "91381": "Stevenson Ranch",
-  "91382": "Santa Clarita",
-  "91383": "Santa Clarita",
-  "91384": "Santa Clarita",
-  "91385": "Santa Clarita",
-  "91386": "Canyon Country",
-  "91387": "Canyon Country",
-  "91390": "Saugus",
-  "91321": "Newhall",
-  "91322": "Newhall",
+  // Sherman Oaks
+  "91403": "Sherman Oaks",
+  "91423": "Sherman Oaks",
+  "91413": "Sherman Oaks",
+  "91495": "Sherman Oaks",
+  // Encino
+  "91316": "Encino",
+  "91426": "Encino",
+  "91436": "Encino",
+  // Studio City
+  "91604": "Studio City",
+  "91614": "Studio City",
+  // Tarzana
+  "91356": "Tarzana",
+  "91357": "Tarzana",
+  // Valley Village
+  "91607": "Valley Village",
+  "91617": "Valley Village",
+  // Toluca Lake
+  "91602": "Toluca Lake",
+  "91610": "Toluca Lake",
 };
 
 export function cityFromZip(zip: string): string | null {

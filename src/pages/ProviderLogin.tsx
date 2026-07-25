@@ -70,7 +70,7 @@ export default function ProviderLogin() {
 
   return (
     <>
-      <PageMeta title="Provider Login | Sherman Oaks Home Pros" description="Log in to manage your leads and access ServiceStack OS." />
+      <PageMeta title="Provider Login | Valley Home Pros" description="Log in to manage your leads and access ServiceStack OS." />
       <Header />
       <main className="container flex justify-center py-16">
         <div className="w-full max-w-4xl grid md:grid-cols-2 gap-8 items-start">

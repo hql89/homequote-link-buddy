@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { SITE_URL, OG_IMAGE } from "@/lib/constants";
+import { SITE_URL, OG_IMAGE, SITE_NAME } from "@/lib/constants";
 
 interface PageMetaProps {
   title: string;
@@ -53,7 +53,7 @@ export function PageMeta({ title, description, canonicalPath, ogType = "website"
     setMeta("og:type", ogType, "property");
     setMeta("og:url", canonical, "property");
     setMeta("og:image", ogImage || OG_IMAGE, "property");
-    setMeta("og:site_name", "HomeQuoteLink", "property");
+    setMeta("og:site_name", SITE_NAME, "property");
 
     // Twitter
     setMeta("twitter:card", "summary_large_image");

@@ -334,7 +334,7 @@ export default function AdminDashboard() {
 
   return (
     <>
-      <PageMeta title="Leads Dashboard | HomeQuoteLink Admin" description="Manage incoming plumbing leads." />
+      <PageMeta title="Leads Dashboard | Valley Home Pros Admin" description="Manage incoming plumbing leads." />
       <AdminLayout>
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold font-sans">Leads Dashboard</h1>

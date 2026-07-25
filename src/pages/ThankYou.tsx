@@ -12,7 +12,7 @@ export default function ThankYou() {
 
   return (
     <>
-      <PageMeta title="Thank You | HomeQuoteLink" description="Your quote request has been received." noIndex />
+      <PageMeta title="Thank You | Valley Home Pros" description="Your quote request has been received." noIndex />
       <Header />
       <main className="py-20">
         <div className="container max-w-xl text-center">

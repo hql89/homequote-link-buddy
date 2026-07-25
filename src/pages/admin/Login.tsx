@@ -1,3 +1,4 @@
+import { SITE_NAME } from "@/lib/constants";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
@@ -47,12 +48,12 @@ export default function AdminLogin() {
 
   return (
     <>
-      <PageMeta title="Admin Login | HomeQuoteLink" description="Admin login for HomeQuoteLink CRM." noIndex />
+      <PageMeta title="Admin Login | Valley Home Pros" description="Admin login for Valley Home Pros CRM." noIndex />
       <div className="flex min-h-screen items-center justify-center bg-muted p-4">
         <div className="w-full max-w-sm rounded-xl border bg-card p-8 shadow-lg">
           <div className="mb-6 flex items-center justify-center gap-2">
             <Wrench className="h-6 w-6 text-accent" />
-            <span className="text-xl font-bold text-primary font-serif">HomeQuoteLink</span>
+            <span className="text-xl font-bold text-primary font-serif">{SITE_NAME}</span>
           </div>
           <h1 className="mb-6 text-center text-2xl font-bold font-sans">{isForgot ? "Reset Password" : isSignUp ? "Create Account" : "Admin Login"}</h1>
           <form onSubmit={handleSubmit} className="space-y-4">

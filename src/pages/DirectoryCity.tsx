@@ -6,7 +6,7 @@ import { PageMeta } from "@/components/PageMeta";
 import { BreadcrumbJsonLd } from "@/components/public/JsonLd";
 import { Button } from "@/components/ui/button";
 import { Loader2, AlertCircle, MapPin } from "lucide-react";
-import { SITE_URL } from "@/lib/constants";
+import { SITE_URL, pageTitle } from "@/lib/constants";
 import { directoryDb, type PublicBusinessListing } from "@/integrations/supabase/directory";
 import { DirectoryBusinessCard } from "@/components/directory/DirectoryBusinessCard";
 
@@ -67,7 +67,7 @@ export default function DirectoryCity() {
   if (state === "loading") {
     return (
       <>
-        <Header minimal />
+        <Header variant="portal" />
         <div className="flex min-h-[50vh] items-center justify-center" role="status" aria-live="polite">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-hidden="true" />
           <span className="sr-only">Loading listings…</span>
@@ -81,7 +81,7 @@ export default function DirectoryCity() {
     return (
       <>
         <PageMeta title="Something went wrong" description="We couldn't load these listings." noIndex />
-        <Header minimal />
+        <Header variant="portal" />
         <div className="container mx-auto max-w-xl py-20 text-center">
           <AlertCircle className="mx-auto h-10 w-10 text-destructive" aria-hidden="true" />
           <h1 className="mt-4 text-2xl font-bold">We couldn't load these listings</h1>
@@ -96,7 +96,7 @@ export default function DirectoryCity() {
   return (
     <>
       <PageMeta
-        title={`${cityLabel} Home Service Pros | Local Pros Directory`}
+        title={pageTitle(`${cityLabel} Home Service Pros`)}
         description={`Browse local home service businesses in ${cityLabel}. Call directly — no middleman.`}
         canonicalPath={`/directory/${city}`}
       />
@@ -107,7 +107,7 @@ export default function DirectoryCity() {
           { name: cityLabel, url: `${SITE_URL}/directory/${city}` },
         ]}
       />
-      <Header minimal />
+      <Header variant="portal" />
 
       <main className="container mx-auto max-w-4xl px-4 py-12">
         <p className="flex items-center gap-1.5 text-sm text-muted-foreground">

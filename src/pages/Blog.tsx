@@ -85,7 +85,7 @@ export default function Blog() {
   return (
     <>
       <PageMeta
-        title="Home Service Blog — Tips & Guides | HomeQuoteLink"
+        title="Home Service Blog — Tips & Guides | Valley Home Pros"
         description="Expert plumbing tips, home maintenance guides, and industry insights for Santa Clarita Valley homeowners."
         canonicalPath="/blog"
       />

@@ -104,7 +104,7 @@ export default function BlogPost() {
   useEffect(() => {
     if (!post) return;
     const seoTitle = post.meta_title || post.title;
-    document.title = `${seoTitle} | HomeQuoteLink Blog`;
+    document.title = `${seoTitle} | Valley Home Pros Blog`;
 
     const setMeta = (name: string, content: string, property = false) => {
       const attr = property ? "property" : "name";
@@ -154,8 +154,8 @@ export default function BlogPost() {
       headline: post.title, description: post.excerpt || "",
       image: post.featured_image_url || undefined,
       datePublished: post.published_at,
-      author: { "@type": "Organization", name: "HomeQuoteLink" },
-      publisher: { "@type": "Organization", name: "HomeQuoteLink" },
+      author: { "@type": "Organization", name: "Valley Home Pros" },
+      publisher: { "@type": "Organization", name: "Valley Home Pros" },
       url: `${siteUrl}/blog/${post.slug}`,
     });
     document.head.appendChild(articleScript);
