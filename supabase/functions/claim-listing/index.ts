@@ -6,17 +6,25 @@
  *
  *   • lookup — resolves a token to the listing so the claim page can render.
  *              Returns only non-sensitive fields (never the token itself).
+ *              Once claimed, also returns the leads that came through the
+ *              listing — proof the free listing is generating real leads,
+ *              not just a claim we're asking them to trust.
  *   • claim  — verifies the owner's email/phone against the stored record,
  *              and marks the listing claimed.
  *
- * Runs with the service role key because the `businesses` table is closed to
- * anon/authenticated by RLS (see the directory_demo_engine migration).
+ * Runs with the service role key because the businesses and directory_leads
+ * tables are closed to anon/authenticated by RLS (see the
+ * directory_demo_engine migration). Possession of a business's claim_token is
+ * already the credential that authorises claiming it, so it's also treated as
+ * the credential that authorises viewing that business's own leads — no
+ * additional login system for business owners exists yet.
  */
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 import { corsHeaders, json, logRun, toE164 } from "../_shared/directory.ts";
 
 const JOB_NAME = "claim-listing";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_LEADS_RETURNED = 50;
 
 interface ClaimPayload {
   action?: "lookup" | "claim";
@@ -27,6 +35,21 @@ interface ClaimPayload {
 
 function normaliseEmail(v: string | null | undefined): string {
   return (v ?? "").trim().toLowerCase();
+}
+
+async function fetchLeadsForBusiness(supabase: SupabaseClient, businessId: string) {
+  const { data, error } = await supabase
+    .from("directory_leads")
+    .select("id, full_name, phone, email, message, preferred_time, source, created_at")
+    .eq("business_id", businessId)
+    .order("created_at", { ascending: false })
+    .limit(MAX_LEADS_RETURNED);
+
+  if (error) {
+    console.error(`[${JOB_NAME}] failed to load leads for ${businessId}:`, error.message);
+    return [];
+  }
+  return data ?? [];
 }
 
 Deno.serve(async (req) => {
@@ -66,6 +89,8 @@ Deno.serve(async (req) => {
 
     // ── lookup ─────────────────────────────────────────────────────────────
     if (action === "lookup") {
+      const leads = business.is_claimed ? await fetchLeadsForBusiness(supabase, business.id) : [];
+
       return json({
         success: true,
         business: {
@@ -84,6 +109,7 @@ Deno.serve(async (req) => {
             ? String(business.email).replace(/^(.)(.*)(@.*)$/, (_m, a, b, c) => `${a}${"*".repeat(Math.max(b.length, 1))}${c}`)
             : null,
         },
+        leads,
       });
     }
 
@@ -136,6 +162,8 @@ Deno.serve(async (req) => {
       action: "claim",
     });
 
+    const leads = await fetchLeadsForBusiness(supabase, business.id);
+
     return json({
       success: true,
       business: {
@@ -145,6 +173,7 @@ Deno.serve(async (req) => {
         slug: business.slug,
         is_claimed: true,
       },
+      leads,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

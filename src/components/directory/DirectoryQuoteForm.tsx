@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { Loader2, CheckCircle2, AlertCircle, ShieldCheck } from "lucide-react";
 import { extractEdgeError } from "@/lib/edgeFunctionError";
 
 interface DirectoryQuoteFormProps {
@@ -72,6 +72,10 @@ export function DirectoryQuoteForm({ businessId, businessName }: DirectoryQuoteF
       <h3 className="text-lg font-semibold">Request a Free Quote</h3>
       <p className="mt-1 text-sm text-muted-foreground">
         Send your details straight to {businessName}.
+      </p>
+      <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
+        <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" aria-hidden="true" />
+        Goes only to {businessName}. We never sell or share your information.
       </p>
 
       <div className="mt-4 space-y-4">

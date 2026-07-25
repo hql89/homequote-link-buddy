@@ -17,7 +17,18 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 
-export function Header() {
+interface HeaderProps {
+  /**
+   * Strips marketplace chrome — our own phone CTA and the Providers/Pricing
+   * nav — so a directory listing page reads as the business's own page
+   * rather than a HomeQuoteLink page selling next to their content. A
+   * business owner should never see us competing for the same call on a
+   * page carrying their name.
+   */
+  minimal?: boolean;
+}
+
+export function Header({ minimal = false }: HeaderProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -35,12 +46,14 @@ export function Header() {
     }
   };
 
-  const navLinks = [
-    { to: "/providers", label: "Providers", icon: Users, track: "header_providers" },
-    { to: "/cost-guides", label: "Pricing", icon: DollarSign, track: "header_pricing" },
-    { to: "/blog", label: "Blog", icon: BookOpen, track: "header_blog" },
-    { to: "/faq", label: "FAQ", icon: HelpCircle, track: "header_faq" },
-  ];
+  const navLinks = minimal
+    ? []
+    : [
+        { to: "/providers", label: "Providers", icon: Users, track: "header_providers" },
+        { to: "/cost-guides", label: "Pricing", icon: DollarSign, track: "header_pricing" },
+        { to: "/blog", label: "Blog", icon: BookOpen, track: "header_blog" },
+        { to: "/faq", label: "FAQ", icon: HelpCircle, track: "header_faq" },
+      ];
 
   const authLinks = [];
   if (user) {
@@ -95,28 +108,32 @@ export function Header() {
             </Button>
           )}
 
-          <a
-            href="tel:+13108613314"
-            aria-label="Call us at (310) 861-3314"
-            onClick={() => trackClick("header_phone_call")}
-            className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent/90"
-          >
-            <Phone className="h-4 w-4" aria-hidden="true" />
-            <span>(310) 861-3314</span>
-          </a>
+          {!minimal && (
+            <a
+              href="tel:+13108613314"
+              aria-label="Call us at (310) 861-3314"
+              onClick={() => trackClick("header_phone_call")}
+              className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent/90"
+            >
+              <Phone className="h-4 w-4" aria-hidden="true" />
+              <span>(310) 861-3314</span>
+            </a>
+          )}
         </nav>
 
         {/* Mobile: phone + hamburger */}
         <div className="flex items-center gap-2 md:hidden">
-          <a
-            href="tel:+13108613314"
-            aria-label="Call us at (310) 861-3314"
-            onClick={() => trackClick("header_phone_call")}
-            className="flex items-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent/90"
-          >
-            <Phone className="h-4 w-4" aria-hidden="true" />
-            <span>Call Now</span>
-          </a>
+          {!minimal && (
+            <a
+              href="tel:+13108613314"
+              aria-label="Call us at (310) 861-3314"
+              onClick={() => trackClick("header_phone_call")}
+              className="flex items-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-accent-foreground transition-colors hover:bg-accent/90"
+            >
+              <Phone className="h-4 w-4" aria-hidden="true" />
+              <span>Call Now</span>
+            </a>
+          )}
 
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
@@ -164,18 +181,22 @@ export function Header() {
                   </Button>
                 )}
 
-                <div className="my-3 border-t" />
-                <SheetClose asChild>
-                  <a
-                    href="tel:+13108613314"
-                    aria-label="Call us at (310) 861-3314"
-                    onClick={() => trackClick("header_phone_call")}
-                    className="flex items-center gap-3 rounded-md px-3 py-3 text-base font-semibold text-accent transition-colors hover:bg-muted"
-                  >
-                    <Phone className="h-5 w-5" aria-hidden="true" />
-                    (310) 861-3314
-                  </a>
-                </SheetClose>
+                {!minimal && (
+                  <>
+                    <div className="my-3 border-t" />
+                    <SheetClose asChild>
+                      <a
+                        href="tel:+13108613314"
+                        aria-label="Call us at (310) 861-3314"
+                        onClick={() => trackClick("header_phone_call")}
+                        className="flex items-center gap-3 rounded-md px-3 py-3 text-base font-semibold text-accent transition-colors hover:bg-muted"
+                      >
+                        <Phone className="h-5 w-5" aria-hidden="true" />
+                        (310) 861-3314
+                      </a>
+                    </SheetClose>
+                  </>
+                )}
               </nav>
             </SheetContent>
           </Sheet>

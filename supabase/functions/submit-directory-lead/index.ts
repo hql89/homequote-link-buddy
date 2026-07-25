@@ -6,7 +6,7 @@
  * anon callers by design, so it validates input tightly and never echoes
  * stored contact details back.
  */
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 import { corsHeaders, json, logRun, toE164 } from "../_shared/directory.ts";
 import { loadSmtpConfig, sendOutreachEmail } from "../_shared/mailer.ts";
 
@@ -18,7 +18,11 @@ const MAX_PER_PHONE = 3;
 const MAX_PER_IP = 10;
 const WINDOW_MINUTES = 10;
 
-type Supabase = ReturnType<typeof createClient>;
+// `ReturnType<typeof createClient>` resolves to a structurally different type
+// than the runtime client under Deno's esm.sh module resolution and fails
+// `deno check`; importing SupabaseClient directly (as claim-listing.ts does)
+// avoids the mismatch.
+type Supabase = SupabaseClient;
 
 /** Blocklist check, reusing the project's blocked_emails / blocked_phones tables. */
 async function isBlocked(
@@ -170,13 +174,27 @@ Deno.serve(async (req) => {
 
     const { data: business, error: bizError } = await supabase
       .from("businesses")
-      .select("id, business_name, email, phone, city, slug, city_slug, is_published")
+      .select("id, business_name, email, phone, city, slug, city_slug, is_published, is_claimed")
       .eq("id", businessId)
       .maybeSingle();
 
     if (bizError) throw new Error(`Business lookup failed: ${bizError.message}`);
     if (!business || !business.is_published) {
       return json({ success: false, error: "This listing is no longer available." }, 404);
+    }
+
+    // Trust boundary, enforced server-side (the frontend already hides the
+    // form): we never capture a lead on an unclaimed listing. Nothing about
+    // this business's participation has been confirmed by its owner, so
+    // routing a homeowner's contact details to them would look — correctly —
+    // like this platform is intercepting leads on their behalf without
+    // consent. The listing page falls back to click-to-call only until the
+    // business claims it.
+    if (!business.is_claimed) {
+      return json(
+        { success: false, error: "This business hasn't set up quote requests yet. Please call them directly." },
+        403,
+      );
     }
 
     const { data: lead, error: insertError } = await supabase

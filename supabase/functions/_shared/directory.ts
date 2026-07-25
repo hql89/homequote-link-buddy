@@ -72,8 +72,11 @@ export const DEFAULT_OUTREACH_TEMPLATES: Record<string, OutreachTemplate> = {
     body:
       "Hi {{owner_name}},\n\n" +
       "Here is the live listing we set up for you:\n{{claim_url}}\n\n" +
-      "You can claim it for free to keep your services and contact details up to date, " +
-      "and quote requests from the page come straight to you.\n\n" +
+      "It's free to claim, and here's exactly what that means: once you do, homeowners " +
+      "can request quotes straight from the page. Every request goes only to you — we " +
+      "never sell or share it, and there's no fee or commission. Your own phone number is " +
+      "on the page too, so calls go directly to you, not through us.\n\n" +
+      "Claiming takes under a minute — just confirm your email and phone.\n\n" +
       "Best,\n{{sender_name}}",
   },
 };

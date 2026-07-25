@@ -54,6 +54,22 @@ export interface ClaimBusiness {
   email_masked: string | null;
 }
 
+/**
+ * A quote-request lead, as returned to the token holder alongside a claimed
+ * business — proof the listing is generating real leads, all delivered
+ * straight to the business.
+ */
+export interface DirectoryLead {
+  id: string;
+  full_name: string;
+  phone: string;
+  email: string | null;
+  message: string | null;
+  preferred_time: string | null;
+  source: string;
+  created_at: string;
+}
+
 /** Normalises the `services` JSONB column, which may arrive as a JSON string. */
 export function parseServices(raw: unknown): string[] {
   // Null/undefined entries must be dropped *before* String(), otherwise they

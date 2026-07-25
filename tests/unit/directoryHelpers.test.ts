@@ -117,4 +117,10 @@ describe("outreach templates", () => {
     expect(rendered).toContain("https://example.com/directory/reseda/tree-pros/claim?token=abc");
     expect(rendered).not.toMatch(/\{\{/);
   });
+
+  it("states plainly that leads go only to the business, never sold or shared", () => {
+    const body = DEFAULT_OUTREACH_TEMPLATES.outreach_preview.body.toLowerCase();
+    expect(body).toMatch(/never sell or share/);
+    expect(body).toMatch(/goes only to you/);
+  });
 });

@@ -7,7 +7,7 @@ import { BreadcrumbJsonLd } from "@/components/public/JsonLd";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Phone, Globe, MapPin, Wrench, Loader2, AlertCircle, BadgeCheck } from "lucide-react";
+import { Phone, Globe, MapPin, Wrench, Loader2, AlertCircle, BadgeCheck, ShieldCheck } from "lucide-react";
 import { SITE_URL } from "@/lib/constants";
 import {
   directoryDb,
@@ -94,7 +94,7 @@ export default function DirectoryListing() {
   if (state === "loading") {
     return (
       <>
-        <Header />
+        <Header minimal />
         <div className="flex min-h-[50vh] items-center justify-center" role="status" aria-live="polite">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-hidden="true" />
           <span className="sr-only">Loading listing…</span>
@@ -109,7 +109,7 @@ export default function DirectoryListing() {
     return (
       <>
         <PageMeta title="Something went wrong" description="We couldn't load this listing." noIndex />
-        <Header />
+        <Header minimal />
         <div className="container mx-auto max-w-xl py-20 text-center">
           <AlertCircle className="mx-auto h-10 w-10 text-destructive" aria-hidden="true" />
           <h1 className="mt-4 text-2xl font-bold">We couldn't load this listing</h1>
@@ -128,7 +128,7 @@ export default function DirectoryListing() {
     return (
       <>
         <PageMeta title="Listing not found" description="This directory listing does not exist." noIndex />
-        <Header />
+        <Header minimal />
         <div className="container mx-auto max-w-xl py-20 text-center">
           <h1 className="text-2xl font-bold">Listing not found</h1>
           <p className="mt-2 text-muted-foreground">
@@ -142,9 +142,10 @@ export default function DirectoryListing() {
   }
 
   const hasPhone = Boolean(business.phone);
+  const cta = business.is_claimed ? "Call or request a free quote." : "Call for a free quote.";
   const metaDescription = services.length
-    ? `${business.business_name} in ${business.city}. ${services.slice(0, 4).join(", ")}. Call or request a free quote.`
-    : `${business.business_name} in ${business.city}. Call or request a free quote.`;
+    ? `${business.business_name} in ${business.city}. ${services.slice(0, 4).join(", ")}. ${cta}`
+    : `${business.business_name} in ${business.city}. ${cta}`;
 
   return (
     <>
@@ -155,7 +156,7 @@ export default function DirectoryListing() {
         ogType="profile"
       />
       <BreadcrumbJsonLd items={breadcrumbs} />
-      <Header />
+      <Header minimal />
 
       <main>
         {/* ── Above the fold: dual-intent CRO ───────────────────────────── */}
@@ -178,7 +179,7 @@ export default function DirectoryListing() {
               {business.business_name}
             </h1>
 
-            <div className="mt-6 grid gap-4 sm:grid-cols-2">
+            <div className={`mt-6 grid gap-4 ${business.is_claimed ? "sm:grid-cols-2" : ""}`}>
               {hasPhone ? (
                 <a
                   href={toTelHref(business.phone as string)}
@@ -193,19 +194,33 @@ export default function DirectoryListing() {
                 </div>
               )}
 
-              <a
-                href="#request-quote"
-                className="flex items-center justify-center gap-3 rounded-lg border-2 border-accent px-6 py-5 text-lg font-bold text-accent transition hover:bg-accent/10"
-              >
-                Request a Free Quote
-              </a>
+              {/* Quote capture only appears once the owner has claimed the
+                  listing — see submit-directory-lead's server-side gate.
+                  Showing this on an unclaimed page would route a homeowner's
+                  contact details to us with no confirmation the business
+                  wants that, which reads as us intercepting their leads. */}
+              {business.is_claimed && (
+                <a
+                  href="#request-quote"
+                  className="flex items-center justify-center gap-3 rounded-lg border-2 border-accent px-6 py-5 text-lg font-bold text-accent transition hover:bg-accent/10"
+                >
+                  Request a Free Quote
+                </a>
+              )}
             </div>
+
+            {hasPhone && (
+              <p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-accent" aria-hidden="true" />
+                Calls go directly to {business.business_name} — no tracking number, no middleman.
+              </p>
+            )}
           </div>
         </section>
 
         {/* ── Branded content grid ──────────────────────────────────────── */}
         <section className="container mx-auto max-w-5xl px-4 py-12">
-          <div className="grid gap-10 lg:grid-cols-[1fr_380px]">
+          <div className={`grid gap-10 ${business.is_claimed ? "lg:grid-cols-[1fr_380px]" : ""}`}>
             <div>
               <h2 className="text-2xl font-bold">About {business.business_name}</h2>
               {business.scraped_context ? (
@@ -271,9 +286,11 @@ export default function DirectoryListing() {
               </Card>
             </div>
 
-            <aside id="request-quote" className="lg:sticky lg:top-24 lg:self-start">
-              <DirectoryQuoteForm businessId={business.id} businessName={business.business_name} />
-            </aside>
+            {business.is_claimed && (
+              <aside id="request-quote" className="lg:sticky lg:top-24 lg:self-start">
+                <DirectoryQuoteForm businessId={business.id} businessName={business.business_name} />
+              </aside>
+            )}
           </div>
         </section>
       </main>

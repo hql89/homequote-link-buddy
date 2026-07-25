@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams, Link } from "react-router-dom";
+import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
-import type { ClaimBusiness } from "@/integrations/supabase/directory";
+import type { ClaimBusiness, DirectoryLead } from "@/integrations/supabase/directory";
 import { Header } from "@/components/public/Header";
 import { Footer } from "@/components/public/Footer";
 import { PageMeta } from "@/components/PageMeta";
@@ -9,17 +10,64 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
+import {
+  Loader2,
+  AlertCircle,
+  CheckCircle2,
+  ShieldCheck,
+  Inbox,
+  Phone,
+  Mail,
+  MessageSquare,
+} from "lucide-react";
 import { extractEdgeError } from "@/lib/edgeFunctionError";
 
 type LoadState = "loading" | "ready" | "invalid" | "error";
 type ClaimState = "idle" | "submitting" | "claimed";
+
+function formatLeadDate(iso: string): string {
+  try {
+    return format(new Date(iso), "MMM d, h:mm a");
+  } catch {
+    return iso;
+  }
+}
+
+function LeadCard({ lead }: { lead: DirectoryLead }) {
+  return (
+    <li className="rounded-lg border border-border bg-card p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <span className="font-semibold">{lead.full_name}</span>
+        <span className="text-xs text-muted-foreground">{formatLeadDate(lead.created_at)}</span>
+      </div>
+      <div className="mt-2 space-y-1 text-sm text-muted-foreground">
+        <p className="flex items-center gap-2">
+          <Phone className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <a className="hover:underline" href={`tel:${lead.phone}`}>{lead.phone}</a>
+        </p>
+        {lead.email && (
+          <p className="flex items-center gap-2">
+            <Mail className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <a className="hover:underline" href={`mailto:${lead.email}`}>{lead.email}</a>
+          </p>
+        )}
+        {lead.message && (
+          <p className="flex items-start gap-2">
+            <MessageSquare className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span className="whitespace-pre-line">{lead.message}</span>
+          </p>
+        )}
+      </div>
+    </li>
+  );
+}
 
 export default function ClaimListing() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token") ?? "";
 
   const [business, setBusiness] = useState<ClaimBusiness | null>(null);
+  const [leads, setLeads] = useState<DirectoryLead[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -51,6 +99,7 @@ export default function ClaimListing() {
 
       const biz = data.business as ClaimBusiness;
       setBusiness(biz);
+      setLeads((data.leads as DirectoryLead[] | undefined) ?? []);
       if (biz.is_claimed) setClaimState("claimed");
       setLoadState("ready");
     } catch (err) {
@@ -83,6 +132,7 @@ export default function ClaimListing() {
         throw new Error(await extractEdgeError(error, data, "Could not claim this listing."));
       }
 
+      setLeads((data.leads as DirectoryLead[] | undefined) ?? []);
       setClaimState("claimed");
     } catch (err) {
       setClaimError(err instanceof Error ? err.message : "Could not claim this listing.");
@@ -95,7 +145,7 @@ export default function ClaimListing() {
     return (
       <>
         <PageMeta title="Claim your listing" description="Claim your free directory listing." noIndex />
-        <Header />
+        <Header minimal />
         <div className="flex min-h-[50vh] items-center justify-center" role="status" aria-live="polite">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-hidden="true" />
           <span className="sr-only">Loading…</span>
@@ -110,7 +160,7 @@ export default function ClaimListing() {
     return (
       <>
         <PageMeta title="Claim link unavailable" description="This claim link could not be used." noIndex />
-        <Header />
+        <Header minimal />
         <div className="container mx-auto max-w-xl py-20 text-center">
           <AlertCircle className="mx-auto h-10 w-10 text-destructive" aria-hidden="true" />
           <h1 className="mt-4 text-2xl font-bold">
@@ -136,7 +186,7 @@ export default function ClaimListing() {
         description={`Claim the free ${business.city} directory listing for ${business.business_name}.`}
         noIndex
       />
-      <Header />
+      <Header minimal />
 
       <main className="container mx-auto max-w-2xl px-4 py-12">
         <p className="text-sm text-muted-foreground">{business.city}</p>
@@ -154,6 +204,15 @@ export default function ClaimListing() {
               <CardTitle>Verify your details</CardTitle>
             </CardHeader>
             <CardContent>
+              {/* What claiming actually does, stated plainly rather than assumed. */}
+              <div className="mb-5 flex items-start gap-2 rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-accent" aria-hidden="true" />
+                <span>
+                  Free, no catch. Once claimed, quote requests from your page go straight to
+                  you — never sold, never shared. Calls already go to your number directly.
+                </span>
+              </div>
+
               <form onSubmit={handleClaim} noValidate>
                 <p className="mb-4 text-sm text-muted-foreground">
                   Confirm the contact details we have on file so we know this listing is yours.
@@ -218,23 +277,50 @@ export default function ClaimListing() {
             </CardContent>
           </Card>
         ) : (
-          <Card className="mt-8">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-green-600" aria-hidden="true" />
-                Listing claimed
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                Thanks — {business.business_name} is now verified. Your listing shows a
-                verified badge, and quote requests come straight to you.
-              </p>
-              <Button asChild className="mt-6">
-                <Link to={listingPath}>View my listing</Link>
-              </Button>
-            </CardContent>
-          </Card>
+          <>
+            <Card className="mt-8">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-green-600" aria-hidden="true" />
+                  Listing claimed
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  Thanks — {business.business_name} is now verified. Your listing shows a
+                  verified badge, and quote requests come straight to you. We never sell or
+                  share what homeowners send you.
+                </p>
+                <Button asChild className="mt-6">
+                  <Link to={listingPath}>View my listing</Link>
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Proof, not just a promise: show the leads their listing has generated. */}
+            <Card className="mt-6">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Inbox className="h-5 w-5 text-accent" aria-hidden="true" />
+                  Your leads {leads.length > 0 && `(${leads.length})`}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {leads.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No quote requests yet — they'll show up here the moment a homeowner
+                    submits the form on your listing.
+                  </p>
+                ) : (
+                  <ul className="space-y-3">
+                    {leads.map((lead) => (
+                      <LeadCard key={lead.id} lead={lead} />
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+          </>
         )}
       </main>
 
