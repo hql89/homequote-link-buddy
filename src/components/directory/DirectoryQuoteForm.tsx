@@ -10,15 +10,26 @@ import { extractEdgeError } from "@/lib/edgeFunctionError";
 interface DirectoryQuoteFormProps {
   businessId: string;
   businessName: string;
+  /**
+   * Featured-tier perk. `submit-directory-lead` already accepts, stores and
+   * forwards `preferred_time` for every listing — this only controls whether
+   * the homeowner is asked for it.
+   */
+  showPreferredTime?: boolean;
 }
 
 type Status = "idle" | "submitting" | "success" | "error";
 
-export function DirectoryQuoteForm({ businessId, businessName }: DirectoryQuoteFormProps) {
+export function DirectoryQuoteForm({
+  businessId,
+  businessName,
+  showPreferredTime = false,
+}: DirectoryQuoteFormProps) {
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
+  const [preferredTime, setPreferredTime] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
 
@@ -40,6 +51,8 @@ export function DirectoryQuoteForm({ businessId, businessName }: DirectoryQuoteF
           phone,
           email,
           message,
+          // Omitted entirely when the field isn't shown, rather than sent empty.
+          preferred_time: showPreferredTime ? preferredTime : undefined,
           source: "quote_form",
         },
       });
@@ -115,6 +128,18 @@ export function DirectoryQuoteForm({ businessId, businessName }: DirectoryQuoteF
             autoComplete="email"
           />
         </div>
+
+        {showPreferredTime && (
+          <div>
+            <Label htmlFor="dq-time">Best time to reach you</Label>
+            <Input
+              id="dq-time"
+              value={preferredTime}
+              onChange={(e) => setPreferredTime(e.target.value)}
+              placeholder="Weekday mornings, after 5pm…"
+            />
+          </div>
+        )}
 
         <div>
           <Label htmlFor="dq-message">What do you need?</Label>

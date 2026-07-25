@@ -19,6 +19,9 @@ import {
   Phone,
   Mail,
   MessageSquare,
+  Star,
+  ArrowUp,
+  Clock,
 } from "lucide-react";
 import { extractEdgeError } from "@/lib/edgeFunctionError";
 
@@ -296,6 +299,47 @@ export default function ClaimListing() {
                 </Button>
               </CardContent>
             </Card>
+
+            {/* Upsell. The button is deliberately disabled rather than wired to
+                a placeholder: checkout doesn't exist yet, and a button that
+                looks live but does nothing is worse than one that says so. */}
+            {business.listing_tier !== "featured" && (
+              <Card className="mt-6 border-amber-300 bg-amber-50/50">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <Star className="h-5 w-5 fill-amber-400 text-amber-500" aria-hidden="true" />
+                    Upgrade to Featured
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground">
+                    Your listing stays free for as long as you want it. Featured is optional —
+                    it moves you above the free listings in {business.city} and adds a Featured
+                    badge.
+                  </p>
+                  <ul className="mt-4 space-y-2 text-sm">
+                    <li className="flex items-start gap-2">
+                      <ArrowUp className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
+                      Top placement on the {business.city} directory page
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <Star className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
+                      A Featured badge on your listing
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <Clock className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
+                      Homeowners are asked their best time to reach you
+                    </li>
+                  </ul>
+                  <Button className="mt-6" disabled>
+                    Coming soon
+                  </Button>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Not available to purchase yet — we'll email you when it is.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Proof, not just a promise: show the leads their listing has generated. */}
             <Card className="mt-6">

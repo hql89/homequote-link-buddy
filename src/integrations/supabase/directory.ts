@@ -9,6 +9,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "./client";
 
+/** Paid listing tier. The view resolves expiry, so this is the effective tier. */
+export type ListingTier = "free" | "featured";
+
 export interface PublicBusinessListing {
   id: string;
   business_name: string;
@@ -21,7 +24,30 @@ export interface PublicBusinessListing {
   services: string[] | null;
   scraped_context: string | null;
   is_claimed: boolean;
+  listing_tier: ListingTier;
+  /** Sort key only: 0 = featured, 1 = free. Read `listing_tier` for meaning. */
+  tier_rank: number;
   created_at: string;
+}
+
+/**
+ * Whether a listing gets the paid perks.
+ *
+ * Expiry is resolved in the `public_business_listings` view, so callers must
+ * not re-derive it from `featured_until` — the view is the single source of
+ * truth for "is this subscription currently live".
+ */
+export function isFeatured(
+  business: Pick<PublicBusinessListing, "listing_tier"> | null | undefined,
+): boolean {
+  return business?.listing_tier === "featured";
+}
+
+/** One row of the `/directory` city index. */
+export interface DirectoryCity {
+  city: string;
+  city_slug: string;
+  listing_count: number;
 }
 
 interface DirectoryDatabase {
@@ -30,6 +56,9 @@ interface DirectoryDatabase {
     Views: {
       public_business_listings: {
         Row: PublicBusinessListing;
+      };
+      public_directory_cities: {
+        Row: DirectoryCity;
       };
     };
     Functions: Record<never, never>;
@@ -50,6 +79,7 @@ export interface ClaimBusiness {
   owner_name: string | null;
   services: string[] | null;
   is_claimed: boolean;
+  listing_tier: ListingTier;
   phone_last4: string | null;
   email_masked: string | null;
 }

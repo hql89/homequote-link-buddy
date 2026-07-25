@@ -37,6 +37,22 @@ function normaliseEmail(v: string | null | undefined): string {
   return (v ?? "").trim().toLowerCase();
 }
 
+/**
+ * Effective listing tier, mirroring the CASE in `public_business_listings`.
+ *
+ * This function reads the base table (RLS is closed to the view's audience for
+ * the columns it needs), so expiry has to be resolved here too. Keep in step
+ * with the view: an expired `featured_until` reads as free in both places.
+ */
+function effectiveTier(
+  tier: string | null | undefined,
+  featuredUntil: string | null | undefined,
+): "free" | "featured" {
+  if (tier !== "featured") return "free";
+  if (featuredUntil && new Date(featuredUntil) <= new Date()) return "free";
+  return "featured";
+}
+
 async function fetchLeadsForBusiness(supabase: SupabaseClient, businessId: string) {
   const { data, error } = await supabase
     .from("directory_leads")
@@ -75,7 +91,7 @@ Deno.serve(async (req) => {
     const { data: business, error } = await supabase
       .from("businesses")
       .select(
-        "id, business_name, slug, city, city_slug, owner_name, phone, email, services, is_claimed",
+        "id, business_name, slug, city, city_slug, owner_name, phone, email, services, is_claimed, listing_tier, featured_until",
       )
       .eq("claim_token", token)
       .maybeSingle();
@@ -102,6 +118,7 @@ Deno.serve(async (req) => {
           owner_name: business.owner_name,
           services: business.services,
           is_claimed: business.is_claimed,
+          listing_tier: effectiveTier(business.listing_tier, business.featured_until),
           // Masked so the page can prompt "confirm the number ending in 3314"
           // without disclosing the full record to a link-holder.
           phone_last4: business.phone ? String(business.phone).replace(/\D/g, "").slice(-4) : null,
@@ -172,6 +189,7 @@ Deno.serve(async (req) => {
         city_slug: business.city_slug,
         slug: business.slug,
         is_claimed: true,
+        listing_tier: effectiveTier(business.listing_tier, business.featured_until),
       },
       leads,
     });

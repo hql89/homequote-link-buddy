@@ -7,10 +7,11 @@ import { BreadcrumbJsonLd } from "@/components/public/JsonLd";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Phone, Globe, MapPin, Wrench, Loader2, AlertCircle, BadgeCheck, ShieldCheck } from "lucide-react";
+import { Phone, Globe, MapPin, Wrench, Loader2, AlertCircle, BadgeCheck, ShieldCheck, Star } from "lucide-react";
 import { SITE_URL } from "@/lib/constants";
 import {
   directoryDb,
+  isFeatured,
   parseServices,
   type PublicBusinessListing,
 } from "@/integrations/supabase/directory";
@@ -71,15 +72,13 @@ export default function DirectoryListing() {
 
   const services = useMemo(() => parseServices(business?.services), [business?.services]);
 
-  // Only "Home" and the listing itself get URLs — there is no /directory index
-  // or /directory/:city route yet, and pointing schema.org at 404s hurts SEO.
   const breadcrumbs = useMemo(
     () => [
       { name: "Home", url: SITE_URL },
-      { name: "Directory" },
+      { name: "Directory", url: `${SITE_URL}/directory` },
       ...(business
         ? [
-            { name: business.city },
+            { name: business.city, url: `${SITE_URL}/directory/${business.city_slug}` },
             {
               name: business.business_name,
               url: `${SITE_URL}/directory/${business.city_slug}/${business.slug}`,
@@ -167,10 +166,20 @@ export default function DirectoryListing() {
                 <MapPin className="h-3 w-3" aria-hidden="true" />
                 {business.city}
               </Badge>
+              {/* "Verified owner" is free and means only that the owner
+                  confirmed the listing is theirs. "Featured" is the paid tier.
+                  They are deliberately separate signals — selling the verified
+                  badge would make a trust marker purchasable. */}
               {business.is_claimed && (
                 <Badge className="gap-1 bg-green-600 hover:bg-green-600">
                   <BadgeCheck className="h-3 w-3" aria-hidden="true" />
                   Verified owner
+                </Badge>
+              )}
+              {isFeatured(business) && (
+                <Badge className="gap-1 bg-amber-500 text-amber-950 hover:bg-amber-500">
+                  <Star className="h-3 w-3 fill-current" aria-hidden="true" />
+                  Featured
                 </Badge>
               )}
             </div>
@@ -290,7 +299,11 @@ export default function DirectoryListing() {
 
             {business.is_claimed && (
               <aside id="request-quote" className="lg:sticky lg:top-24 lg:self-start">
-                <DirectoryQuoteForm businessId={business.id} businessName={business.business_name} />
+                <DirectoryQuoteForm
+                  businessId={business.id}
+                  businessName={business.business_name}
+                  showPreferredTime={isFeatured(business)}
+                />
               </aside>
             )}
           </div>

@@ -5,7 +5,7 @@ import {
   toE164,
   DEFAULT_OUTREACH_TEMPLATES,
 } from "../../supabase/functions/_shared/directory";
-import { parseServices } from "../../src/integrations/supabase/directory";
+import { parseServices, isFeatured } from "../../src/integrations/supabase/directory";
 
 describe("slugify", () => {
   it("lowercases and hyphenates", () => {
@@ -93,6 +93,23 @@ describe("parseServices", () => {
 
   it("drops empty entries", () => {
     expect(parseServices(["Trimming", "", null])).toEqual(["Trimming"]);
+  });
+});
+
+describe("isFeatured", () => {
+  it("is true only for the featured tier", () => {
+    expect(isFeatured({ listing_tier: "featured" })).toBe(true);
+    expect(isFeatured({ listing_tier: "free" })).toBe(false);
+  });
+
+  it("defaults to not-featured for missing data rather than granting perks", () => {
+    expect(isFeatured(null)).toBe(false);
+    expect(isFeatured(undefined)).toBe(false);
+  });
+
+  it("does not treat an unknown tier as featured", () => {
+    // A tier added in the DB but not yet handled here must fail closed.
+    expect(isFeatured({ listing_tier: "premium" as never })).toBe(false);
   });
 });
 
