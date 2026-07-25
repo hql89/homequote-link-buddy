@@ -3,47 +3,65 @@
 **Version:** 0.0.11 (unbumped — not released)
 **Date:** 2026-07-24
 **Environment:** Supabase production ✅ / Vercel frontend ❌ **NOT DEPLOYED**
-**Branch:** `feat/directory-engine` (commit `dcc56b6`) — **not merged to `main`**
+**Branch:** `feat/directory-engine` (`dcc56b6`, `ba3bfa2`, `2e1628c`) — **not merged to `main`**
 
-## Gate result: ❌ FAILED — frontend deploy halted
+## Gate result: ⚠️ 5 of 6 pass — audit is the sole remaining blocker
 
-The `/deploy` gate requires all five pre-deploy checks to pass. Four failed, so
-the frontend was **not** pushed to `main` and Vercel was not triggered.
+Initial run failed four checks, all on pre-existing debt from the tree-service
+pivot. Those were fixed in `2e1628c`. One check cannot be cleared without a
+major framework migration.
 
-| Check | Result | Mine? |
+| Check | Before | Now |
 |---|---|---|
-| Tests | ❌ 1 failed / 32 | **No** — pre-existing |
-| Build | ✅ succeeds | — |
-| Lint | ❌ 3 errors | **No** — pre-existing |
-| npm audit | ❌ 11 high (prod), 1 critical (dev-only) | **No** — pre-existing |
-| Type check | ❌ 26 error lines | **No** — pre-existing |
+| Tests | ❌ 1 failed | ✅ **32/32 pass** |
+| Build | ✅ | ✅ |
+| Lint | ❌ 3 errors | ✅ **0 errors** |
+| Type check | ❌ 26 errors | ✅ **0 errors** |
+| drift / scan | ✅ | ✅ |
+| npm audit | ❌ | ❌ **16 high / 1 critical — unresolvable without a major bump** |
 
-**Every failure predates this work.** Verified: typecheck error count is
-identical to the HEAD baseline (26 lines), and 0 errors are in new files.
+### Why the audit cannot be cleared
 
-### Failure detail
+`npm audit fix` (non-force) changes **nothing** — verified by dry run, the vuln
+counts are identical afterwards.
 
-1. **Test — `Index.test.tsx > renders the hero heading correctly`**
-   Asserts `/Santa Clarita Home Service Directory/i`, but the Sherman Oaks
-   pivot (`db2bb2b`) changed that hero. The test was written in `eb2a2ac` and
-   never updated when the pivot landed. Neither `Index.tsx` nor its test is
-   touched by this branch.
+The only advisory that reaches the **browser bundle** is
+`react-router` / `react-router-dom` / `@remix-run/router` — *XSS via open
+redirects*. The vulnerable range covers `react-router` `6.0.0 – 7.17.0`, so
+there is no fix in the v6 line the app is on (`6.30.1`). Clearing it requires a
+**React Router v6 → v7 major migration**, which would touch every route in the
+app. `npm audit fix --force` would attempt that bump automatically and is very
+likely to break routing.
 
-2. **Lint — 3 errors**
-   - `tests/unit/Index.test.tsx` (×2) — `no-explicit-any`, same pivot-era file
-   - `supabase/functions/twilio-missed-call/index.ts` — `prefer-const`, in the
-     uncommitted Mivos/Twilio drift that was deliberately left alone
+The remaining highs — `glob`, `minimatch`, `brace-expansion`, `picomatch`,
+`postcss`, `ws`, `lodash` — are build/tooling dependencies that are not shipped
+to the browser. The 1 critical (CVSS 9.8) is the vitest UI server, **dev-only**.
 
-3. **npm audit — 11 high in production deps**
-   The 1 critical (CVSS 9.8, vitest UI server arbitrary file read) is
-   **dev-only** and does not ship. The production highs are transitive
-   (`ws`, `yaml`, others). `npm audit fix` claims a fix is available.
+**Recommendation:** treat the React Router upgrade as its own planned piece of
+work, not a deploy-gate item.
 
-4. **Type check — 26 error lines**
-   Mostly leftover `plumbing` references from the tree-service pivot
-   (`verticalContent.ts`, `leadScoringService.ts`, `LeadCaptureForm.tsx`) plus
-   admin table generics. `npm run build` still succeeds because Vite does not
-   typecheck.
+## Bug found while clearing the gate
+
+**Lead scoring was silently broken for the live business.**
+`SERVICE_TYPE_SCORES` had no `tree_service` key, so `scoreServiceType()` fell
+back to the plumbing map — whose keys never match a tree-service lead. Every
+lead has been scoring **0** on the service-type component since the pivot.
+Fixed, with keys verified against `VERTICALS.tree_service.serviceTypes`.
+
+Also fixed: `/providers` still read **"Find a Plumber"** with plumbing meta
+tags, and `LeadCaptureForm` defaulted to the non-existent `"plumbing"` vertical.
+
+### Behaviour changes worth knowing
+
+Fixing the admin-table types changed rendering slightly: booleans now show
+Yes/No, empty values show an em dash, and an unparseable date shows an em dash
+instead of "Invalid Date". Deleted `ServiceLanding.tsx` and `verticalContent.ts`
+(zero references, confirmed absent from the production bundle).
+
+The one-line `prefer-const` fix lives in
+`supabase/functions/twilio-missed-call/index.ts`, which remains **uncommitted**
+per your instruction to leave the Mivos/Twilio drift alone. Lint passes against
+the working tree; if that file is ever committed the fix goes with it.
 
 ## What IS deployed
 
@@ -108,10 +126,11 @@ posts, or any other existing table.
 
 Smallest path to a passing gate, none of it blocked on this branch:
 
-1. Update `Index.test.tsx` to assert the current Sherman Oaks hero (or delete
-   the stale assertion) — fixes 1 test + 2 lint errors
-2. `prefer-const` in `twilio-missed-call/index.ts` — 1 lint error
-3. `npm audit fix` — review the diff, then re-run
-4. Work through the 26 pivot-era type errors
+Items 1, 2 and 4 from the original list are **done** (`2e1628c`). What remains:
 
-Items 1–3 are quick. Item 4 is the real debt.
+- **React Router v6 → v7 migration** — the only path to a clean `npm audit`.
+  Plan it separately; it touches every route.
+
+Until then the gate cannot report all-green, and merging to `main` is a
+judgement call about accepting a known, pre-existing advisory that predates
+this branch.
