@@ -91,12 +91,25 @@ Using temporary rows, since deleted:
 
 ## Not yet done
 
-- [ ] `/directory` index route — listings reachable only by direct URL, absent from sitemap
-- [ ] pg_cron schedule for `send-outreach-drip` (never fires until scheduled)
-- [ ] `PUBLIC_SITE_URL` secret (Email 2 claim links fall back to `https://homequotelink.com`)
+**Update, 2026-07-25:** the item below about Vercel env vars was checked and
+was already stale by this date — the deployed site has been correctly reading
+`lrqdbpphallqehpdqalr` all along (verified via live directory/claim traffic
+throughout the paid-tier work). Also found and fixed a *real* instance of the
+same class of bug: `admin_toggle_cron_job` (System Status page) hardcoded the
+dead project ref for two of its jobs — see `20260725150000_fix_cron_admin_toggle_project_ref.sql`.
+
+- [x] `/directory` index route — shipped 2026-07-25, `/directory` and `/directory/:city`
+- [ ] pg_cron schedule for `send-outreach-drip` — pg_cron still isn't enabled on
+      this project. Deliberately left off: enabling it means the drip starts
+      autonomously emailing real ingested businesses with no per-send review,
+      which is a decision for you to make explicitly, not a bug to silently fix.
+      Enable via `admin_toggle_cron_job('send-outreach-drip-daily', true)` when ready.
+- [ ] `PUBLIC_SITE_URL` secret — low priority, the hardcoded fallback already
+      matches production (`https://homequotelink.com`); only matters if a
+      staging environment is ever stood up
 - [ ] `RESEND_API_KEY` (optional — SMTP alone works)
-- [ ] Vercel env vars still point at the old, dead project ref — **the live site
-      will break if redeployed before these are updated**
+- [x] ~~Vercel env vars point at the old, dead project ref~~ — false alarm,
+      confirmed correct 2026-07-25
 
 ## Rollback
 
