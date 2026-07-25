@@ -20,6 +20,23 @@ export function getDeviceType(screenWidth: number | null): string {
   return "Desktop";
 }
 
+/**
+ * Cell values arrive as `unknown` from ConfigurableTable, so these coerce
+ * safely rather than casting at every call site. An unparseable date renders
+ * as an em dash instead of "Invalid Date".
+ */
+function fmtDate(value: unknown, pattern: string): string {
+  if (value === null || value === undefined) return "—";
+  const d = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(d.getTime()) ? "—" : format(d, pattern);
+}
+
+function joinList(value: unknown, separator = ", "): string {
+  if (Array.isArray(value)) return value.map(String).join(separator) || "—";
+  if (value === null || value === undefined || value === "") return "—";
+  return String(value);
+}
+
 export function getAnalyticsColumns(metric: string | undefined, isLeadMetric: boolean, isBlogMetric: boolean): ColumnDef[] {
   // Blog Posts
   if (metric === "blog_posts") {
@@ -28,7 +45,7 @@ export function getAnalyticsColumns(metric: string | undefined, isLeadMetric: bo
         key: "created_at",
         label: "Published",
         visible: true,
-        render: (v) => v ? format(new Date(v), "MMM d, yyyy") : "—",
+        render: (v) => fmtDate(v, "MMM d, yyyy"),
       },
       { key: "title", label: "Title", visible: true },
       { key: "slug", label: "Slug", visible: true },
@@ -38,7 +55,7 @@ export function getAnalyticsColumns(metric: string | undefined, isLeadMetric: bo
         key: "tags", 
         label: "Tags", 
         visible: true,
-        render: (v) => v?.join(", ") || "—",
+        render: (v) => joinList(v),
       },
       { key: "excerpt", label: "Excerpt", visible: true },
       { key: "meta_description", label: "Meta Description", visible: false },
@@ -53,7 +70,7 @@ export function getAnalyticsColumns(metric: string | undefined, isLeadMetric: bo
         key: "created_at",
         label: "Viewed At",
         visible: true,
-        render: (v) => format(new Date(v), "MMM d, HH:mm:ss"),
+        render: (v) => fmtDate(v, "MMM d, HH:mm:ss"),
       },
       { key: "post_title", label: "Post", visible: true },
       { key: "post_slug", label: "Slug", visible: false },
@@ -72,7 +89,7 @@ export function getAnalyticsColumns(metric: string | undefined, isLeadMetric: bo
         key: "created_at",
         label: "Date",
         visible: true,
-        render: (v) => format(new Date(v), "MMM d, HH:mm"),
+        render: (v) => fmtDate(v, "MMM d, HH:mm"),
       },
       { key: "full_name", label: "Name", visible: true },
       { key: "email", label: "Email", visible: true },
@@ -121,13 +138,13 @@ export function getAnalyticsColumns(metric: string | undefined, isLeadMetric: bo
         key: "first_seen",
         label: "First Seen",
         visible: true,
-        render: (v) => format(new Date(v), "MMM d, HH:mm"),
+        render: (v) => fmtDate(v, "MMM d, HH:mm"),
       },
       {
         key: "last_seen",
         label: "Last Seen",
         visible: true,
-        render: (v) => format(new Date(v), "MMM d, HH:mm"),
+        render: (v) => fmtDate(v, "MMM d, HH:mm"),
       },
       { key: "event_count", label: "Events", visible: true },
       { key: "pages_visited", label: "Pages", visible: true },
@@ -168,7 +185,7 @@ export function getAnalyticsColumns(metric: string | undefined, isLeadMetric: bo
         key: "start_time",
         label: "Start",
         visible: true,
-        render: (v) => format(new Date(v), "MMM d, HH:mm"),
+        render: (v) => fmtDate(v, "MMM d, HH:mm"),
       },
       { key: "event_count", label: "Events", visible: true },
       { key: "page_views", label: "Page Views", visible: true },
@@ -205,7 +222,7 @@ export function getAnalyticsColumns(metric: string | undefined, isLeadMetric: bo
       key: "created_at",
       label: "Time",
       visible: true,
-      render: (v) => format(new Date(v), "MMM d, HH:mm:ss"),
+      render: (v) => fmtDate(v, "MMM d, HH:mm:ss"),
     },
     { key: "event_type", label: "Type", visible: true },
     { key: "event_name", label: "Name", visible: true },

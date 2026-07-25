@@ -9,6 +9,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 import { Database } from "@/integrations/supabase/types";
+import { KpiCard } from "./KpiCard";
 
 type LeadRow = Partial<Database["public"]["Tables"]["leads"]["Row"]>;
 type BuyerRow = Partial<Database["public"]["Tables"]["buyers"]["Row"]>;

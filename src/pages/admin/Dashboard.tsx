@@ -21,7 +21,8 @@ import type { Lead } from "@/types";
 
 interface LeadWithRelations extends Lead {
   buyers?: { business_name?: string | null } | null;
-  ai_authenticity_score?: number | null;
+  // ai_authenticity_score is already declared on Lead as `number | null` —
+  // redeclaring it as optional here conflicted with the base type.
 }
 
 const statusColors: Record<string, string> = {
