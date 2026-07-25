@@ -229,8 +229,10 @@ export default function DirectoryListing() {
                 </p>
               ) : (
                 <p className="mt-3 text-muted-foreground">
-                  {business.business_name} serves homeowners in {business.city}. Call directly or
-                  request a free quote below.
+                  {business.business_name} serves homeowners in {business.city}.{" "}
+                  {business.is_claimed
+                    ? "Call directly or request a free quote below."
+                    : "Call directly to get in touch."}
                 </p>
               )}
 
