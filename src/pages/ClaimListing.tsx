@@ -2,7 +2,12 @@ import { useState, useEffect, useCallback } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
-import type { ClaimBusiness, DirectoryLead } from "@/integrations/supabase/directory";
+import {
+  formatPhoneDisplay,
+  toTelHref,
+  type ClaimBusiness,
+  type DirectoryLead,
+} from "@/integrations/supabase/directory";
 import { Header } from "@/components/public/Header";
 import { Footer } from "@/components/public/Footer";
 import { PageMeta } from "@/components/PageMeta";
@@ -46,7 +51,9 @@ function LeadCard({ lead }: { lead: DirectoryLead }) {
       <div className="mt-2 space-y-1 text-sm text-muted-foreground">
         <p className="flex items-center gap-2">
           <Phone className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          <a className="hover:underline" href={`tel:${lead.phone}`}>{lead.phone}</a>
+          <a className="hover:underline" href={toTelHref(lead.phone)}>
+            {formatPhoneDisplay(lead.phone)}
+          </a>
         </p>
         {lead.email && (
           <p className="flex items-center gap-2">
