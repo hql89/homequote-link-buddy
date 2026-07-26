@@ -151,15 +151,18 @@ Deno.serve(async (req) => {
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${entries.map((e) => renderEntry(siteUrl, e)).join("")}
 </urlset>`;
 
-    return new Response(xml, {
-      headers: {
-        ...corsHeaders,
-        "Content-Type": "application/xml; charset=utf-8",
-        // Crawlers re-fetch often; an hour keeps new listings discoverable
-        // without regenerating on every hit.
-        "Cache-Control": "public, max-age=3600",
-      },
-    });
+    // NOTE: the Content-Type set here survives on POST but NOT on GET — the
+    // Supabase edge gateway rewrites GET responses to text/plain, and no
+    // function-side change fixes it (verified: POST returns text/xml from this
+    // exact code, GET returns text/plain). vercel.json therefore re-asserts the
+    // header on the /sitemap.xml route, which is the path crawlers actually use.
+    const headers = new Headers(corsHeaders);
+    headers.set("Content-Type", "text/xml; charset=utf-8");
+    // Crawlers re-fetch often; an hour keeps new listings discoverable without
+    // regenerating on every hit.
+    headers.set("Cache-Control", "public, max-age=3600");
+
+    return new Response(xml, { headers });
   } catch (err) {
     console.error("[sitemap]", err);
     return new Response("Internal Server Error", { status: 500, headers: corsHeaders });
