@@ -44,6 +44,7 @@ const AdminLogin = lazy(() => import("./pages/admin/Login"));
 const ResetPassword = lazy(() => import("./pages/admin/ResetPassword"));
 
 // --- Admin pages ---
+const IngestPage = lazy(() => import("./pages/admin/Ingest"));
 const AdminDashboard = lazy(() => import("./pages/admin/Dashboard"));
 const LeadDetail = lazy(() => import("./pages/admin/LeadDetail"));
 const BuyersPage = lazy(() => import("./pages/admin/Buyers"));
@@ -134,6 +135,7 @@ const App = () => (
               <Route path="/admin/reviews" element={<ProtectedRoute><ReviewsPage /></ProtectedRoute>} />
               <Route path="/admin/buyer-profiles" element={<ProtectedRoute><BuyerProfilesPage /></ProtectedRoute>} />
               <Route path="/admin/applications" element={<ProtectedRoute><ProviderApplicationsPage /></ProtectedRoute>} />
+              <Route path="/admin/ingest" element={<ProtectedRoute><IngestPage /></ProtectedRoute>} />
               <Route path="/admin/verticals" element={<ProtectedRoute><VerticalsPage /></ProtectedRoute>} />
               <Route path="/admin/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
               <Route path="/admin/spam" element={<ProtectedRoute><SpamMonitorPage /></ProtectedRoute>} />

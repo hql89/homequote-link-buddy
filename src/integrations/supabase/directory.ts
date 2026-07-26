@@ -50,9 +50,58 @@ export interface DirectoryCity {
   listing_count: number;
 }
 
+/** A staged ingestion candidate. Admin-only — `raw` holds the source record. */
+export interface IngestQueueRow {
+  id: string;
+  source: string;
+  license_number: string | null;
+  business_name: string;
+  city: string | null;
+  phone: string | null;
+  classification: string | null;
+  vertical_slug: string | null;
+  status: "pending" | "ingested" | "skipped" | "failed";
+  skip_reason: string | null;
+  business_id: string | null;
+  processed_at: string | null;
+  created_at: string;
+}
+
+/**
+ * Admin-side projection of `businesses`. The public view deliberately omits
+ * `is_published`, since unpublished rows are invisible to it by definition.
+ */
+export interface AdminBusinessRow {
+  id: string;
+  business_name: string;
+  city: string;
+  city_slug: string;
+  slug: string;
+  phone: string | null;
+  license_number: string | null;
+  is_published: boolean;
+  created_at: string;
+}
+
 interface DirectoryDatabase {
+  // supabase-js resolves its Insert/Update generics through this key; without
+  // it, writes to these tables type as `never`.
+  __InternalSupabase: { PostgrestVersion: "14.1" };
   public: {
-    Tables: Record<never, never>;
+    Tables: {
+      ingest_queue: {
+        Row: IngestQueueRow;
+        Insert: Partial<IngestQueueRow> & { business_name: string };
+        Update: Partial<IngestQueueRow>;
+        Relationships: [];
+      };
+      businesses: {
+        Row: AdminBusinessRow;
+        Insert: Partial<AdminBusinessRow> & { business_name: string };
+        Update: Partial<AdminBusinessRow>;
+        Relationships: [];
+      };
+    };
     Views: {
       public_business_listings: {
         Row: PublicBusinessListing;
@@ -68,6 +117,32 @@ interface DirectoryDatabase {
 }
 
 export const directoryDb = supabase as unknown as SupabaseClient<DirectoryDatabase>;
+
+/**
+ * Minimal write surface for tables absent from the generated `types.ts`.
+ *
+ * supabase-js resolves its Update generic from the generated Database type, so
+ * a hand-declared table types as `never` on write even when reads are fine.
+ * Rather than scatter casts at call sites, the one narrow cast lives here.
+ */
+interface WritableTable {
+  update: (values: Record<string, unknown>) => {
+    eq: (column: string, value: string) => PromiseLike<{ error: { message: string } | null }>;
+  };
+}
+
+/**
+ * Publishes or unpublishes a listing. Publishing only makes the page visible —
+ * it never sends outreach, which stays a separate deliberate action.
+ */
+export async function setBusinessPublished(
+  id: string,
+  published: boolean,
+): Promise<{ message: string } | null> {
+  const table = directoryDb.from("businesses") as unknown as WritableTable;
+  const { error } = await table.update({ is_published: published }).eq("id", id);
+  return error;
+}
 
 /** Claim-page projection returned by the `claim-listing` edge function. */
 export interface ClaimBusiness {
