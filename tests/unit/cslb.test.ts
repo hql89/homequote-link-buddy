@@ -5,10 +5,34 @@ import {
   normaliseClassification,
   verticalFromClassifications,
   isActiveLicense,
+  isExpired,
   parseCslbCsv,
 } from "../../src/lib/cslb";
 
 const CITIES = ["Sherman Oaks", "Encino", "Studio City", "Tarzana", "Valley Village", "Toluca Lake"];
+
+/** The header row of the real CSLB statewide export, verbatim. */
+const REAL_HEADER =
+  "LicenseNo,LastUpdate,BusinessName,BUS-NAME-2,FullBusinessName,MailingAddress,City,State,County,ZIPCode," +
+  "country,BusinessPhone,BusinessType,IssueDate,ReissueDate,ExpirationDate,InactivationDate,ReactivationDate," +
+  "PendingSuspension,PendingClassRemoval,PendingClassReplace,PrimaryStatus,SecondaryStatus,Classifications(s)," +
+  "AsbestosReg,WorkersCompCoverageType";
+
+/** Builds a row matching REAL_HEADER's column count with the fields we care about filled in. */
+function realRow(o: {
+  license: string; name: string; city: string; phone: string;
+  status: string; classification: string; expires?: string;
+}): string {
+  const cols = new Array(REAL_HEADER.split(",").length).fill("");
+  cols[0] = o.license;
+  cols[2] = o.name;
+  cols[6] = o.city;
+  cols[11] = o.phone;
+  cols[15] = o.expires ?? "01/31/2099";
+  cols[21] = o.status;
+  cols[23] = o.classification;
+  return cols.join(",");
+}
 
 describe("parseCsv", () => {
   it("parses a simple grid", () => {
@@ -78,12 +102,55 @@ describe("classification mapping", () => {
 });
 
 describe("isActiveLicense", () => {
-  it("accepts only ACTIVE", () => {
+  it("accepts CLEAR, which is what the real export uses for good standing", () => {
+    expect(isActiveLicense("CLEAR")).toBe(true);
+    expect(isActiveLicense(" clear ")).toBe(true);
+  });
+
+  it("still accepts ACTIVE, used by other CSLB export formats", () => {
     expect(isActiveLicense("ACTIVE")).toBe(true);
     expect(isActiveLicense(" active ")).toBe(true);
+  });
+
+  it("rejects every suspension status seen in the real statewide export", () => {
+    for (const s of [
+      "Contr Bond Susp",
+      "SOS Suspension",
+      "Work Comp Susp",
+      "Liab Ins Susp",
+      "Susp - No Qualifier",
+      "EMP/WK Bnd Susp",
+      "BND Pay EN Susp",
+      "O/L Entity Susp",
+      "Out Liab Susp",
+      "BOND Pay Susp",
+    ]) {
+      expect(isActiveLicense(s)).toBe(false);
+    }
+  });
+
+  it("rejects expired and empty", () => {
     expect(isActiveLicense("EXPIRED")).toBe(false);
-    expect(isActiveLicense("SUSPENDED")).toBe(false);
     expect(isActiveLicense(null)).toBe(false);
+    expect(isActiveLicense("")).toBe(false);
+  });
+});
+
+describe("isExpired", () => {
+  const now = new Date(2026, 6, 26); // 2026-07-26
+
+  it("treats a past MM/DD/YYYY date as expired", () => {
+    expect(isExpired("01/31/2025", now)).toBe(true);
+  });
+
+  it("treats a future date as not expired", () => {
+    expect(isExpired("01/31/2027", now)).toBe(false);
+  });
+
+  it("treats an unparseable or missing date as not expired, so a format change cannot silently drop every row", () => {
+    expect(isExpired("", now)).toBe(false);
+    expect(isExpired(null, now)).toBe(false);
+    expect(isExpired("2027-01-31", now)).toBe(false);
   });
 });
 
@@ -100,6 +167,27 @@ describe("mapHeaders", () => {
 
   it("ignores columns it doesn't recognise", () => {
     expect(mapHeaders(["Bond Amount", "County Code"])).toEqual({});
+  });
+
+  // Regression: the real header is "Classifications(s)". headerKey() strips the
+  // parentheses, yielding "classificationss" — which was missing from the alias
+  // list, so classification silently resolved to nothing for every single row
+  // and the whole statewide file filtered down to zero candidates.
+  it("maps the real statewide export header row", () => {
+    const idx = mapHeaders(REAL_HEADER.split(","));
+    expect(idx.license_number).toBe(0);   // LicenseNo
+    expect(idx.business_name).toBe(2);    // BusinessName
+    expect(idx.city).toBe(6);             // City
+    expect(idx.phone).toBe(11);           // BusinessPhone
+    expect(idx.status).toBe(21);          // PrimaryStatus
+    expect(idx.classification).toBe(23);  // Classifications(s)
+    expect(idx.expires).toBe(15);         // ExpirationDate
+  });
+
+  it("does not mistake BUS-NAME-2 or FullBusinessName for the business name", () => {
+    const idx = mapHeaders(REAL_HEADER.split(","));
+    expect(idx.business_name).not.toBe(3);
+    expect(idx.business_name).not.toBe(4);
   });
 });
 
@@ -179,5 +267,82 @@ describe("parseCslbCsv", () => {
   it("returns nothing for an empty or header-only file", () => {
     expect(parseCslbCsv("", CITIES).candidates).toHaveLength(0);
     expect(parseCslbCsv(HEADER, CITIES).candidates).toHaveLength(0);
+  });
+});
+
+/**
+ * These run against the real statewide export's exact shape. The first upload of
+ * the real file produced zero candidates out of 244,507 rows because of two
+ * mismatches these lock down: PrimaryStatus is "CLEAR" (not "ACTIVE"), and the
+ * classification column is headed "Classifications(s)".
+ */
+describe("parseCslbCsv — real statewide export shape", () => {
+  it("accepts a CLEAR licence in a covered city", () => {
+    const csv = `${REAL_HEADER}\n${realRow({
+      license: "1000010", name: "VALLEY PLUMBING CO", city: "ENCINO",
+      phone: "(818) 555 0142", status: "CLEAR", classification: "C36",
+    })}`;
+    const { candidates, rejected } = parseCslbCsv(csv, CITIES);
+    expect(rejected).toEqual({});
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({
+      license_number: "1000010",
+      business_name: "VALLEY PLUMBING CO",
+      city: "Encino",
+      phone: "+18185550142",
+      vertical_slug: "plumbing",
+    });
+  });
+
+  it("rejects a suspended licence in a covered city", () => {
+    const csv = `${REAL_HEADER}\n${realRow({
+      license: "1000011", name: "SUSPENDED PLUMBING", city: "TARZANA",
+      phone: "(818) 555 0143", status: "Work Comp Susp", classification: "C36",
+    })}`;
+    const { candidates, rejected } = parseCslbCsv(csv, CITIES);
+    expect(candidates).toHaveLength(0);
+    expect(rejected["licence not active"]).toBe(1);
+  });
+
+  it("rejects a CLEAR licence whose expiration date has passed", () => {
+    const csv = `${REAL_HEADER}\n${realRow({
+      license: "1000012", name: "LAPSED HVAC", city: "TARZANA",
+      phone: "(818) 555 0144", status: "CLEAR", classification: "C20",
+      expires: "01/31/2020",
+    })}`;
+    const { candidates, rejected } = parseCslbCsv(csv, CITIES);
+    expect(candidates).toHaveLength(0);
+    expect(rejected["licence expired"]).toBe(1);
+  });
+
+  it("maps every classification we list, in the export's hyphenated form", () => {
+    const rows = [
+      ["1000020", "TREE CO", "D-49", "tree-service"],
+      ["1000021", "LANDSCAPE CO", "C-27", "landscaping"],
+      ["1000022", "PLUMBING CO", "C-36", "plumbing"],
+      ["1000023", "HVAC CO", "C-20", "hvac"],
+      ["1000024", "ELECTRIC CO", "C-10", "electrical"],
+    ];
+    const csv = [
+      REAL_HEADER,
+      ...rows.map(([license, name, classification]) =>
+        realRow({ license, name, city: "ENCINO", phone: "(818) 555 0145", status: "CLEAR", classification }),
+      ),
+    ].join("\n");
+
+    const { candidates } = parseCslbCsv(csv, CITIES);
+    expect(candidates.map((c) => c.vertical_slug)).toEqual(rows.map(([, , , slug]) => slug));
+  });
+
+  it("reports the status and classification values it saw, so a zero-candidate run is diagnosable", () => {
+    const csv = `${REAL_HEADER}\n${realRow({
+      license: "1000030", name: "GENERAL BUILDER", city: "ENCINO",
+      phone: "(818) 555 0146", status: "CLEAR", classification: "B",
+    })}`;
+    const { candidates, statusSample, classificationSample, detectedHeaders } = parseCslbCsv(csv, CITIES);
+    expect(candidates).toHaveLength(0);
+    expect(statusSample).toContain("CLEAR");
+    expect(classificationSample).toContain("B");
+    expect(detectedHeaders[23]).toBe("Classifications(s)");
   });
 });

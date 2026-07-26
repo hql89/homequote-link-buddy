@@ -42,9 +42,32 @@ export function verticalFromClassifications(raw: string | null | undefined): str
   return null;
 }
 
-/** CSLB uses a variety of status strings; only currently-active licences qualify. */
+/**
+ * CSLB's `PrimaryStatus` is "CLEAR" for a licence in good standing — NOT
+ * "ACTIVE", which is what the portal's own UI displays. Every other value in
+ * the export is a suspension ("Work Comp Susp", "Contr Bond Susp", "SOS
+ * Suspension", …) and must be excluded: we advertise these businesses as
+ * licensed, so a suspended licence cannot appear in the directory.
+ *
+ * "ACTIVE" is still accepted because other CSLB export formats use it.
+ */
+const ACTIVE_STATUSES = new Set(["CLEAR", "ACTIVE"]);
+
 export function isActiveLicense(status: string | null | undefined): boolean {
-  return String(status ?? "").trim().toUpperCase() === "ACTIVE";
+  return ACTIVE_STATUSES.has(String(status ?? "").trim().toUpperCase());
+}
+
+/**
+ * CSLB dates are MM/DD/YYYY. Returns true only when the date parses AND is in
+ * the past — an unparseable date is treated as "not expired" so a format change
+ * degrades to relying on PrimaryStatus rather than silently dropping every row.
+ */
+export function isExpired(raw: string | null | undefined, now: Date = new Date()): boolean {
+  const m = String(raw ?? "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return false;
+  const [, mm, dd, yyyy] = m;
+  const expiry = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+  return expiry.getTime() < now.getTime();
 }
 
 /**
@@ -93,7 +116,9 @@ const HEADER_ALIASES: Record<string, string[]> = {
   city: ["city", "mailingcity", "businesscity"],
   state: ["state", "mailingstate"],
   phone: ["telephone", "phone", "businessphone", "phonenumber"],
-  classification: ["classification", "classifications", "class", "classcodes", "licensetype"],
+  // "classificationss" is not a typo: the export's header is "Classifications(s)",
+  // and headerKey() strips the parentheses, leaving a doubled s.
+  classification: ["classifications", "classificationss", "classification", "class", "classcodes", "licensetype"],
   status: ["primarystatus", "licensestatus", "status"],
   expires: ["expirationdate", "expiration", "expiresdate", "expdate"],
 };
@@ -131,6 +156,8 @@ export interface CslbParseResult {
   totalRows: number;
   /** First few unique status values found — for diagnosing status filter mismatches. */
   statusSample: string[];
+  /** First few unique classification values found — for diagnosing mapping mismatches. */
+  classificationSample: string[];
   /** Column headers detected from the file — for diagnosing mapping issues. */
   detectedHeaders: string[];
 }
@@ -161,13 +188,16 @@ export function parseCslbCsv(text: string, allowedCities: string[]): CslbParseRe
   const rows = parseCsv(text);
   const rejected: Record<string, number> = {};
   const detectedHeaders = rows[0] ?? [];
-  if (rows.length < 2) return { candidates: [], rejected, totalRows: 0, statusSample: [], detectedHeaders };
+  if (rows.length < 2) {
+    return { candidates: [], rejected, totalRows: 0, statusSample: [], classificationSample: [], detectedHeaders };
+  }
 
   const idx = mapHeaders(rows[0]);
   const cityLookup = new Map(allowedCities.map((c) => [c.trim().toLowerCase(), c]));
   const seen = new Set<string>();
   const candidates: CslbCandidate[] = [];
   const statusValues = new Set<string>();
+  const classificationValues = new Set<string>();
 
   const get = (row: string[], field: string): string =>
     idx[field] === undefined ? "" : (row[idx[field]] ?? "").trim();
@@ -180,7 +210,10 @@ export function parseCslbCsv(text: string, allowedCities: string[]): CslbParseRe
     if (statusValues.size < 20) statusValues.add(statusRaw || "(empty)");
     if (!isActiveLicense(statusRaw)) { bump(rejected, "licence not active"); continue; }
 
+    if (isExpired(get(row, "expires"))) { bump(rejected, "licence expired"); continue; }
+
     const classification = get(row, "classification");
+    if (classificationValues.size < 20) classificationValues.add(classification || "(empty)");
     const vertical = verticalFromClassifications(classification);
     if (!vertical) { bump(rejected, "classification not in our categories"); continue; }
 
@@ -213,5 +246,12 @@ export function parseCslbCsv(text: string, allowedCities: string[]): CslbParseRe
     });
   }
 
-  return { candidates, rejected, totalRows: rows.length - 1, statusSample: [...statusValues], detectedHeaders };
+  return {
+    candidates,
+    rejected,
+    totalRows: rows.length - 1,
+    statusSample: [...statusValues],
+    classificationSample: [...classificationValues],
+    detectedHeaders,
+  };
 }

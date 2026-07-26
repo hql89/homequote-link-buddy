@@ -102,17 +102,20 @@ export default function IngestPage() {
     setLastImport(null);
     try {
       const text = await file.text();
-      const { candidates, rejected, totalRows, statusSample, detectedHeaders } = parseCslbCsv(text, cities);
+      const { candidates, rejected, totalRows, statusSample, classificationSample, detectedHeaders } =
+        parseCslbCsv(text, cities);
 
       if (candidates.length === 0) {
         const why = Object.entries(rejected).map(([r, n]) => `${n} ${r}`).join(", ");
         const statusHint = statusSample.length > 0 ? ` Status values found: ${statusSample.join(", ")}.` : "";
+        const classHint =
+          classificationSample.length > 0 ? ` Classifications found: ${classificationSample.join(", ")}.` : "";
         const headerHint = detectedHeaders.length > 0 ? ` Headers: ${detectedHeaders.slice(0, 10).join(", ")}.` : "";
         toast({
           title: "Nothing to import",
           description: totalRows === 0
             ? "That file had no data rows — check it's the CSLB export."
-            : `All ${totalRows} rows were filtered out (${why}).${statusHint}${headerHint}`,
+            : `All ${totalRows} rows were filtered out (${why}).${statusHint}${classHint}${headerHint}`,
           variant: "destructive",
         });
         return;
