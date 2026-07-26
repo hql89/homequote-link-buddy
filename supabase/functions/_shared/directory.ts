@@ -106,6 +106,49 @@ export async function loadOutreachTemplates(
   return merged;
 }
 
+/**
+ * Authorises a privileged caller by capability rather than by string-matching a
+ * key.
+ *
+ * The obvious check — `token === Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")` —
+ * is what `ingest-business` does, and it silently stopped working: the value in
+ * the function's environment no longer equals the project's service-role key,
+ * so that endpoint rejects the very credential its docstring says to use.
+ *
+ * Instead, replay the caller's own token against a table that RLS closes to
+ * everyone but admins (`admin_settings`). Service-role bypasses RLS, an admin
+ * JWT satisfies the policy, and anon or an ordinary signed-in user gets an
+ * error. That holds true across key rotations and key-format migrations.
+ */
+export async function isPrivilegedCaller(req: Request): Promise<boolean> {
+  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  if (!token) return false;
+
+  const url = Deno.env.get("SUPABASE_URL");
+  const anon = Deno.env.get("SUPABASE_ANON_KEY");
+  if (!url || !anon) return false;
+
+  try {
+    const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.98.0");
+    const caller = createClient(url, anon, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    // Absence of an error is NOT sufficient: RLS filters rows rather than
+    // raising, so an anon caller gets 200 with an empty set. Require rows back.
+    // `admin_settings` is always populated (smtp_config, ingest_config, …), so
+    // zero rows means the caller was filtered out, not that the table is empty.
+    const { count, error } = await caller
+      .from("admin_settings")
+      .select("setting_key", { count: "exact", head: true });
+    return !error && (count ?? 0) > 0;
+  } catch (err) {
+    console.error("[isPrivilegedCaller] check failed:", err);
+    return false;
+  }
+}
+
 /** Writes a row to the shared job_run_logs table, matching existing functions. */
 export async function logRun(
   supabase: SupabaseClient,
