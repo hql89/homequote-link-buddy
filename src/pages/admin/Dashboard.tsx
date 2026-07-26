@@ -336,7 +336,7 @@ export default function AdminDashboard() {
     <>
       <PageMeta title="Leads Dashboard | Valley Home Pros Admin" description="Manage incoming plumbing leads." />
       <AdminLayout>
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-start justify-between gap-4 mb-1">
           <h1 className="text-2xl font-bold font-sans">Leads Dashboard</h1>
           <div className="flex items-center gap-2">
             <Button
@@ -344,6 +344,7 @@ export default function AdminDashboard() {
               size="sm"
               disabled={scanning !== null}
               onClick={() => bulkScan("unscanned")}
+              title="Run the spam and quality check on leads that have never been scanned. Leaves already-scanned leads alone."
             >
               {scanning === "unscanned" ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <ScanSearch className="h-4 w-4 mr-1" />}
               Scan Unscanned
@@ -353,12 +354,17 @@ export default function AdminDashboard() {
               size="sm"
               disabled={scanning !== null}
               onClick={() => bulkScan("all")}
+              title="Re-run the check on every lead, including ones already scanned. Use after changing the scoring rules."
             >
               {scanning === "all" ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <ScanSearch className="h-4 w-4 mr-1" />}
               Re-scan All
             </Button>
           </div>
         </div>
+        <p className="mb-6 max-w-3xl text-sm text-muted-foreground">
+          Every quote request a homeowner has submitted, newest first. Each is scored automatically for
+          spam and quality — open a lead to see the full detail, change its status, or route it to a buyer.
+        </p>
 
         {/* Score Key Legend */}
         <div className="mb-4 rounded-lg border bg-card p-3 text-xs text-muted-foreground space-y-1">

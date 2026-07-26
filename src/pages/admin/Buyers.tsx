@@ -92,10 +92,15 @@ export default function BuyersPage() {
     <>
       <PageMeta title="Buyers | Admin" description="Manage buyer accounts." />
       <AdminLayout>
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-start justify-between gap-4 mb-2">
           <h1 className="text-2xl font-bold font-sans">Buyers</h1>
           <Button onClick={openNew} className="gap-2"><Plus className="h-4 w-4" /> Add Buyer</Button>
         </div>
+        <p className="mb-6 max-w-3xl text-sm text-muted-foreground">
+          Contractors who receive leads from the site. A buyer must exist here before any lead can be
+          assigned to them, and their email address is where lead notifications are sent — so check it
+          carefully when adding one.
+        </p>
 
         {isLoading ? (
           <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>

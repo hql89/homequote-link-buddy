@@ -299,12 +299,16 @@ export default function BlogPostsPage() {
     <>
       <PageMeta title="Blog Posts | Admin" description="Manage blog posts." />
       <AdminLayout>
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-start justify-between gap-4 mb-2">
           <h1 className="text-2xl font-bold font-sans">Blog Posts</h1>
           <Button onClick={openCreate} className="gap-2">
             <Plus className="h-4 w-4" /> New Post
           </Button>
         </div>
+        <p className="mb-6 max-w-3xl text-sm text-muted-foreground">
+          Articles on the public site. Drafts stay private until published, and a post given a future
+          publish date goes live on its own via the scheduled job in Settings.
+        </p>
 
         {!posts?.length ? (
           <div className="text-center py-16 text-muted-foreground">

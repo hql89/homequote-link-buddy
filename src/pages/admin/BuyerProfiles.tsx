@@ -104,9 +104,16 @@ export default function BuyerProfiles() {
   return (
     <AdminLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-foreground">Buyer Profiles</h1>
-          <Badge variant="secondary">{profiles?.length ?? 0} total</Badge>
+        <div>
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-bold text-foreground">Buyer Profiles</h1>
+            <Badge variant="secondary">{profiles?.length ?? 0} total</Badge>
+          </div>
+          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+            The self-service accounts contractors use to sign in and see their own leads. Separate from
+            Buyers: a buyer can receive leads without ever having a login, and this page is only about
+            who has portal access.
+          </p>
         </div>
 
         <div className="relative max-w-sm">

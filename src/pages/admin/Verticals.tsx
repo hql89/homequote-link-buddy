@@ -86,7 +86,12 @@ export default function VerticalsPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold font-sans">Service Verticals</h1>
-            <p className="text-sm text-muted-foreground">Manage the service categories available on the site.</p>
+            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+              The service categories the site offers — plumbing, HVAC, electrical and so on. These drive
+              the public category pages, the options a homeowner picks from in the quote form, and which
+              contractor licences the ingestion engine will accept. Deactivating one hides it everywhere
+              without deleting the leads already filed under it.
+            </p>
           </div>
           <Button onClick={openNew} className="gap-2"><Plus className="h-4 w-4" /> Add Vertical</Button>
         </div>

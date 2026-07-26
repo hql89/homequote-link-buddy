@@ -80,9 +80,15 @@ export default function Reviews() {
   return (
     <AdminLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-foreground">Reviews</h1>
-          <Badge variant="secondary">{reviews?.length ?? 0} total</Badge>
+        <div>
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-bold text-foreground">Reviews</h1>
+            <Badge variant="secondary">{reviews?.length ?? 0} total</Badge>
+          </div>
+          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+            Feedback homeowners left after a job. Reviews are collected by the automated follow-up email
+            sent a few days after a lead is submitted.
+          </p>
         </div>
 
         <div className="flex gap-2">

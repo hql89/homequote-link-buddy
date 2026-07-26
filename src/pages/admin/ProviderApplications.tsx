@@ -129,9 +129,15 @@ export default function ProviderApplications() {
       <PageMeta title="Provider Applications | Admin" description="Review and approve provider applications." />
       <AdminLayout>
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold font-sans">Provider Applications</h1>
-            <Badge variant="secondary">{applications?.length ?? 0} pending</Badge>
+          <div>
+            <div className="flex items-center justify-between">
+              <h1 className="text-2xl font-bold font-sans">Provider Applications</h1>
+              <Badge variant="secondary">{applications?.length ?? 0} pending</Badge>
+            </div>
+            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+              Contractors who applied to join the network through the public sign-up form. Approving one
+              creates a buyer that leads can be routed to; until then they receive nothing.
+            </p>
           </div>
 
           {isLoading ? (

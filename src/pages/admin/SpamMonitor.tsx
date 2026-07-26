@@ -106,7 +106,10 @@ export default function SpamMonitor() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Spam Monitor</h1>
-            <p className="text-sm text-muted-foreground">Blocked and rate-limited submission attempts</p>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+              Submissions the site refused before they became leads. These never reached your inbox and
+              never notified a buyer — this page is a record of what was stopped, not a queue of work.
+            </p>
           </div>
           <Select value={range} onValueChange={(v) => setRange(v as TimeRange)}>
             <SelectTrigger className="w-[140px]">

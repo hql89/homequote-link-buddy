@@ -231,8 +231,14 @@ export default function SiteAnalyticsPage() {
     <>
       <PageMeta title="Analytics | Admin" description="Comprehensive analytics dashboard." />
       <AdminLayout>
-        <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
-          <h1 className="text-2xl font-bold font-sans">Analytics</h1>
+        <div className="flex items-start justify-between mb-2 gap-4 flex-wrap">
+          <div>
+            <h1 className="text-2xl font-bold font-sans">Analytics</h1>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+              Traffic, leads, and revenue over the selected period. Visits from browsers you have excluded
+              in Settings are not counted, so your own testing does not distort these numbers.
+            </p>
+          </div>
           <Select value={range} onValueChange={(v) => setRange(v as DateRange)}>
             <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
             <SelectContent>

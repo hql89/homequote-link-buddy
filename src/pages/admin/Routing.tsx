@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
 import { SFV_CITIES, VERTICALS, getServiceTypes } from "@/lib/constants";
-import { Loader2, Plus, Pencil, Trash2 } from "lucide-react";
+import { Loader2, Plus, Pencil, Trash2, AlertTriangle } from "lucide-react";
 import type { RoutingSetting, RoutingSettingInsert } from "@/types";
 
 const emptyRouting: RoutingSettingInsert = {
@@ -61,12 +61,26 @@ export default function RoutingPage() {
     <>
       <PageMeta title="Routing | Admin" description="Configure lead routing rules." />
       <AdminLayout>
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-start justify-between gap-4 mb-4">
           <div>
             <h1 className="text-2xl font-bold font-sans">Routing Settings</h1>
-            <p className="text-sm text-muted-foreground">Configuration for future automated routing. Currently informational only.</p>
+            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+              Which buyer should receive leads for a given city and service type, and how many they are
+              willing to take per day.
+            </p>
           </div>
           <Button onClick={openNew} className="gap-2"><Plus className="h-4 w-4" /> Add Rule</Button>
+        </div>
+
+        {/* This caveat was previously a grey footnote under the title, which read as
+            flavour text rather than the load-bearing warning it is. */}
+        <div className="mb-6 flex items-start gap-2 rounded-md border border-yellow-500/40 bg-yellow-500/10 p-3 text-sm">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-yellow-600" aria-hidden="true" />
+          <p>
+            <span className="font-semibold">These rules are not applied automatically yet.</span>{" "}
+            Saving a rule records your intent but does not route anything — leads are still assigned by
+            hand from the lead detail page. Nothing here will send an email or change who receives a lead.
+          </p>
         </div>
 
         {isLoading ? (

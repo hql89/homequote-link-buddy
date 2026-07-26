@@ -7,6 +7,8 @@ import { toast } from "@/hooks/use-toast";
 import { Loader2, Clock, CheckCircle2, AlertTriangle, XCircle, RefreshCw, Database } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { HelpTip } from "@/components/admin/HelpTip";
+import { summariseRun, topRejectionReason } from "@/lib/jobRunSummary";
 
 type CronJob = {
   jobid: number;
@@ -176,9 +178,14 @@ export function BackgroundJobsSettings() {
             <h3 className="text-sm font-semibold flex items-center gap-2">
               <Database className="h-3.5 w-3.5" />
               Database diagnostics
+              <HelpTip>
+                A snapshot, not a live feed — press Refresh to re-read it. Useful when the site feels slow:
+                a high active-query count or a table growing unexpectedly fast is usually the cause.
+              </HelpTip>
             </h3>
             <p className="text-xs text-muted-foreground">
-              Live backend signals for active queries, scheduled jobs, table growth, and top query cost.
+              Backend health at the moment you last refreshed: queries running now, scheduled job failures,
+              which tables are largest, and which queries cost the most time.
             </p>
           </div>
           <Button
@@ -210,9 +217,17 @@ export function BackgroundJobsSettings() {
       <div className="pt-4 border-t">
         <div className="flex items-center justify-between mb-3">
           <div>
-            <h3 className="text-sm font-semibold">Recent runs</h3>
+            <h3 className="text-sm font-semibold flex items-center gap-2">
+              Recent runs
+              <HelpTip>
+                "Success" only means the job finished without erroring — it does not mean it changed anything.
+                The line under each run says what it actually did, and runs that changed nothing are tagged
+                "no change".
+              </HelpTip>
+            </h3>
             <p className="text-xs text-muted-foreground">
-              Latest 25 executions. Failures are retried up to 3 times with exponential backoff before being logged.
+              Latest 25 executions of every background and admin-triggered job, newest first.
+              Failures are retried up to 3 times before being logged.
             </p>
           </div>
           <Button
@@ -260,15 +275,33 @@ function DatabaseDiagnosticsPanel({ diagnostics }: { diagnostics: DatabaseDiagno
     <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-md border bg-background p-3">
-          <p className="text-xs text-muted-foreground">Active queries</p>
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            Active queries
+            <HelpTip>
+              Queries running at the instant you refreshed. A handful is normal; a number that stays high
+              points at a slow query holding connections open.
+            </HelpTip>
+          </p>
           <p className="text-lg font-semibold">{activeCount}</p>
         </div>
         <div className="rounded-md border bg-background p-3">
-          <p className="text-xs text-muted-foreground">Job failures, 24h</p>
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            Job failures, 24h
+            <HelpTip>
+              Scheduled jobs that errored in the last day. Anything above zero is worth opening
+              Recent runs for — the error message is recorded there.
+            </HelpTip>
+          </p>
           <p className="text-lg font-semibold">{jobFailures}</p>
         </div>
         <div className="rounded-md border bg-background p-3">
-          <p className="text-xs text-muted-foreground">Query stats</p>
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            Query stats
+            <HelpTip>
+              Whether Postgres is recording per-query timings (the pg_stat_statements extension).
+              When off, the "Top query consumers" list below stays empty.
+            </HelpTip>
+          </p>
           <p className="text-lg font-semibold">{diagnostics.pg_stat_statements_enabled ? "On" : "Off"}</p>
         </div>
       </div>
@@ -321,6 +354,12 @@ function JobRunRow({ run }: { run: JobRunLog }) {
   const when = new Date(run.created_at).toLocaleString();
   const duration = run.duration_ms != null ? `${run.duration_ms}ms` : "—";
 
+  // "success" only means the function didn't throw. What it actually did lives
+  // in metadata, so show that too — otherwise a run that queued 500 businesses
+  // is indistinguishable from one that queued none.
+  const { text: outcome, noChange } = summariseRun(run.job_name, run.metadata);
+  const topReason = topRejectionReason(run.metadata);
+
   return (
     <div className="p-3 text-xs space-y-1">
       <div className="flex items-center gap-2 flex-wrap">
@@ -338,8 +377,21 @@ function JobRunRow({ run }: { run: JobRunLog }) {
         >
           {run.status}
         </Badge>
+        {noChange && run.status === "success" && (
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
+            no change
+          </Badge>
+        )}
         <span className="ml-auto text-muted-foreground">{when}</span>
       </div>
+
+      {outcome && (
+        <p className="pl-5 font-medium text-foreground">
+          {outcome}
+          {topReason && <span className="font-normal text-muted-foreground"> — mostly {topReason}</span>}
+        </p>
+      )}
+
       <div className="text-muted-foreground pl-5 flex gap-3 flex-wrap">
         <span>attempts: {run.attempts}</span>
         <span>duration: {duration}</span>

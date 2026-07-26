@@ -14,6 +14,7 @@ import type { Json } from "@/integrations/supabase/types";
 import { parseCslbCsv, type CslbCandidate } from "@/lib/cslb";
 import { SFV_DIRECTORY_CITIES } from "@/lib/constants";
 import { Loader2, Upload, Play, CheckCircle2, Eye } from "lucide-react";
+import { HelpTip } from "@/components/admin/HelpTip";
 
 const SETTING_KEY = "ingest_config";
 const UPLOAD_CHUNK = 500;
@@ -215,13 +216,16 @@ export default function IngestPage() {
             {/* ── Queue status ─────────────────────────────────────────── */}
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               {([
-                ["Pending", counts.pending],
-                ["Ingested", counts.ingested],
-                ["Skipped", counts.skipped],
-                ["Failed", counts.failed],
-              ] as const).map(([label, n]) => (
+                ["Pending", counts.pending, "Imported from the CSV and waiting. The engine works through these a batch at a time — they are not in the directory yet."],
+                ["Ingested", counts.ingested, "Turned into a business record. Still unpublished and with outreach paused until you release it below."],
+                ["Skipped", counts.skipped, "Deliberately passed over — already in the directory, or missing a phone or city. Nothing to fix."],
+                ["Failed", counts.failed, "Hit an error while being added. These stay in the queue; the reason is recorded against each row."],
+              ] as const).map(([label, n, help]) => (
                 <div key={label} className="rounded-lg border bg-card p-4">
-                  <p className="text-xs uppercase tracking-wider text-muted-foreground">{label}</p>
+                  <p className="flex items-center gap-1.5 text-xs uppercase tracking-wider text-muted-foreground">
+                    {label}
+                    <HelpTip>{help}</HelpTip>
+                  </p>
                   <p className="mt-1 text-2xl font-bold">{n}</p>
                 </div>
               ))}
@@ -232,6 +236,11 @@ export default function IngestPage() {
               <h2 className="flex items-center gap-2 font-semibold font-sans">
                 <Upload className="h-4 w-4" aria-hidden="true" />
                 Import a CSLB export
+                <HelpTip>
+                  The file is read here in your browser, not uploaded whole — the statewide export is far
+                  too large to send to the server. Only the few hundred rows that survive filtering leave
+                  this page. Re-importing the same file is safe: licences already queued are ignored.
+                </HelpTip>
               </h2>
               <p className="text-xs text-muted-foreground">
                 Download a licence list from the{" "}
@@ -243,8 +252,14 @@ export default function IngestPage() {
                 >
                   CSLB Data Portal
                 </a>{" "}
-                (free, no account) and upload the CSV. Rows are filtered to active licences,
-                the categories we list, and these cities: {cities.join(", ")}.
+                (free, no account) and upload the CSV. Importing only fills the queue — nothing reaches the
+                directory until a run adds it and you publish it.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                A row is kept only if the licence is in good standing and unexpired, its classification is
+                one we list, it has a usable phone number, and its city is one of:{" "}
+                <span className="text-foreground">{cities.join(", ")}</span>. Everything else is discarded,
+                and the count for each reason is reported back to you.
               </p>
 
               <Input
@@ -273,11 +288,25 @@ export default function IngestPage() {
 
             {/* ── Engine controls ──────────────────────────────────────── */}
             <div className="max-w-2xl space-y-5 rounded-lg border bg-card p-6">
-              <h2 className="font-semibold font-sans">Engine</h2>
+              <div>
+                <h2 className="font-semibold font-sans">Engine</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  A run takes the oldest pending rows from the queue and turns them into business records.
+                  Every record is created hidden from the public directory with outreach paused, so a run
+                  never emails anyone and never changes what visitors see. Releasing them is the separate
+                  step below.
+                </p>
+              </div>
 
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-4">
                 <div>
-                  <Label>Enabled</Label>
+                  <Label className="flex items-center gap-1.5">
+                    Enabled
+                    <HelpTip>
+                      Turning this off does not lose anything — the queue keeps its place and picks up
+                      where it left off when you switch it back on.
+                    </HelpTip>
+                  </Label>
                   <p className="mt-1 text-xs text-muted-foreground">
                     When off, scheduled runs do nothing and the queue simply waits.
                   </p>
@@ -290,7 +319,14 @@ export default function IngestPage() {
               </div>
 
               <div>
-                <Label htmlFor="daily-limit">Businesses per run</Label>
+                <Label htmlFor="daily-limit" className="flex items-center gap-1.5">
+                  Businesses per run
+                  <HelpTip>
+                    Deliberately gradual. A directory that gains a few dozen listings a day looks like it
+                    is being maintained; one that gains thousands overnight looks scraped, and makes any
+                    later outreach far more likely to be marked as spam.
+                  </HelpTip>
+                </Label>
                 <Input
                   id="daily-limit"
                   type="number"
@@ -302,7 +338,8 @@ export default function IngestPage() {
                   onBlur={(e) => saveConfig({ daily_limit: Math.min(500, Math.max(1, Number(e.target.value) || 25)) })}
                 />
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Ratchet this up or down any time — it takes effect on the next run, no deploy needed.
+                  How many queued businesses one run will add, between 1 and 500. Saved when you click away,
+                  and applies to the next run — no deploy needed.
                 </p>
               </div>
 
@@ -314,23 +351,29 @@ export default function IngestPage() {
                     <><Play className="mr-2 h-4 w-4" aria-hidden="true" />Run now</>
                   )}
                 </Button>
-                {counts.pending === 0 && (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Nothing pending — import a CSLB export first.
-                  </p>
-                )}
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {counts.pending === 0
+                    ? "Nothing pending — import a CSLB export first."
+                    : `Processes up to ${config.daily_limit ?? 25} of the ${counts.pending} pending now, without waiting for the schedule.`}
+                </p>
               </div>
             </div>
 
             {/* ── Review + publish ─────────────────────────────────────── */}
             <div className="rounded-lg border bg-card p-6">
-              <h2 className="font-semibold font-sans">
+              <h2 className="flex items-center gap-2 font-semibold font-sans">
                 Ingested, awaiting publication{" "}
                 {unpublished.length > 0 && <Badge variant="secondary">{unpublished.length}</Badge>}
+                <HelpTip>
+                  Preview opens the listing exactly as a homeowner would see it — worth a look before
+                  publishing, since the business name comes straight from the licence record and is
+                  sometimes an owner's personal name.
+                </HelpTip>
               </h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                These are live in the database but hidden from the directory, with outreach paused.
-                Publishing makes the listing page public; it does not send any email.
+                These exist in the database but are hidden from the directory and search engines, with
+                outreach paused. Publishing makes the listing page public. It does not send any email —
+                outreach stays paused until you start it separately.
               </p>
 
               {unpublished.length === 0 ? (

@@ -66,6 +66,10 @@ export default function SystemStatusPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold font-sans">System Status</h1>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+              A live check that the pieces the site depends on are reachable: the database, each edge
+              function, and file storage. Check here first if something on the public site is failing.
+            </p>
             {status?.timestamp && (
               <p className="text-xs text-muted-foreground mt-1">
                 Last checked: {new Date(status.timestamp).toLocaleString()}

@@ -84,8 +84,12 @@ export default function MediaLibraryPage() {
     <>
       <PageMeta title="Media Library | Admin" description="Manage media assets." />
       <AdminLayout>
-        <div className="flex items-center justify-between mb-6">
+        <div className="mb-6">
           <h1 className="text-2xl font-bold font-sans">Media Library</h1>
+          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+            Every image uploaded for the site, shared across all blog posts and pages. Deleting one here
+            removes it everywhere it is used, so check where it appears before removing it.
+          </p>
         </div>
 
         <div className="relative mb-6 max-w-sm">

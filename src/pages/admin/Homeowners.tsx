@@ -72,9 +72,16 @@ export default function Homeowners() {
   return (
     <AdminLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-foreground">Homeowners</h1>
-          <Badge variant="secondary">{homeowners?.length ?? 0} total</Badge>
+        <div>
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-bold text-foreground">Homeowners</h1>
+            <Badge variant="secondary">{homeowners?.length ?? 0} total</Badge>
+          </div>
+          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+            One entry per person who has submitted a request, with everything they have ever sent
+            grouped together. Select someone to see all of their leads and reviews in one place —
+            useful for spotting repeat customers and for handling a deletion request.
+          </p>
         </div>
 
         <div className="relative max-w-sm">

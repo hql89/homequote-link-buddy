@@ -59,7 +59,11 @@ export function AccountSettings({ userEmail }: AccountSettingsProps) {
 
   return (
     <div className="max-w-2xl rounded-lg border bg-card p-6 mb-6">
-      <h2 className="font-semibold mb-4 font-sans">Account</h2>
+      <h2 className="font-semibold font-sans">Account</h2>
+      <p className="mb-4 mt-1 text-xs text-muted-foreground">
+        Your own admin sign-in. This is not the address that receives lead notifications — that one is
+        set under Email Notifications below.
+      </p>
       <div className="space-y-4">
         <div>
           <Label className="text-xs text-muted-foreground">Current Email</Label>

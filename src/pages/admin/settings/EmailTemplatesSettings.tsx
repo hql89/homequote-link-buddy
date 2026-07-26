@@ -111,7 +111,10 @@ export function EmailTemplatesSettings({
     <div className="max-w-2xl mt-6 rounded-lg border bg-card p-6">
       <h2 className="text-lg font-semibold mb-1">Email Templates</h2>
       <p className="text-sm text-muted-foreground mb-4">
-        Customize the automated emails sent by the system.
+        The wording of the automated emails. Text in double braces like{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">{"{{full_name}}"}</code> is replaced with
+        real values when the email is sent; a token you misspell is replaced with nothing at all, so
+        send yourself a test after editing. Leaving a template blank restores the built-in default.
       </p>
 
       <div className="space-y-4">
