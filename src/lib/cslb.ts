@@ -129,6 +129,10 @@ export interface CslbParseResult {
   /** Counts by reason, so the UI can explain what was dropped and why. */
   rejected: Record<string, number>;
   totalRows: number;
+  /** First few unique status values found — for diagnosing status filter mismatches. */
+  statusSample: string[];
+  /** Column headers detected from the file — for diagnosing mapping issues. */
+  detectedHeaders: string[];
 }
 
 function bump(counts: Record<string, number>, reason: string) {
@@ -156,12 +160,14 @@ function toE164(raw: string): string | null {
 export function parseCslbCsv(text: string, allowedCities: string[]): CslbParseResult {
   const rows = parseCsv(text);
   const rejected: Record<string, number> = {};
-  if (rows.length < 2) return { candidates: [], rejected, totalRows: 0 };
+  const detectedHeaders = rows[0] ?? [];
+  if (rows.length < 2) return { candidates: [], rejected, totalRows: 0, statusSample: [], detectedHeaders };
 
   const idx = mapHeaders(rows[0]);
   const cityLookup = new Map(allowedCities.map((c) => [c.trim().toLowerCase(), c]));
   const seen = new Set<string>();
   const candidates: CslbCandidate[] = [];
+  const statusValues = new Set<string>();
 
   const get = (row: string[], field: string): string =>
     idx[field] === undefined ? "" : (row[idx[field]] ?? "").trim();
@@ -170,7 +176,9 @@ export function parseCslbCsv(text: string, allowedCities: string[]): CslbParseRe
     const city = cityLookup.get(get(row, "city").toLowerCase());
     if (!city) { bump(rejected, "outside coverage area"); continue; }
 
-    if (!isActiveLicense(get(row, "status"))) { bump(rejected, "licence not active"); continue; }
+    const statusRaw = get(row, "status");
+    if (statusValues.size < 20) statusValues.add(statusRaw || "(empty)");
+    if (!isActiveLicense(statusRaw)) { bump(rejected, "licence not active"); continue; }
 
     const classification = get(row, "classification");
     const vertical = verticalFromClassifications(classification);
@@ -205,5 +213,5 @@ export function parseCslbCsv(text: string, allowedCities: string[]): CslbParseRe
     });
   }
 
-  return { candidates, rejected, totalRows: rows.length - 1 };
+  return { candidates, rejected, totalRows: rows.length - 1, statusSample: [...statusValues], detectedHeaders };
 }
