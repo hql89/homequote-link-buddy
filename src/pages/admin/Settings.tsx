@@ -8,6 +8,7 @@ import { DEFAULT_EMAIL_TEMPLATES } from "@/lib/emailTemplates";
 import { AccountSettings } from "./settings/AccountSettings";
 import { AnalyticsSettings } from "./settings/AnalyticsSettings";
 import { BackgroundJobsSettings } from "./settings/BackgroundJobsSettings";
+import { PerplexitySettings } from "./settings/PerplexitySettings";
 import { SmtpConfig, SMTPSettings } from "./settings/SMTPSettings";
 import { EmailTemplatesSettings } from "./settings/EmailTemplatesSettings";
 import { ResponseLog, LogEntry } from "./settings/ResponseLog";
@@ -77,6 +78,8 @@ export default function SettingsPage() {
         <AnalyticsSettings />
 
         <BackgroundJobsSettings />
+
+        <PerplexitySettings />
 
         <SMTPSettings
           config={config}
