@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, LogOut, Sparkles, MessageSquare } from "lucide-react";
+import { Loader2, LogOut, MessageSquare } from "lucide-react";
 import { InteractiveRevenueCalculator } from "@/components/ProviderDashboard/InteractiveRevenueCalculator";
 
 export default function ProviderDashboard() {
@@ -28,7 +28,6 @@ export default function ProviderDashboard() {
   const [reviews, setReviews] = useState<ReviewRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [aiLoading, setAiLoading] = useState(false);
   const [respondingTo, setRespondingTo] = useState<string | null>(null);
   const [responseText, setResponseText] = useState("");
   const [form, setForm] = useState({
@@ -93,34 +92,6 @@ export default function ProviderDashboard() {
     } else {
       toast({ title: "Profile updated!" });
     }
-  };
-
-  const handleAiLookup = async () => {
-    if (!buyer) return;
-    setAiLoading(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("ai-company-lookup", {
-        body: {
-          company_name: buyer.business_name,
-          city: (buyer.service_areas || [])[0] || "Unknown",
-        },
-      });
-      if (error) throw error;
-      if (data?.result) {
-        setForm(prev => ({
-          ...prev,
-          company_description: data.result.description || prev.company_description,
-          years_in_business: data.result.years_in_business?.toString() || prev.years_in_business,
-          license_number: data.result.license_number || prev.license_number,
-          website: data.result.website || prev.website,
-        }));
-        toast({ title: "AI auto-fill complete", description: "Review the filled fields and save." });
-      }
-    } catch (e: unknown) {
-      const err = e instanceof Error ? e.message : String(e);
-      toast({ title: "AI lookup failed", description: err, variant: "destructive" });
-    }
-    setAiLoading(false);
   };
 
   const handleRespond = async (reviewId: string) => {
@@ -194,13 +165,7 @@ export default function ProviderDashboard() {
 
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Company Profile</CardTitle>
-              <Button variant="outline" size="sm" onClick={handleAiLookup} disabled={aiLoading}>
-                {aiLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-                AI Auto-Fill
-              </Button>
-            </div>
+            <CardTitle>Company Profile</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">

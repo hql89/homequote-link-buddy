@@ -24,9 +24,6 @@ verify_jwt = false
 [functions.submit-feedback]
 verify_jwt = false
 
-[functions.ai-company-lookup]
-verify_jwt = false
-
 [functions.track-event]
 verify_jwt = false
 
