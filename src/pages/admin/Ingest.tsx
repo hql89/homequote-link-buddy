@@ -9,7 +9,13 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { directoryDb, setBusinessPublished } from "@/integrations/supabase/directory";
+import { directoryDb, setBusinessPublished, setBusinessesPublished } from "@/integrations/supabase/directory";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { Json } from "@/integrations/supabase/types";
 import { parseCslbCsv, type CslbCandidate } from "@/lib/cslb";
 import { SFV_DIRECTORY_CITIES } from "@/lib/constants";
@@ -53,6 +59,10 @@ export default function IngestPage() {
   const [running, setRunning] = useState(false);
   const [publishing, setPublishing] = useState<string | null>(null);
   const [lastImport, setLastImport] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkPublishing, setBulkPublishing] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [cityFilter, setCityFilter] = useState<string>("all");
 
   const cities = config.cities?.length ? config.cities : [...SFV_DIRECTORY_CITIES];
 
@@ -65,8 +75,10 @@ export default function IngestPage() {
         .from("businesses")
         .select("id, business_name, city, city_slug, slug, phone, license_number")
         .eq("is_published", false)
-        .order("created_at", { ascending: false })
-        .limit(200),
+        .order("business_name", { ascending: true })
+        // A full CSLB import stages several hundred at once; a 200-row cap
+        // silently hid the rest, which is worse than showing a long table.
+        .limit(2000),
     ]);
 
     if (cfgRes.data?.setting_value) {
@@ -188,9 +200,64 @@ export default function IngestPage() {
       toast({ title: "Publish failed", description: error.message, variant: "destructive" });
     } else {
       setUnpublished((prev) => prev.filter((b) => b.id !== id));
+      setSelected((prev) => { const next = new Set(prev); next.delete(id); return next; });
       toast({ title: "Listing published" });
     }
     setPublishing(null);
+  }
+
+  async function publishSelected() {
+    const ids = [...selected];
+    setBulkPublishing(true);
+    setConfirmOpen(false);
+
+    const { updated, error } = await setBusinessesPublished(ids, true);
+
+    // A chunk can fail partway through, so drop exactly what was written
+    // rather than assuming the whole selection succeeded.
+    const done = new Set(ids.slice(0, updated));
+    setUnpublished((prev) => prev.filter((b) => !done.has(b.id)));
+    setSelected((prev) => new Set([...prev].filter((id) => !done.has(id))));
+
+    if (error) {
+      toast({
+        title: `Published ${updated} of ${ids.length}, then stopped`,
+        description: error.message,
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: `Published ${updated} listing${updated === 1 ? "" : "s"}`,
+        description: "They are live in the directory. No outreach was sent.",
+      });
+    }
+    setBulkPublishing(false);
+  }
+
+  const visible = cityFilter === "all" ? unpublished : unpublished.filter((b) => b.city === cityFilter);
+  const visibleIds = visible.map((b) => b.id);
+  const selectedVisible = visibleIds.filter((id) => selected.has(id)).length;
+  const allVisibleSelected = visibleIds.length > 0 && selectedVisible === visibleIds.length;
+  const reviewCities = [...new Set(unpublished.map((b) => b.city))].sort();
+
+  function toggleAllVisible(checked: boolean) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const id of visibleIds) {
+        if (checked) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  }
+
+  function toggleOne(id: string, checked: boolean) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
   }
 
   return (
@@ -381,10 +448,59 @@ export default function IngestPage() {
                   Nothing awaiting publication.
                 </p>
               ) : (
-                <div className="mt-4 overflow-x-auto">
+                <>
+                  {/* ── Bulk actions ───────────────────────────────────── */}
+                  <div className="mt-4 flex flex-wrap items-center gap-3 rounded-md border bg-muted/30 p-3">
+                    <Select value={cityFilter} onValueChange={(v) => setCityFilter(v)}>
+                      <SelectTrigger className="w-[190px]" aria-label="Filter by city">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All cities ({unpublished.length})</SelectItem>
+                        {reviewCities.map((c) => (
+                          <SelectItem key={c} value={c}>
+                            {c} ({unpublished.filter((b) => b.city === c).length})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    <Button
+                      size="sm"
+                      disabled={selected.size === 0 || bulkPublishing}
+                      onClick={() => setConfirmOpen(true)}
+                    >
+                      {bulkPublishing ? (
+                        <><Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />Publishing…</>
+                      ) : (
+                        `Publish ${selected.size || ""} selected`.replace("  ", " ")
+                      )}
+                    </Button>
+
+                    {selected.size > 0 && (
+                      <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
+                        Clear selection
+                      </Button>
+                    )}
+
+                    <p className="ml-auto text-xs text-muted-foreground">
+                      Showing {visible.length}
+                      {cityFilter !== "all" && ` of ${unpublished.length}`}
+                      {selected.size > 0 && ` · ${selected.size} selected`}
+                    </p>
+                  </div>
+
+                  <div className="mt-4 overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-[40px]">
+                          <Checkbox
+                            checked={allVisibleSelected}
+                            onCheckedChange={(v) => toggleAllVisible(v === true)}
+                            aria-label={allVisibleSelected ? "Deselect all shown" : "Select all shown"}
+                          />
+                        </TableHead>
                         <TableHead>Business</TableHead>
                         <TableHead>City</TableHead>
                         <TableHead>Phone</TableHead>
@@ -393,8 +509,15 @@ export default function IngestPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {unpublished.map((b) => (
-                        <TableRow key={b.id}>
+                      {visible.map((b) => (
+                        <TableRow key={b.id} data-state={selected.has(b.id) ? "selected" : undefined}>
+                          <TableCell>
+                            <Checkbox
+                              checked={selected.has(b.id)}
+                              onCheckedChange={(v) => toggleOne(b.id, v === true)}
+                              aria-label={`Select ${b.business_name}`}
+                            />
+                          </TableCell>
                           <TableCell className="font-medium">{b.business_name}</TableCell>
                           <TableCell>{b.city}</TableCell>
                           <TableCell>{b.phone}</TableCell>
@@ -424,12 +547,36 @@ export default function IngestPage() {
                       ))}
                     </TableBody>
                   </Table>
-                </div>
+                  </div>
+                </>
               )}
             </div>
           </>
         )}
       </div>
+
+      {/* Publishing is the one action here that changes what the public sees,
+          and in bulk it is tedious to undo one row at a time. Confirm first. */}
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Publish {selected.size} listing{selected.size === 1 ? "" : "s"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              They become visible in the directory and to search engines immediately.
+              No email is sent — outreach stays paused until you start it separately.
+              You can unpublish a listing again from its row.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={publishSelected}>
+              Publish {selected.size}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AdminLayout>
   );
 }

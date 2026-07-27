@@ -128,6 +128,7 @@ export const directoryDb = supabase as unknown as SupabaseClient<DirectoryDataba
 interface WritableTable {
   update: (values: Record<string, unknown>) => {
     eq: (column: string, value: string) => PromiseLike<{ error: { message: string } | null }>;
+    in: (column: string, values: string[]) => PromiseLike<{ error: { message: string } | null }>;
   };
 }
 
@@ -142,6 +143,35 @@ export async function setBusinessPublished(
   const table = directoryDb.from("businesses") as unknown as WritableTable;
   const { error } = await table.update({ is_published: published }).eq("id", id);
   return error;
+}
+
+/** Rows per statement. Keeps the generated URL clear of PostgREST's length ceiling. */
+const PUBLISH_CHUNK = 100;
+
+/**
+ * Bulk form of {@link setBusinessPublished}. Seeding the directory from a CSLB
+ * export produces hundreds of listings at once, and publishing those one row at
+ * a time is not a real workflow.
+ *
+ * Chunked because the id list travels in the query string. Returns the number
+ * actually updated alongside the first error, so a partial failure reports how
+ * far it got rather than leaving the caller guessing.
+ */
+export async function setBusinessesPublished(
+  ids: string[],
+  published: boolean,
+): Promise<{ updated: number; error: { message: string } | null }> {
+  const table = directoryDb.from("businesses") as unknown as WritableTable;
+  let updated = 0;
+
+  for (let i = 0; i < ids.length; i += PUBLISH_CHUNK) {
+    const chunk = ids.slice(i, i + PUBLISH_CHUNK);
+    const { error } = await table.update({ is_published: published }).in("id", chunk);
+    if (error) return { updated, error };
+    updated += chunk.length;
+  }
+
+  return { updated, error: null };
 }
 
 /** Claim-page projection returned by the `claim-listing` edge function. */
