@@ -16,6 +16,7 @@
  */
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 import { corsHeaders, json, logRun, slugify, toE164, isPrivilegedCaller } from "../_shared/directory.ts";
+import { displayBusinessName } from "../_shared/cslbNames.ts";
 
 const JOB_NAME = "process-ingest-queue";
 
@@ -36,6 +37,9 @@ interface QueueRow {
   city: string | null;
   phone: string | null;
   vertical_slug: string | null;
+  /** The original CSLB columns. Carries BusinessType and FullBusinessName,
+   *  which together decide the name a homeowner actually sees. */
+  raw: Record<string, unknown> | null;
 }
 
 /** Marks a queue row terminal. Failures here are logged, never thrown — one bad row must not stall the batch. */
@@ -83,7 +87,7 @@ Deno.serve(async (req) => {
 
     const { data: queue, error: queueError } = await supabase
       .from("ingest_queue")
-      .select("id, license_number, business_name, city, phone, vertical_slug")
+      .select("id, license_number, business_name, city, phone, vertical_slug, raw")
       .eq("status", "pending")
       .order("created_at", { ascending: true })
       .limit(limit);
@@ -117,8 +121,14 @@ Deno.serve(async (req) => {
           }
         }
 
+        // CSLB stores names upper case, and a licence held by an individual
+        // under their own name is stored surname-first ("GREKOV GEORGIY").
+        // Both are wrong on a public listing, so normalise before anything
+        // derived from the name — including the slug — is computed.
+        const displayName = displayBusinessName(row.business_name, row.raw) || row.business_name;
+
         const citySlug = slugify(city);
-        const baseSlug = slugify(row.business_name) || `business-${row.license_number ?? row.id.slice(0, 8)}`;
+        const baseSlug = slugify(displayName) || `business-${row.license_number ?? row.id.slice(0, 8)}`;
 
         // (city_slug, slug) is uniquely indexed. Two different licensed
         // businesses can share a trading name in the same city, so fall back to
@@ -134,7 +144,7 @@ Deno.serve(async (req) => {
         const { data: created, error: insertError } = await supabase
           .from("businesses")
           .insert({
-            business_name: row.business_name,
+            business_name: displayName,
             slug,
             city,
             city_slug: citySlug,
