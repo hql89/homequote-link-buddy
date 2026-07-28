@@ -1,14 +1,26 @@
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, Clock, CheckCircle2, AlertTriangle, XCircle, RefreshCw, Database } from "lucide-react";
+import { Loader2, Clock, CheckCircle2, AlertTriangle, XCircle, RefreshCw, Database, CalendarOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { HelpTip } from "@/components/admin/HelpTip";
 import { summariseRun, topRejectionReason } from "@/lib/jobRunSummary";
+import { classifyCronError, cronErrorMessage } from "@/lib/cronAvailability";
 
 type CronJob = {
   jobid: number;
@@ -38,8 +50,22 @@ type DatabaseDiagnostics = {
   top_queries: { calls: number; total_ms: number; mean_ms: number; query: string | null }[];
 };
 
-// Jobs the admin is allowed to manage from the UI
-const MANAGED_JOBS: { name: string; label: string; description: string; schedule: string }[] = [
+type ManagedJob = {
+  name: string;
+  label: string;
+  description: string;
+  schedule: string;
+  /**
+   * Set when switching the job on starts something that reaches real people and
+   * can't be recalled. Turning such a job *off* is never gated — stopping
+   * outbound mail should always be one click.
+   */
+  confirm?: { title: string; body: string; action: string };
+};
+
+// Jobs the admin is allowed to manage from the UI. Every name here must be one
+// admin_toggle_cron_job recognises, or enabling it raises 'Unknown job'.
+const MANAGED_JOBS: ManagedJob[] = [
   {
     name: "publish-scheduled-posts",
     label: "Publish scheduled blog posts",
@@ -53,6 +79,19 @@ const MANAGED_JOBS: { name: string; label: string; description: string; schedule
     schedule: "Hourly",
   },
   {
+    name: "send-outreach-drip-daily",
+    label: "Send outreach emails",
+    description:
+      "Emails businesses in the directory that haven't been contacted yet, inviting them to claim their listing.",
+    schedule: "Daily at 3:00 PM UTC",
+    confirm: {
+      title: "Start emailing businesses daily?",
+      body:
+        "This sends cold outreach to real businesses in the directory every day, automatically, with no per-send review. Recipients are people who never asked to hear from you, and a sent email can't be recalled. Only turn this on when the listings and the outreach copy are both ready to be seen.",
+      action: "Start sending",
+    },
+  },
+  {
     name: "prune-internal-job-logs-daily",
     label: "Prune internal job logs",
     description: "Keeps cron, request, and job-run logs from growing indefinitely.",
@@ -62,8 +101,9 @@ const MANAGED_JOBS: { name: string; label: string; description: string; schedule
 
 export function BackgroundJobsSettings() {
   const qc = useQueryClient();
+  const [confirming, setConfirming] = useState<ManagedJob | null>(null);
 
-  const { data: jobs, isLoading } = useQuery({
+  const { data: jobs, isLoading, isError, error } = useQuery({
     queryKey: ["admin-cron-jobs"],
     queryFn: async () => {
       const { data, error } = await supabase.rpc("admin_list_cron_jobs");
@@ -71,7 +111,15 @@ export function BackgroundJobsSettings() {
       return (data ?? []) as CronJob[];
     },
     staleTime: 30_000,
+    // A missing extension won't fix itself on a second attempt, and each retry
+    // holds the panel in its loading state that much longer.
+    retry: false,
   });
+
+  // Without a successful read there is no schedule state to report. Rendering a
+  // switch as "Off" here would assert something we don't know — pg_cron may not
+  // even be installed, in which case nothing is scheduled or schedulable.
+  const failure = isError ? classifyCronError(error) : null;
 
   const { data: runs, isLoading: runsLoading, refetch: refetchRuns, isFetching: runsFetching } = useQuery({
     queryKey: ["admin-job-run-logs"],
@@ -107,11 +155,20 @@ export function BackgroundJobsSettings() {
       qc.invalidateQueries({ queryKey: ["admin-database-diagnostics"] });
       toast({
         title: vars.enable ? "Job enabled" : "Job disabled",
-        description: `${vars.jobname} is now ${vars.enable ? "running on schedule" : "stopped"}.`,
+        // "scheduled", not "running": all this call did was write a cron entry.
+        // Two of these jobs post to edge functions that aren't deployed, so
+        // claiming they're running would be asserting more than we checked.
+        description: `${vars.jobname} is now ${vars.enable ? "scheduled" : "stopped"}.`,
       });
     },
     onError: (err: Error) => {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      // The switch is disabled while the schedule is unreadable, so this mostly
+      // catches pg_cron disappearing between page load and click.
+      const description =
+        classifyCronError(err) === "unavailable"
+          ? "The pg_cron extension isn't installed, so there is no scheduler to write to."
+          : cronErrorMessage(err);
+      toast({ title: "Couldn't change the job", description, variant: "destructive" });
     },
   });
 
@@ -133,6 +190,8 @@ export function BackgroundJobsSettings() {
         </div>
       ) : (
         <div className="space-y-4">
+          {failure && <CronFailureNotice failure={failure} error={error} />}
+
           {MANAGED_JOBS.map((meta) => {
             const job = jobs?.find((j) => j.jobname === meta.name);
             const isOn = !!job?.active;
@@ -147,7 +206,11 @@ export function BackgroundJobsSettings() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <Label className="font-medium">{meta.label}</Label>
-                    {isOn ? (
+                    {failure ? (
+                      <Badge variant="outline" className="text-xs font-normal text-muted-foreground">
+                        Status unknown
+                      </Badge>
+                    ) : isOn ? (
                       <Badge variant="default" className="text-xs">On</Badge>
                     ) : (
                       <Badge variant="secondary" className="text-xs">Off</Badge>
@@ -161,16 +224,49 @@ export function BackgroundJobsSettings() {
                 </div>
                 <Switch
                   checked={isOn}
-                  disabled={isPending}
-                  onCheckedChange={(enable) =>
-                    toggleMutation.mutate({ jobname: meta.name, enable })
-                  }
+                  disabled={isPending || !!failure}
+                  aria-label={`${isOn ? "Disable" : "Enable"} ${meta.label}`}
+                  onCheckedChange={(enable) => {
+                    // Confirm only on the way on — see ManagedJob.confirm.
+                    if (enable && meta.confirm) {
+                      setConfirming(meta);
+                      return;
+                    }
+                    toggleMutation.mutate({ jobname: meta.name, enable });
+                  }}
                 />
               </div>
             );
           })}
         </div>
       )}
+
+      <AlertDialog
+        open={!!confirming}
+        onOpenChange={(open) => {
+          if (!open) setConfirming(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirming?.confirm?.title}</AlertDialogTitle>
+            <AlertDialogDescription>{confirming?.confirm?.body}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (confirming) {
+                  toggleMutation.mutate({ jobname: confirming.name, enable: true });
+                }
+                setConfirming(null);
+              }}
+            >
+              {confirming?.confirm?.action}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div className="pt-4 border-t">
         <div className="flex items-center justify-between mb-3">
@@ -260,6 +356,53 @@ export function BackgroundJobsSettings() {
             </div>
           </ScrollArea>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Shown whenever the schedule couldn't be read. The switches below stay visible
+ * but disabled, so the panel still documents which jobs exist without claiming
+ * to know whether any of them is running.
+ */
+function CronFailureNotice({ failure, error }: { failure: "unavailable" | "forbidden" | "unknown"; error: unknown }) {
+  if (failure === "unavailable") {
+    return (
+      <div className="flex items-start gap-3 rounded-md border border-yellow-600/30 bg-yellow-500/5 p-4">
+        <CalendarOff className="h-4 w-4 mt-0.5 shrink-0 text-yellow-600" aria-hidden="true" />
+        <div className="text-xs">
+          <p className="font-medium text-foreground">Scheduling is unavailable on this database</p>
+          <p className="mt-1 text-muted-foreground">
+            The pg_cron extension isn't installed, so nothing below is scheduled and none of it can be
+            switched on yet. The jobs are listed so you can see what exists — their real state is
+            unknown, not off. Installing pg_cron is a database change, not something this page can do.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (failure === "forbidden") {
+    return (
+      <div className="flex items-start gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-4">
+        <XCircle className="h-4 w-4 mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
+        <div className="text-xs">
+          <p className="font-medium text-foreground">You don't have permission to manage jobs</p>
+          <p className="mt-1 text-muted-foreground">
+            Scheduling is restricted to admin accounts. Everything else on this page is unaffected.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-start gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-4">
+      <XCircle className="h-4 w-4 mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
+      <div className="text-xs">
+        <p className="font-medium text-foreground">Couldn't read the job schedule</p>
+        <p className="mt-1 font-mono break-all text-muted-foreground">{cronErrorMessage(error)}</p>
       </div>
     </div>
   );

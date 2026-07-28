@@ -8,7 +8,6 @@ import { DEFAULT_EMAIL_TEMPLATES } from "@/lib/emailTemplates";
 import { AccountSettings } from "./settings/AccountSettings";
 import { AnalyticsSettings } from "./settings/AnalyticsSettings";
 import { BackgroundJobsSettings } from "./settings/BackgroundJobsSettings";
-import { PerplexitySettings } from "./settings/PerplexitySettings";
 import { SmtpConfig, SMTPSettings } from "./settings/SMTPSettings";
 import { EmailTemplatesSettings } from "./settings/EmailTemplatesSettings";
 import { ResponseLog, LogEntry } from "./settings/ResponseLog";
@@ -79,7 +78,13 @@ export default function SettingsPage() {
 
         <BackgroundJobsSettings />
 
-        <PerplexitySettings />
+        {/*
+          PerplexitySettings is deliberately not rendered. The panel writes an
+          API key that nothing reads: Phase 2 enrichment in implementation_plan.md
+          ("Discovery source: Perplexity Sonar") was never built, so a live
+          credential would sit in admin_settings unused. The component and its
+          test are kept intact — restoring this line is the whole re-enable.
+        */}
 
         <SMTPSettings
           config={config}

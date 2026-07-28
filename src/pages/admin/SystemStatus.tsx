@@ -202,7 +202,9 @@ export default function SystemStatusPage() {
               <CardContent>
                 {status.cronJobs.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-4">
-                    Cron job status is managed at the infrastructure level. The publish-scheduled function runs every 5 minutes.
+                    No scheduled tasks are reported. This card can't currently distinguish "nothing is
+                    scheduled" from "the schedule couldn't be read" — manage jobs from Settings →
+                    Background Jobs, which reports the difference.
                   </p>
                 ) : (
                   <div className="space-y-2">

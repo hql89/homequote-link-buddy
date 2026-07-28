@@ -98,3 +98,52 @@ signal. Only a real 301 does.
   (which reads `auth.uid()`) will raise `Forbidden` if called from a migration. Inline the
   work instead.
 - PostgREST bulk insert requires every object in the array to have identical keys.
+
+---
+
+## Deployment state is invisible to git — and outdates audits within hours
+**Context**: Reviewing the admin settings menu on 2026-07-27. An audit written the previous
+day (`docs/audit_admin_settings_2026-07-26.md`) said 19 of 27 edge functions were undeployed
+and that analytics had been dead since March.
+
+**Learning**: Ten functions were deployed on 2026-07-26 between 22:58 and 23:02 — after that
+audit was written, with only one intervening commit. Deploys leave **no trace in the repo**,
+so any conclusion of the form "this panel controls nothing" has a shelf life measured in
+hours. Re-checking flipped the verdict on three of the seven settings panels: Analytics
+Exclusions went from inert to fully live, and SMTP went from one working email type to five.
+
+**Pattern**: `supabase functions list --project-ref lrqdbpphallqehpdqalr` before reasoning
+about what any admin control actually does. It returns JSON including `created_at`, needs
+**no DB password** (unlike `migration list` or `db query`), and is far safer than probing
+endpoints with HTTP — a probe of `send-outreach-drip` would send real email. Diff the slugs
+against `ls supabase/functions/` to get the undeployed set.
+
+---
+
+## Settings panels that write keys nothing reads
+**Context**: The Perplexity panel stored an API key in `admin_settings.perplexity_config`.
+
+**Learning**: The only references anywhere were the panel that writes the key and the page
+that renders the panel. Phase 2 enrichment in `implementation_plan.md` was never built, so a
+live credential sat in the database with no consumer. The inverse also exists:
+`outreach_templates` is read by the deployed `send-outreach-drip` via
+`_shared/directory.ts`, but has no admin panel at all — that copy is locked to code defaults.
+
+**Pattern**: Trace every `setting_key` to a reader before building or keeping a panel —
+`grep -rn "<setting_key>" src/ supabase/`. A key with writers and no readers is a liability,
+not a feature; a key with readers and no writers is a control you think you have and don't.
+
+---
+
+## `system-status` calls an RPC that does not exist  *(open)*
+**Context**: Verifying the Scheduled Tasks card on the System Status page.
+
+**Learning**: `supabase/functions/system-status/index.ts` calls `adminClient.rpc("get_cron_jobs")`.
+That function appears in **no migration**. The call is wrapped in a try/catch that sets
+`cronJobs = []`, so the card is structurally guaranteed to render its empty state forever —
+it has never once displayed a job.
+
+**Pattern**: A `catch` that substitutes an empty collection turns a wiring bug into a
+plausible-looking empty state. When a panel is *always* empty, check whether the thing
+feeding it exists before assuming there's no data. Fix is to repoint it at
+`admin_list_cron_jobs` — needs an edge-function redeploy, so it's still open.

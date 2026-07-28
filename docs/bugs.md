@@ -107,3 +107,57 @@ anything — the core "you're stealing our leads" risk.
 **Fix**: `submit-directory-lead` returns 403 when `is_claimed` is false (server-side, since
 a client check isn't a boundary); the form doesn't render on unclaimed listings.
 **Prevention**: Verified in production with a direct API call that bypassed the UI.
+
+---
+
+## Background Jobs reported unknown state as "Off" — 2026-07-27
+**Symptom**: Settings → Background Jobs showed three jobs each with a confident "Off" badge
+and an operable switch. Flipping one produced a raw Postgres error.
+**Root Cause**: `admin_list_cron_jobs` selects from `cron.job` with no guard for the
+extension. With `pg_cron` absent the RPC throws `42P01`, but the panel destructured only
+`isLoading` from `useQuery` — never `isError`. On failure `jobs` was `undefined`, so
+`!!job?.active` evaluated to `false` for every job and rendered as "Off". The panel was
+asserting a state nobody had read.
+**Fix**: Added `src/lib/cronAvailability.ts` to classify the failure (`42P01` → extension
+missing, `P0001` + "Forbidden" → permissions, else unknown). The panel now renders an
+explicit notice per case, badges read "Status unknown", and every switch is disabled.
+**Prevention**: `tests/unit/cronAvailability.test.ts` covers the classifier including the
+message-only fallback; `tests/unit/BackgroundJobsSettings.test.tsx` asserts no "Off" badge
+renders on a `42P01` and that all switches are disabled.
+
+---
+
+## Enabling a job reported it "running" when it could only 404 — 2026-07-27
+**Symptom**: Toast read "<job> is now running on schedule" after enabling any background job.
+**Root Cause**: `admin_toggle_cron_job` writes a `cron.job` row and nothing more. Two of the
+four managed jobs post to `publish-scheduled` and `send-nurture-emails`, neither of which is
+deployed — so "running on schedule" meant an HTTP POST to a 404 every 15 minutes.
+**Fix**: Toast now says "is now scheduled" — true for all four jobs and claims nothing about
+liveness that wasn't checked.
+**Prevention**: Deployment state can't be seen from the browser, so this is a copy
+discipline rule rather than a testable one: describe what the call did, not what you hope
+it started.
+
+---
+
+## Perplexity panel stored a credential nothing read — 2026-07-27
+**Symptom**: None visible — the panel looked and behaved correctly.
+**Root Cause**: Phase 2 enrichment was never built. `admin_settings.perplexity_config` had
+exactly two references: the panel writing it and the page rendering the panel.
+**Fix**: Removed the render from `Settings.tsx`. The component and its test are kept intact
+so Phase 2 restores one import and one JSX line.
+**Prevention**: Trace every `setting_key` to a reader before shipping a panel. **Note the
+stored key itself survives this fix** and needs deleting in the Supabase dashboard.
+
+---
+
+## System Status claimed a publish schedule that never existed — 2026-07-27
+**Symptom**: Scheduled Tasks card read "The publish-scheduled function runs every 5 minutes."
+**Root Cause**: Wrong three ways — `publish-scheduled` isn't deployed, `pg_cron` isn't
+installed so nothing is scheduled, and the RPC's schedule for that job is `*/15`, not 5
+minutes. The copy was a hardcoded assumption in the card's empty state.
+**Fix**: Empty state now says no scheduled tasks are reported and admits it can't tell
+"nothing scheduled" from "couldn't read", pointing at Settings → Background Jobs.
+**Prevention**: Empty-state copy must not assert facts about systems the component never
+queried. The underlying cause — `system-status` calling the nonexistent `get_cron_jobs` RPC
+— is documented in `docs/knowledge.md` and still open.
