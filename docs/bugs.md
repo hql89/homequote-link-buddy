@@ -160,4 +160,22 @@ minutes. The copy was a hardcoded assumption in the card's empty state.
 "nothing scheduled" from "couldn't read", pointing at Settings → Background Jobs.
 **Prevention**: Empty-state copy must not assert facts about systems the component never
 queried. The underlying cause — `system-status` calling the nonexistent `get_cron_jobs` RPC
-— is documented in `docs/knowledge.md` and still open.
+— is now fixed in code (see next entry) but **not yet deployed**, so production still shows
+the old always-empty behavior until it ships.
+
+---
+
+## `system-status` edge function called a nonexistent RPC and pinged a stale function list — 2026-07-27
+**Symptom**: The Scheduled Tasks card on System Status has never once shown a job, even when
+`admin_list_cron_jobs` would have real rows to return. Separately, the Backend Functions card
+checked only 10 of 26 real functions and included several that were never deployed.
+**Root Cause**: `adminClient.rpc("get_cron_jobs")` calls an RPC that exists in no migration —
+caught and silently replaced with `[]`. `knownFunctions` was a hand-written list frozen at an
+earlier point in the project and never updated as functions were added.
+**Fix**: Repointed to `admin_list_cron_jobs`, called via `userClient` rather than
+`adminClient` — that function's `is_admin()` gate reads `auth.uid()`, which only resolves for
+a client carrying the caller's own JWT. `knownFunctions` expanded to all 26 entries in
+`supabase/functions/` (minus `_shared`).
+**Prevention**: `deno check` passes on the edited file. **Not deployed** — per this project's
+"Deployment → `/deploy` only, never push ad-hoc" rule, the fix is committed to the repo but
+inert in production until deployed deliberately.

@@ -45,27 +45,60 @@ Deno.serve(async (req) => {
     }
 
     // 1. Cron jobs status
+    //
+    // admin_list_cron_jobs() is SECURITY DEFINER gated on is_admin(), which
+    // reads auth.uid() — that only resolves for a call carrying the caller's
+    // own JWT, not the service-role client used everywhere else in this
+    // function. Reuse userClient (built from the incoming Authorization
+    // header above) so the check sees the same admin already verified.
+    //
+    // This can still legitimately return nothing: pg_cron is not installed on
+    // this project, so the call throws 42P01 and is caught below like any
+    // other failure. Settings -> Background Jobs is where "no jobs" is told
+    // apart from "couldn't read" (see cronAvailability.ts) — this endpoint
+    // only reports what it could confirm.
     let cronJobs: Record<string, unknown>[] = [];
     try {
-      const { data } = await adminClient.rpc("get_cron_jobs");
+      const { data, error } = await userClient.rpc("admin_list_cron_jobs");
+      if (error) throw error;
       cronJobs = data ?? [];
     } catch {
-      // pg_cron might not expose via rpc, try direct query
       cronJobs = [];
     }
 
-    // 2. Edge functions list — derive from known functions
+    // 2. Edge functions list — mirrors supabase/functions/* (minus _shared).
+    // Deployed functions run in isolation and can't enumerate their siblings
+    // at runtime, so this has to be maintained by hand alongside that
+    // directory. Deliberately includes functions known not to be deployed —
+    // that's what turns them "error"/"unreachable" below, which is itself
+    // useful information on this page.
     const knownFunctions = [
       "ai-image",
       "ai-writer",
+      "analyze-lead",
+      "check-blocklist",
+      "claim-listing",
+      "import-ingest-queue",
+      "ingest-business",
+      "migrate-helper",
       "notify-admin-email",
+      "process-ingest-queue",
       "publish-scheduled",
+      "purge-analytics",
+      "rate-limit-lead",
       "receive-article",
       "rss-feed",
       "send-buyer-notification",
+      "send-lead-confirmation",
+      "send-nurture-emails",
+      "send-outreach-drip",
       "sitemap",
+      "submit-directory-lead",
+      "submit-feedback",
       "system-status",
+      "track-event",
       "track-view",
+      "twilio-missed-call",
     ];
 
     // Ping each function to check health

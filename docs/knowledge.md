@@ -135,15 +135,35 @@ not a feature; a key with readers and no writers is a control you think you have
 
 ---
 
-## `system-status` calls an RPC that does not exist  *(open)*
+## `system-status` called an RPC that does not exist  *(fixed in code, redeploy pending)*
 **Context**: Verifying the Scheduled Tasks card on the System Status page.
 
-**Learning**: `supabase/functions/system-status/index.ts` calls `adminClient.rpc("get_cron_jobs")`.
-That function appears in **no migration**. The call is wrapped in a try/catch that sets
-`cronJobs = []`, so the card is structurally guaranteed to render its empty state forever —
-it has never once displayed a job.
+**Learning**: `supabase/functions/system-status/index.ts` called `adminClient.rpc("get_cron_jobs")`.
+That function appears in **no migration**. The call was wrapped in a try/catch that set
+`cronJobs = []`, so the card was structurally guaranteed to render its empty state forever —
+it had never once displayed a job. Repointing it at `admin_list_cron_jobs` wasn't a plain
+rename either: that function is `SECURITY DEFINER` gated on `is_admin()`, which reads
+`auth.uid()` — and this edge function's cron call used `adminClient` (service-role, no user
+context), so a naive fix would have traded one always-empty result for an always-`Forbidden`
+one. The fix reuses `userClient` (built from the caller's own `Authorization` header,
+already used above to verify the admin), so `auth.uid()` resolves to the same user already
+confirmed as an admin.
+
+The same file's `knownFunctions` health-check list was independently stale — 10 hardcoded
+slugs against 26 real functions in `supabase/functions/`, missing 12 deployed ones and
+including several that were never deployed. Expanded to the full list; deliberately keeps
+functions known to be undeployed, since pinging them and getting a real "unreachable" is
+itself the information that page exists to show.
 
 **Pattern**: A `catch` that substitutes an empty collection turns a wiring bug into a
 plausible-looking empty state. When a panel is *always* empty, check whether the thing
-feeding it exists before assuming there's no data. Fix is to repoint it at
-`admin_list_cron_jobs` — needs an edge-function redeploy, so it's still open.
+feeding it exists before assuming there's no data. Separately: a `SECURITY DEFINER` function
+gated on `is_admin()` needs a client carrying the *caller's* JWT, not a service-role client —
+same gotcha as the migration-time `Forbidden` case already in this file, just triggered from
+an edge function instead of a migration.
+
+**Still open**: this is a code fix sitting in the repo. Edge functions run whatever was last
+deployed regardless of source — per this project's global rule ("Deployment → `/deploy` only,
+never push ad-hoc"), it wasn't deployed as part of this fix. The Scheduled Tasks card keeps
+showing its old behavior in production until `/deploy` (or an equivalent deliberate deploy
+step) ships `system-status` again.
