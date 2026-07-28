@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { vi, describe, it, expect, beforeEach } from "vitest";
 
 /**
- * Two properties under test.
+ * Three properties under test.
  *
  * 1. When the schedule can't be read, the panel must not render a job as "Off".
  *    pg_cron isn't installed on this project, so admin_list_cron_jobs throws —
@@ -11,6 +11,10 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
  *
  * 2. Switching on the outreach drip starts autonomous cold email to real
  *    businesses. No RPC may fire until the admin confirms.
+ *
+ * 3. Database diagnostics and Recent runs must not fold a query failure into
+ *    their empty-state copy ("not available yet" / "no runs recorded yet") —
+ *    that phrasing was previously indistinguishable from "the RPC threw".
  */
 
 type RpcResult = { data: unknown; error: unknown };
@@ -210,5 +214,41 @@ describe("BackgroundJobsSettings — schedule readable", () => {
       p_jobname: "send-outreach-drip-daily",
       p_enable: true,
     });
+  });
+});
+
+describe("BackgroundJobsSettings — diagnostics and runs errors", () => {
+  it("reports a diagnostics failure instead of 'not available yet'", async () => {
+    rpcResponses["admin_database_diagnostics"] = { data: null, error: MISSING_EXTENSION };
+    renderPanel();
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Couldn't read database diagnostics — pg_cron isn't installed/i),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/Diagnostics are not available yet/i)).not.toBeInTheDocument();
+  });
+
+  it("reports a recent-runs failure instead of 'no runs recorded yet'", async () => {
+    rpcResponses["admin_recent_job_runs"] = {
+      data: null,
+      error: { code: "P0001", message: "Forbidden" },
+    };
+    renderPanel();
+
+    await waitFor(() =>
+      expect(screen.getByText(/don't have permission to view recent runs/i)).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/No runs recorded yet/i)).not.toBeInTheDocument();
+  });
+
+  it("still shows a genuine empty state when the queries succeed with nothing to report", async () => {
+    renderPanel();
+
+    await waitFor(() =>
+      expect(screen.getByText(/Diagnostics are not available yet/i)).toBeInTheDocument(),
+    );
+    expect(screen.getByText(/No runs recorded yet/i)).toBeInTheDocument();
   });
 });

@@ -121,7 +121,14 @@ export function BackgroundJobsSettings() {
   // even be installed, in which case nothing is scheduled or schedulable.
   const failure = isError ? classifyCronError(error) : null;
 
-  const { data: runs, isLoading: runsLoading, refetch: refetchRuns, isFetching: runsFetching } = useQuery({
+  const {
+    data: runs,
+    isLoading: runsLoading,
+    isError: runsIsError,
+    error: runsError,
+    refetch: refetchRuns,
+    isFetching: runsFetching,
+  } = useQuery({
     queryKey: ["admin-job-run-logs"],
     queryFn: async () => {
       const { data, error } = await supabase.rpc("admin_recent_job_runs", { p_limit: 25 });
@@ -131,7 +138,14 @@ export function BackgroundJobsSettings() {
     staleTime: 30_000,
   });
 
-  const { data: diagnostics, isLoading: diagnosticsLoading, refetch: refetchDiagnostics, isFetching: diagnosticsFetching } = useQuery({
+  const {
+    data: diagnostics,
+    isLoading: diagnosticsLoading,
+    isError: diagnosticsIsError,
+    error: diagnosticsError,
+    refetch: refetchDiagnostics,
+    isFetching: diagnosticsFetching,
+  } = useQuery({
     queryKey: ["admin-database-diagnostics"],
     queryFn: async () => {
       const { data, error } = await supabase.rpc("admin_database_diagnostics");
@@ -139,6 +153,10 @@ export function BackgroundJobsSettings() {
       return data as unknown as DatabaseDiagnostics;
     },
     staleTime: 30_000,
+    // admin_database_diagnostics joins cron.job unconditionally, so it fails the
+    // same way and for the same reason as admin_list_cron_jobs when pg_cron is
+    // absent — a retry can't succeed where the last one failed for that reason.
+    retry: false,
   });
 
   const toggleMutation = useMutation({
@@ -303,6 +321,8 @@ export function BackgroundJobsSettings() {
           <div className="flex justify-center py-6">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
+        ) : diagnosticsIsError ? (
+          <QueryFailureNotice error={diagnosticsError} subject="database diagnostics" />
         ) : diagnostics ? (
           <DatabaseDiagnosticsPanel diagnostics={diagnostics} />
         ) : (
@@ -345,6 +365,8 @@ export function BackgroundJobsSettings() {
           <div className="flex justify-center py-6">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
+        ) : runsIsError ? (
+          <QueryFailureNotice error={runsError} subject="recent runs" />
         ) : !runs || runs.length === 0 ? (
           <p className="text-xs text-muted-foreground py-4">No runs recorded yet.</p>
         ) : (
@@ -402,6 +424,54 @@ function CronFailureNotice({ failure, error }: { failure: "unavailable" | "forbi
       <XCircle className="h-4 w-4 mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
       <div className="text-xs">
         <p className="font-medium text-foreground">Couldn't read the job schedule</p>
+        <p className="mt-1 font-mono break-all text-muted-foreground">{cronErrorMessage(error)}</p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Shown when Database diagnostics or Recent runs failed to load. Distinct from
+ * CronFailureNotice above (different copy, no jobs list to sit above) but
+ * classifies the same way — admin_database_diagnostics joins cron.job
+ * unconditionally, so it fails on a missing pg_cron exactly like the job list
+ * does; admin_recent_job_runs never touches cron.job, so for it "unavailable"
+ * is simply a branch that can't trigger in practice.
+ */
+function QueryFailureNotice({ error, subject }: { error: unknown; subject: string }) {
+  const failure = classifyCronError(error);
+
+  if (failure === "unavailable") {
+    return (
+      <div className="flex items-start gap-3 rounded-md border border-yellow-600/30 bg-yellow-500/5 p-4">
+        <CalendarOff className="h-4 w-4 mt-0.5 shrink-0 text-yellow-600" aria-hidden="true" />
+        <div className="text-xs">
+          <p className="font-medium text-foreground">Couldn't read {subject} — pg_cron isn't installed</p>
+          <p className="mt-1 text-muted-foreground">
+            This depends on the pg_cron extension, which isn't installed on this database. It isn't
+            empty — it couldn't be read.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (failure === "forbidden") {
+    return (
+      <div className="flex items-start gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-4">
+        <XCircle className="h-4 w-4 mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
+        <div className="text-xs">
+          <p className="font-medium text-foreground">You don't have permission to view {subject}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-start gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-4">
+      <XCircle className="h-4 w-4 mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
+      <div className="text-xs">
+        <p className="font-medium text-foreground">Couldn't read {subject}</p>
         <p className="mt-1 font-mono break-all text-muted-foreground">{cronErrorMessage(error)}</p>
       </div>
     </div>
