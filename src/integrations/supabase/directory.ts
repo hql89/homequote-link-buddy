@@ -198,6 +198,20 @@ export async function setBusinessesPublished(
   return { updated, error: null };
 }
 
+/**
+ * Approves or rejects a submitted photo. This only changes the row's status —
+ * nothing here touches storage, so a rejected photo's file stays in the
+ * bucket even though it stops appearing anywhere.
+ */
+export async function setBusinessPhotoStatus(
+  id: string,
+  status: "approved" | "rejected",
+): Promise<{ message: string } | null> {
+  const table = directoryDb.from("business_photos") as unknown as WritableTable;
+  const { error } = await table.update({ status }).eq("id", id);
+  return error;
+}
+
 /** Claim-page projection returned by the `claim-listing` edge function. */
 export interface ClaimBusiness {
   id: string;

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
 import { HelpTip } from "@/components/admin/HelpTip";
-import { directoryDb, type BusinessPhotoRow } from "@/integrations/supabase/directory";
+import { directoryDb, setBusinessPhotoStatus, type BusinessPhotoRow } from "@/integrations/supabase/directory";
 import { Loader2, Check, X, ImageOff } from "lucide-react";
 
 interface PendingPhoto extends BusinessPhotoRow {
@@ -68,7 +68,7 @@ export default function PhotoModerationPage() {
 
   async function moderate(photoId: string, status: "approved" | "rejected") {
     setBusyId(photoId);
-    const { error } = await directoryDb.from("business_photos").update({ status }).eq("id", photoId);
+    const error = await setBusinessPhotoStatus(photoId, status);
     if (error) {
       toast({ title: "That didn't save", description: error.message, variant: "destructive" });
     } else {

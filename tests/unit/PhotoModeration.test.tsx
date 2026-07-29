@@ -62,20 +62,8 @@ vi.mock("../../src/components/admin/AdminLayout", () => ({
 vi.mock("../../src/integrations/supabase/directory", () => ({
   directoryDb: {
     from: (table: string) => {
-      if (table === "business_photos") {
-        return {
-          ...makeChain(photoRows),
-          update: (values: { status: string }) => ({
-            eq: (_col: string, id: string) => {
-              updateCalls.push({ id, status: values.status });
-              return Promise.resolve({ error: null });
-            },
-          }),
-        };
-      }
-      if (table === "businesses") {
-        return makeChain(businessRows);
-      }
+      if (table === "business_photos") return makeChain(photoRows);
+      if (table === "businesses") return makeChain(businessRows);
       throw new Error(`Unexpected table: ${table}`);
     },
     storage: {
@@ -83,6 +71,10 @@ vi.mock("../../src/integrations/supabase/directory", () => ({
         getPublicUrl: (path: string) => ({ data: { publicUrl: `https://cdn.test/${path}` } }),
       }),
     },
+  },
+  setBusinessPhotoStatus: (id: string, status: string) => {
+    updateCalls.push({ id, status });
+    return Promise.resolve(null);
   },
 }));
 
