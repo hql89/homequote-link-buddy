@@ -18,6 +18,7 @@ import {
   type PublicBusinessListing,
 } from "@/integrations/supabase/directory";
 import { DirectoryQuoteForm } from "@/components/directory/DirectoryQuoteForm";
+import { BusinessMark } from "@/components/directory/BusinessMark";
 
 type LoadState = "loading" | "ready" | "notfound" | "error";
 
@@ -149,7 +150,14 @@ export default function DirectoryListing() {
         {/* ── Above the fold: dual-intent CRO ───────────────────────────── */}
         <section className="border-b border-border bg-muted/30">
           <div className="container mx-auto max-w-5xl px-4 py-10">
-            <div className="flex flex-wrap items-center gap-2">
+            <BusinessMark
+              businessName={business.business_name}
+              verticalSlug={business.vertical_slug}
+              size="lg"
+              className="rounded-xl"
+            />
+
+            <div className="mt-4 flex flex-wrap items-center gap-2">
               <Badge variant="secondary" className="gap-1">
                 <MapPin className="h-3 w-3" aria-hidden="true" />
                 {business.city}

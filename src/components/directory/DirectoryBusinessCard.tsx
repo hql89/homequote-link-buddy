@@ -8,6 +8,7 @@ import {
   toTelHref,
   type PublicBusinessListing,
 } from "@/integrations/supabase/directory";
+import { BusinessMark } from "@/components/directory/BusinessMark";
 
 const MAX_SERVICES_SHOWN = 3;
 
@@ -27,29 +28,35 @@ export function DirectoryBusinessCard({ business }: { business: PublicBusinessLi
         featured ? "border-amber-400 ring-1 ring-amber-200" : "border-border"
       }`}
     >
-      <div className="flex flex-wrap items-center gap-2">
-        {featured && (
-          <Badge className="gap-1 bg-amber-500 text-amber-950 hover:bg-amber-500">
-            <Star className="h-3 w-3 fill-current" aria-hidden="true" />
-            Featured
-          </Badge>
-        )}
-        {business.is_claimed && (
-          <Badge className="gap-1 bg-green-600 hover:bg-green-600">
-            <BadgeCheck className="h-3 w-3" aria-hidden="true" />
-            Verified owner
-          </Badge>
-        )}
-      </div>
+      <div className="flex items-start gap-3">
+        <BusinessMark businessName={business.business_name} verticalSlug={business.vertical_slug} />
 
-      <h3 className="mt-2 text-lg font-semibold">
-        <Link
-          to={`/directory/${business.city_slug}/${business.slug}`}
-          className="hover:underline underline-offset-4"
-        >
-          {business.business_name}
-        </Link>
-      </h3>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            {featured && (
+              <Badge className="gap-1 bg-amber-500 text-amber-950 hover:bg-amber-500">
+                <Star className="h-3 w-3 fill-current" aria-hidden="true" />
+                Featured
+              </Badge>
+            )}
+            {business.is_claimed && (
+              <Badge className="gap-1 bg-green-600 hover:bg-green-600">
+                <BadgeCheck className="h-3 w-3" aria-hidden="true" />
+                Verified owner
+              </Badge>
+            )}
+          </div>
+
+          <h3 className="mt-2 text-lg font-semibold">
+            <Link
+              to={`/directory/${business.city_slug}/${business.slug}`}
+              className="hover:underline underline-offset-4"
+            >
+              {business.business_name}
+            </Link>
+          </h3>
+        </div>
+      </div>
 
       {services.length > 0 && (
         <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">

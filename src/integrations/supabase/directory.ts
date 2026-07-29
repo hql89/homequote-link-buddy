@@ -28,6 +28,7 @@ export interface PublicBusinessListing {
   /** Sort key only: 0 = featured, 1 = free. Read `listing_tier` for meaning. */
   tier_rank: number;
   created_at: string;
+  vertical_slug: string | null;
 }
 
 /**

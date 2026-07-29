@@ -21,6 +21,7 @@ import { parseCslbCsv, type CslbCandidate } from "@/lib/cslb";
 import { SFV_DIRECTORY_CITIES } from "@/lib/constants";
 import { Loader2, Upload, Play, CheckCircle2, Eye } from "lucide-react";
 import { HelpTip } from "@/components/admin/HelpTip";
+import { BusinessMark } from "@/components/directory/BusinessMark";
 
 const SETTING_KEY = "ingest_config";
 const UPLOAD_CHUNK = 500;
@@ -46,6 +47,7 @@ interface UnpublishedBusiness {
   slug: string;
   phone: string | null;
   license_number: string | null;
+  vertical_slug: string | null;
 }
 
 export default function IngestPage() {
@@ -73,7 +75,7 @@ export default function IngestPage() {
       directoryDb.from("ingest_queue").select("status"),
       directoryDb
         .from("businesses")
-        .select("id, business_name, city, city_slug, slug, phone, license_number")
+        .select("id, business_name, city, city_slug, slug, phone, license_number, vertical_slug")
         .eq("is_published", false)
         .order("business_name", { ascending: true })
         // A full CSLB import stages several hundred at once; a 200-row cap
@@ -518,7 +520,12 @@ export default function IngestPage() {
                               aria-label={`Select ${b.business_name}`}
                             />
                           </TableCell>
-                          <TableCell className="font-medium">{b.business_name}</TableCell>
+                          <TableCell className="font-medium">
+                            <div className="flex items-center gap-2">
+                              <BusinessMark businessName={b.business_name} verticalSlug={b.vertical_slug} size="sm" />
+                              {b.business_name}
+                            </div>
+                          </TableCell>
                           <TableCell>{b.city}</TableCell>
                           <TableCell>{b.phone}</TableCell>
                           <TableCell className="font-mono text-xs">{b.license_number ?? "—"}</TableCell>

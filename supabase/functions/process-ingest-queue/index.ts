@@ -152,6 +152,7 @@ Deno.serve(async (req) => {
             license_number: row.license_number,
             license_status: "ACTIVE",
             source: "cslb",
+            vertical_slug: row.vertical_slug,
             services: [],
             // The two flags that make this ingestion silent.
             is_published: false,

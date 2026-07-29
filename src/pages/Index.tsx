@@ -24,16 +24,8 @@ import {
   type PublicBusinessListing,
 } from "@/integrations/supabase/directory";
 import { Button } from "@/components/ui/button";
-import {
-  Droplets, Wind, TreePine, Zap, MapPin, Wrench, Phone, ChevronRight,
-  Search, Loader2, type LucideIcon,
-} from "lucide-react";
-
-const ICON_MAP: Record<string, LucideIcon> = { Droplets, Wind, TreePine, Zap, Wrench };
-
-function getIcon(iconName: string | null): LucideIcon {
-  return (iconName && ICON_MAP[iconName]) || Wrench;
-}
+import { MapPin, Phone, ChevronRight, Search, Loader2 } from "lucide-react";
+import { getVerticalIcon } from "@/lib/verticalIcons";
 
 /** The `verticals` table slugs with hyphens; lead rows key on underscores. */
 function verticalKey(slug: string): string {
@@ -186,7 +178,7 @@ const Index = () => {
             ) : verticals?.length ? (
               <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
                 {verticals.map((v, i) => {
-                  const Icon = getIcon(v.icon_name);
+                  const Icon = getVerticalIcon(v.icon_name);
                   const isActive = v.slug === selectedSlug;
                   return (
                     <FadeIn key={v.id} delay={i * 0.05}>
