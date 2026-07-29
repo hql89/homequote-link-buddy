@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BusinessPhotoManager } from "@/components/directory/BusinessPhotoManager";
 import {
   Loader2,
   AlertCircle,
@@ -306,6 +307,8 @@ export default function ClaimListing() {
                 </Button>
               </CardContent>
             </Card>
+
+            <BusinessPhotoManager token={token} />
 
             {/* Upsell. The button is deliberately disabled rather than wired to
                 a placeholder: checkout doesn't exist yet, and a button that

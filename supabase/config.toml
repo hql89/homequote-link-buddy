@@ -44,5 +44,8 @@ verify_jwt = false
 [functions.claim-listing]
 verify_jwt = false
 
+[functions.manage-business-photos]
+verify_jwt = false
+
 [functions.submit-directory-lead]
 verify_jwt = false

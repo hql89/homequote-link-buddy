@@ -84,6 +84,23 @@ export interface AdminBusinessRow {
   created_at: string;
 }
 
+/**
+ * A photo row as read by admin moderation and the public gallery. Rows are
+ * only ever inserted by manage-business-photos (service role) — the typed
+ * client's Insert shape below exists for interface symmetry with the other
+ * tables, not because the browser ever calls it. The one client-side write is
+ * the admin's status update.
+ */
+export interface BusinessPhotoRow {
+  id: string;
+  business_id: string;
+  storage_path: string;
+  caption: string | null;
+  sort_order: number;
+  status: "pending" | "approved" | "rejected";
+  created_at: string;
+}
+
 interface DirectoryDatabase {
   // supabase-js resolves its Insert/Update generics through this key; without
   // it, writes to these tables type as `never`.
@@ -100,6 +117,12 @@ interface DirectoryDatabase {
         Row: AdminBusinessRow;
         Insert: Partial<AdminBusinessRow> & { business_name: string };
         Update: Partial<AdminBusinessRow>;
+        Relationships: [];
+      };
+      business_photos: {
+        Row: BusinessPhotoRow;
+        Insert: Partial<BusinessPhotoRow> & { business_id: string; storage_path: string };
+        Update: Partial<BusinessPhotoRow>;
         Relationships: [];
       };
     };

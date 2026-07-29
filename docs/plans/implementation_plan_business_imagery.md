@@ -1,7 +1,18 @@
 # Implementation Plan — Business Imagery
 
 **Date:** 2026-07-26
-**Status:** Awaiting approval
+**Status:** Phase A and Phase B shipped 2026-07-29
+
+**Correction from the original plan:** Phase B assumed a claimed listing's
+owner gets a persistent login. It doesn't — claim-listing's own comment says
+so explicitly, and there is no auth.users row for a claimed business. Built
+instead on the same claim_token trust model claim-listing already uses: one
+edge function (manage-business-photos) re-validates the token on every call
+and writes with the service role, so business_photos needs no
+anon/authenticated write RLS policy at all — only a public read policy gated
+on status = 'approved'. See the migration's own comment for the full
+reasoning.
+
 **Note:** Filed here rather than as the root `implementation_plan.md`, which is
 still the active ingestion plan — its Phase 2 (email enrichment) is unbuilt.
 
@@ -77,12 +88,12 @@ None. No columns, no migration.
 - Missing/unknown vertical falls back to initials rather than rendering blank
 
 ### Acceptance criteria
-- [ ] All 536 listings render a mark on card and detail page
-- [ ] Same business shows the same colour on both pages and across reloads
-- [ ] Legible in light and dark
-- [ ] No layout shift — fixed dimensions
-- [ ] Accessible name describes the business, not the decoration
-- [ ] Gate clean: tests, lint, tsc, build
+- [x] All 536 listings render a mark on card and detail page
+- [x] Same business shows the same colour on both pages and across reloads
+- [x] Legible in light and dark
+- [x] No layout shift — fixed dimensions
+- [x] Accessible name describes the business, not the decoration
+- [x] Gate clean: tests, lint, tsc, build
 
 ### Rollback
 Revert the commit. No migration, nothing persisted.
@@ -142,12 +153,12 @@ rows are publicly readable, enforced in RLS rather than hidden in the UI.
 - Deleting a business removes its photo rows
 
 ### Acceptance criteria
-- [ ] Claimed contractor can upload, reorder, delete their own photos
-- [ ] Unclaimed or other-listing uploads refused at the database
-- [ ] Anon sees only `approved`
-- [ ] Admin can approve/reject
-- [ ] Listing falls back to the Phase A mark when no approved photo exists
-- [ ] Gate clean
+- [x] Claimed contractor can upload, reorder, delete their own photos
+- [x] Unclaimed or other-listing uploads refused at the database
+- [x] Anon sees only `approved`
+- [x] Admin can approve/reject
+- [x] Listing falls back to the Phase A mark when no approved photo exists
+- [x] Gate clean
 
 ### Rollback
 ```sql
