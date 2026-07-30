@@ -181,7 +181,18 @@ Enrichment therefore needs a **website-discovery** step first.
 Commercial API, no ToS conflict, and it answers the actual question ("official site for this
 contractor in this city") in one call. Base Sonar at low search context ≈ **$5 / 1,000
 requests** plus negligible tokens → roughly **$4–6/month at 25/day**, under $20/month at
-100/day. Needs `PERPLEXITY_API_KEY` as a Supabase edge secret.
+100/day.
+
+**Storage — corrected 2026-07-29.** This originally said "as a Supabase edge
+secret" (`Deno.env`). That was never actually built; what exists instead is
+`src/pages/admin/settings/PerplexitySettings.tsx`, which writes a write-only,
+masked key to `admin_settings.perplexity_config` — the same pattern already
+used for `smtp_config`. Whichever edge function implements the discovery
+step below must read it from there (mirroring `loadSmtpConfig` /
+`loadOutreachTemplates` in `_shared/`), not from `Deno.env`. The panel was
+built, then deliberately hidden from `/admin/settings` since nothing read it
+yet — a live credential with no consumer — and has now been re-enabled so
+the key can be entered ahead of this phase being built.
 
 ### The hard rule: Perplexity finds URLs, it never supplies facts
 
@@ -233,8 +244,9 @@ limit hard, fetch only the business's own domain, and take emails only from page
 publish them for contact. Emails found this way are stored on the business row and make it
 drip-eligible; everything else stays a phone-only directory listing.
 
-**Not started.** Needs `PERPLEXITY_API_KEY` provisioned. Phase 1 below is unaffected and
-delivers a full directory plus a call list without it.
+**Not started.** Needs a key entered in Admin → Settings → Perplexity (see the
+storage correction above — not a Deno secret). Phase 1 below is unaffected
+and delivers a full directory plus a call list without it.
 
 **Acceptance criteria (Phase 2)**
 - [ ] No email is ever written from model output — only from fetched page content
