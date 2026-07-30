@@ -82,6 +82,9 @@ export interface AdminBusinessRow {
   license_number: string | null;
   is_published: boolean;
   created_at: string;
+  email: string | null;
+  email_source_url: string | null;
+  email_confidence: "verified" | "needs_review" | "rejected" | null;
 }
 
 /**
@@ -242,6 +245,28 @@ export async function setBusinessPhotoStatus(
 export async function markReplyHandled(id: string): Promise<{ message: string } | null> {
   const table = directoryDb.from("inbound_emails") as unknown as WritableTable;
   const { error } = await table.update({ handled_at: new Date().toISOString() }).eq("id", id);
+  return error;
+}
+
+/**
+ * Confirms or dismisses an enrichment result that couldn't be auto-verified
+ * (the CSLB phone wasn't found on the fetched page). Approving is the only
+ * other path to `email_confidence = 'verified'` besides an automatic phone
+ * match — an admin who's looked at the source page is an acceptable second
+ * source of truth. Rejecting clears the email so it never becomes
+ * drip-eligible and is never retried, matching the moderation posture used
+ * for photos and inbound replies.
+ */
+export async function reviewEnrichedEmail(
+  id: string,
+  decision: "verified" | "rejected",
+): Promise<{ message: string } | null> {
+  const table = directoryDb.from("businesses") as unknown as WritableTable;
+  const values =
+    decision === "verified"
+      ? { email_confidence: "verified" }
+      : { email: null, email_source_url: null, email_confidence: "rejected" };
+  const { error } = await table.update(values).eq("id", id);
   return error;
 }
 

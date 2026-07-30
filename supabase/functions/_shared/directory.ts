@@ -106,6 +106,60 @@ export async function loadOutreachTemplates(
   return merged;
 }
 
+export interface PerplexityConfig {
+  api_key?: string;
+  enabled?: boolean;
+}
+
+/**
+ * Loads the Perplexity key from `admin_settings.perplexity_config`, written by
+ * PerplexitySettings.tsx. Deliberately NOT a Supabase secret (`Deno.env`) —
+ * see implementation_plan.md's "Storage — corrected 2026-07-29" note. The key
+ * itself is never logged.
+ */
+export async function loadPerplexityConfig(
+  supabase: SupabaseClient,
+): Promise<{ config: PerplexityConfig | null; error: string | null }> {
+  const { data, error } = await supabase
+    .from("admin_settings")
+    .select("setting_value")
+    .eq("setting_key", "perplexity_config")
+    .maybeSingle();
+
+  if (error) return { config: null, error: `Failed to read Perplexity settings: ${error.message}` };
+  if (!data?.setting_value) {
+    return { config: null, error: "Perplexity is not configured. Go to Admin → Settings to add a key." };
+  }
+  return { config: data.setting_value as PerplexityConfig, error: null };
+}
+
+export interface EnrichmentConfig {
+  daily_limit: number;
+  enabled: boolean;
+}
+
+const DEFAULT_ENRICHMENT_CONFIG: EnrichmentConfig = { daily_limit: 15, enabled: false };
+
+/**
+ * Loads `admin_settings.enrichment_config`, falling back to a conservative
+ * default (disabled, 15/day) when no admin has ever saved one — same lazy-
+ * default pattern as `ingest_config`, so no seed migration is needed.
+ */
+export async function loadEnrichmentConfig(supabase: SupabaseClient): Promise<EnrichmentConfig> {
+  const { data } = await supabase
+    .from("admin_settings")
+    .select("setting_value")
+    .eq("setting_key", "enrichment_config")
+    .maybeSingle();
+
+  if (!data?.setting_value) return DEFAULT_ENRICHMENT_CONFIG;
+  const cfg = data.setting_value as Partial<EnrichmentConfig>;
+  return {
+    daily_limit: typeof cfg.daily_limit === "number" && cfg.daily_limit > 0 ? cfg.daily_limit : DEFAULT_ENRICHMENT_CONFIG.daily_limit,
+    enabled: Boolean(cfg.enabled),
+  };
+}
+
 /**
  * Authorises a privileged caller by capability rather than by string-matching a
  * key.

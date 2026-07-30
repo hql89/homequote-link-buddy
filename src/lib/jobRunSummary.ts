@@ -77,6 +77,30 @@ function summariseProcess(meta: Record<string, unknown>): RunSummary {
   return { text: parts.join(" · "), noChange: ingested === 0 };
 }
 
+function summariseEnrichment(meta: Record<string, unknown>): RunSummary {
+  if (meta.skipped === "disabled") {
+    return { text: "enrichment off — nothing processed", noChange: true };
+  }
+
+  const considered = num(meta, "considered");
+  if (considered === null) return { text: null, noChange: false };
+  if (considered === 0) return { text: "nothing pending", noChange: true };
+
+  const verified = num(meta, "verified") ?? 0;
+  const needsReview = num(meta, "needs_review") ?? 0;
+  const noEmail = num(meta, "no_email") ?? 0;
+  const noUrl = num(meta, "no_url") ?? 0;
+  const failed = (num(meta, "fetch_failed") ?? 0) + (num(meta, "failed") ?? 0);
+
+  const parts = [`${verified} verified`];
+  if (needsReview > 0) parts.push(`${needsReview} needs review`);
+  const noResult = noEmail + noUrl;
+  if (noResult > 0) parts.push(`${noResult} no email found`);
+  if (failed > 0) parts.push(`${failed} failed`);
+
+  return { text: parts.join(" · "), noChange: verified === 0 && needsReview === 0 };
+}
+
 /** Fallback for jobs with no bespoke formatter: show whatever counts exist. */
 function summariseGeneric(meta: Record<string, unknown>): RunSummary {
   const counts = Object.entries(meta).filter(
@@ -100,6 +124,8 @@ export function summariseRun(
       return summariseImport(metadata);
     case "process-ingest-queue":
       return summariseProcess(metadata);
+    case "enrich-business-email":
+      return summariseEnrichment(metadata);
     default:
       return summariseGeneric(metadata);
   }

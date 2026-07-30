@@ -55,6 +55,40 @@ describe("summariseRun — process-ingest-queue", () => {
   });
 });
 
+describe("summariseRun — enrich-business-email", () => {
+  it("summarises a run that verified some and flagged others", () => {
+    const { text } = summariseRun("enrich-business-email", {
+      considered: 15, verified: 3, needs_review: 2, no_url: 4, no_email: 5, fetch_failed: 1, failed: 0,
+    });
+    expect(text).toBe("3 verified · 2 needs review · 9 no email found · 1 failed");
+  });
+
+  it("distinguishes an empty candidate pool from a run that did work", () => {
+    expect(
+      summariseRun("enrich-business-email", {
+        considered: 0, verified: 0, needs_review: 0, no_url: 0, no_email: 0, fetch_failed: 0, failed: 0,
+      }),
+    ).toEqual({ text: "nothing pending", noChange: true });
+  });
+
+  it("reports being switched off, distinct from an empty pool", () => {
+    expect(summariseRun("enrich-business-email", { skipped: "disabled" }))
+      .toEqual({ text: "enrichment off — nothing processed", noChange: true });
+  });
+
+  it("flags noChange only when nothing was verified or flagged for review", () => {
+    const result = summariseRun("enrich-business-email", {
+      considered: 5, verified: 0, needs_review: 0, no_url: 2, no_email: 3, fetch_failed: 0, failed: 0,
+    });
+    expect(result.noChange).toBe(true);
+
+    const withVerified = summariseRun("enrich-business-email", {
+      considered: 5, verified: 1, needs_review: 0, no_url: 2, no_email: 2, fetch_failed: 0, failed: 0,
+    });
+    expect(withVerified.noChange).toBe(false);
+  });
+});
+
 describe("summariseRun — fallbacks", () => {
   it("returns no text for a run that logged no metadata", () => {
     expect(summariseRun("import-ingest-queue", {})).toEqual({ text: null, noChange: false });

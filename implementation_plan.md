@@ -244,15 +244,27 @@ limit hard, fetch only the business's own domain, and take emails only from page
 publish them for contact. Emails found this way are stored on the business row and make it
 drip-eligible; everything else stays a phone-only directory listing.
 
-**Not started.** Needs a key entered in Admin → Settings → Perplexity (see the
-storage correction above — not a Deno secret). Phase 1 below is unaffected
-and delivers a full directory plus a call list without it.
+**Shipped 2026-07-30.** `enrich-business-email` (edge function), pure logic in
+`_shared/emailEnrichment.ts` (30 unit tests), admin panel at `/admin/enrichment`
+with a daily-limit control, "Run now", and a needs-review queue for confirming
+or dismissing an unmatched-phone result by hand. Defaults to `enabled: false`
+— entering the Perplexity key does not start spending; the daily limit and
+enable toggle are separate, deliberate steps taken from the admin page.
 
 **Acceptance criteria (Phase 2)**
-- [ ] No email is ever written from model output — only from fetched page content
-- [ ] An email without a CSLB phone match is stored as `needs_review`, never auto-drip-eligible
-- [ ] `email_source_url` is recorded for every enriched row, so any address can be traced
+- [x] No email is ever written from model output — only from fetched page content
+      (Perplexity's response is parsed for a URL only; `extractUrlFromModelText`
+      discards everything else, and `enrichOne` never writes anything Perplexity
+      said as fact)
+- [x] An email without a CSLB phone match is stored as `needs_review`, never
+      auto-drip-eligible (`resolveConfidence`; only an admin confirming in
+      `/admin/enrichment` or an automatic phone match can set `verified`)
+- [x] `email_source_url` is recorded for every enriched row, so any address can be traced
       back to the page it came from
-- [ ] `scraped_context` is never populated from model prose
-- [ ] Fetcher respects `robots.txt` and rate limits; only the business's own domain is hit
-- [ ] Enrichment failure never blocks or reverts ingestion
+- [x] `scraped_context` is never populated from model prose — untouched by this phase, not built
+- [x] Fetcher respects `robots.txt` and rate limits; only the business's own domain is hit
+      (`isDisallowedByRobots`, `BETWEEN_FETCHES_MS`, and `tryFetchDomain` only
+      ever requests the discovered candidate's own origin)
+- [x] Enrichment failure never blocks or reverts ingestion — a fully separate
+      worker, reading `businesses` rows already created; `enrichOne` never throws
+      out of the batch loop
