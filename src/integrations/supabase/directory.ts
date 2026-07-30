@@ -101,6 +101,26 @@ export interface BusinessPhotoRow {
   created_at: string;
 }
 
+/**
+ * A logged reply to our own outreach, as read by /admin/replies. Every field
+ * except `handled_at` is set once by receive-inbound-email and never edited
+ * from the browser — the one client-side write is marking a reply handled.
+ */
+export interface InboundEmailRow {
+  id: string;
+  message_id: string;
+  business_id: string | null;
+  from_email: string;
+  from_name: string | null;
+  subject: string | null;
+  body_text: string | null;
+  classification: "unsubscribe" | "confirm" | "website" | "unclassified";
+  is_priority: boolean;
+  extracted_url: string | null;
+  handled_at: string | null;
+  received_at: string;
+}
+
 interface DirectoryDatabase {
   // supabase-js resolves its Insert/Update generics through this key; without
   // it, writes to these tables type as `never`.
@@ -123,6 +143,12 @@ interface DirectoryDatabase {
         Row: BusinessPhotoRow;
         Insert: Partial<BusinessPhotoRow> & { business_id: string; storage_path: string };
         Update: Partial<BusinessPhotoRow>;
+        Relationships: [];
+      };
+      inbound_emails: {
+        Row: InboundEmailRow;
+        Insert: Partial<InboundEmailRow> & { message_id: string; from_email: string };
+        Update: Partial<InboundEmailRow>;
         Relationships: [];
       };
     };
@@ -209,6 +235,47 @@ export async function setBusinessPhotoStatus(
 ): Promise<{ message: string } | null> {
   const table = directoryDb.from("business_photos") as unknown as WritableTable;
   const { error } = await table.update({ status }).eq("id", id);
+  return error;
+}
+
+/** Marks a logged reply as dealt with. Never changes what the reply says — only that a human read it. */
+export async function markReplyHandled(id: string): Promise<{ message: string } | null> {
+  const table = directoryDb.from("inbound_emails") as unknown as WritableTable;
+  const { error } = await table.update({ handled_at: new Date().toISOString() }).eq("id", id);
+  return error;
+}
+
+/**
+ * Suppresses or un-suppresses a business from all future outreach. Separate
+ * from `outreach_paused` — this is the recipient's own opt-out and is never
+ * touched by re-enabling outreach generally. `receive-inbound-email` sets
+ * this automatically on a STOP reply; this is the manual admin equivalent,
+ * for suppressing a business proactively or reversing a mistaken one.
+ */
+export async function setBusinessSuppressed(
+  id: string,
+  suppressed: boolean,
+): Promise<{ message: string } | null> {
+  const table = directoryDb.from("businesses") as unknown as WritableTable;
+  const { error } = await table
+    .update({ outreach_suppressed_at: suppressed ? new Date().toISOString() : null })
+    .eq("id", id);
+  return error;
+}
+
+/**
+ * Applies a website URL a business volunteered by reply. Deliberately a
+ * separate, explicit admin action rather than automatic — a `From` header is
+ * spoofable, and this writes to a public page asserting the business is
+ * licensed and verified. Same posture as photo moderation: the owner's
+ * submission is a proposal, not a fact, until a human approves it.
+ */
+export async function applyReplyWebsiteUrl(
+  businessId: string,
+  url: string,
+): Promise<{ message: string } | null> {
+  const table = directoryDb.from("businesses") as unknown as WritableTable;
+  const { error } = await table.update({ website_url: url }).eq("id", businessId);
   return error;
 }
 

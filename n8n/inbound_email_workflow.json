@@ -1,0 +1,99 @@
+{
+  "name": "HomeQuoteLink Inbound Email Bridge",
+  "nodes": [
+    {
+      "parameters": {
+        "postTriggerAction": "read",
+        "format": "resolved",
+        "options": {
+          "customHeaders": "from,to,subject,date"
+        }
+      },
+      "id": "a1b2c3d4-1111-4a4a-9a9a-000000000001",
+      "name": "Email Read (IMAP) Trigger",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [380, 240],
+      "credentials": {
+        "imap": {
+          "id": "YOUR_IMAP_CREDENTIALS_ID",
+          "name": "Outreach Mailbox (IMAP)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://lrqdbpphallqehpdqalr.supabase.co/functions/v1/receive-inbound-email",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-token",
+              "value": "YOUR_INBOUND_EMAIL_WEBHOOK_TOKEN"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "from",
+              "value": "={{ $json.from.text || $json.from.value[0].address }}"
+            },
+            {
+              "name": "to",
+              "value": "={{ $json.to.text || $json.to.value[0].address }}"
+            },
+            {
+              "name": "subject",
+              "value": "={{ $json.subject }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.text }}"
+            },
+            {
+              "name": "html",
+              "value": "={{ $json.html }}"
+            },
+            {
+              "name": "message_id",
+              "value": "={{ $json.messageId }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-1111-4a4a-9a9a-000000000002",
+      "name": "Send to HomeQuoteLink",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [600, 240]
+    }
+  ],
+  "connections": {
+    "Email Read (IMAP) Trigger": {
+      "main": [
+        [
+          {
+            "node": "Send to HomeQuoteLink",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "settings": {
+      "executionOrder": "v1"
+    }
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "notes": "Pattern adapted (read-only reference) from Mivos.ai's n8n_email_webhook_workflow.json. Two placeholders to fill in after import: the IMAP credential (Outreach Mailbox) and YOUR_INBOUND_EMAIL_WEBHOOK_TOKEN in the header parameter — matches the INBOUND_EMAIL_WEBHOOK_TOKEN secret set on the Supabase project. `message_id` is optional; the receiving function falls back to a composite key from sender+subject+body if the IMAP node's messageId field is unavailable."
+  },
+  "pinData": {}
+}

@@ -5,7 +5,7 @@ import { useAdminCounts } from "@/hooks/useAdminCounts";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Users, FileText, Settings, LogOut, Menu, X, Wrench, ExternalLink, BookOpen, Image as ImageIcon, BarChart3, Activity, TrendingUp, UserCheck, Star, Building, Layers, DownloadCloud, ClipboardList, ShieldAlert, Camera } from "lucide-react";
+import { Users, FileText, Settings, LogOut, Menu, X, Wrench, ExternalLink, BookOpen, Image as ImageIcon, BarChart3, Activity, TrendingUp, UserCheck, Star, Building, Layers, DownloadCloud, ClipboardList, ShieldAlert, Camera, MailOpen } from "lucide-react";
 
 const navItems = [
   { to: "/admin", label: "Leads", icon: FileText },
@@ -21,6 +21,7 @@ const navItems = [
   { to: "/admin/verticals", label: "Verticals", icon: Layers },
   { to: "/admin/ingest", label: "Ingestion", icon: DownloadCloud },
   { to: "/admin/photos", label: "Photos", icon: Camera },
+  { to: "/admin/replies", label: "Replies", icon: MailOpen },
   { to: "/admin/spam", label: "Spam", icon: ShieldAlert },
   { to: "/admin/system", label: "System", icon: Activity },
   { to: "/admin/settings", label: "Settings", icon: Wrench },

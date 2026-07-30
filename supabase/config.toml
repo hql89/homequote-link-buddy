@@ -47,5 +47,8 @@ verify_jwt = false
 [functions.manage-business-photos]
 verify_jwt = false
 
+[functions.receive-inbound-email]
+verify_jwt = false
+
 [functions.submit-directory-lead]
 verify_jwt = false
