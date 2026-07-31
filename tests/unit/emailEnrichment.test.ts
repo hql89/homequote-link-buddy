@@ -48,6 +48,24 @@ describe("extractEmailsFromHtml", () => {
     expect(extractEmailsFromHtml(html)).toEqual([]);
   });
 
+  it("filters an unedited website-builder placeholder address", () => {
+    // Found in production: a real site, phone-verified, still had this in an
+    // unedited template footer. A phone match proves the page belongs to the
+    // right business — it says nothing about whether the email was ever set up.
+    const html = '<footer>Contact us at <a href="mailto:contact@mysite.com">contact@mysite.com</a></footer>';
+    expect(extractEmailsFromHtml(html)).toEqual([]);
+  });
+
+  it("filters example.com even when it's the only address on the page", () => {
+    const html = "<p>Email: mail@example.com</p>";
+    expect(extractEmailsFromHtml(html)).toEqual([]);
+  });
+
+  it("keeps a real address alongside a filtered placeholder on the same page", () => {
+    const html = '<p>owner@luxairhvac.com</p><p>webmaster@wixpress.com</p>';
+    expect(extractEmailsFromHtml(html)).toEqual(["owner@luxairhvac.com"]);
+  });
+
   it("returns an empty array when nothing is found", () => {
     expect(extractEmailsFromHtml("<p>No contact info here.</p>")).toEqual([]);
   });

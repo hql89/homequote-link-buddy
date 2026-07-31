@@ -26,21 +26,47 @@ export function extractUrlFromModelText(text: string): string | null {
 }
 
 /**
+ * Website builder/template placeholder domains. Found in production on the
+ * first real run of this module: a live site verified by phone match still
+ * had "contact@mysite.com" sitting in its unedited template footer, which
+ * would have been stored as a real contact and put straight into outreach —
+ * a guaranteed bounce that damages sender reputation, not just a wasted send.
+ * A phone match proves the *page* belongs to the right business; it says
+ * nothing about whether the *email* on that page was ever actually set up.
+ */
+const PLACEHOLDER_EMAIL_DOMAINS = new Set([
+  "example.com", "example.org", "example.net",
+  "mysite.com", "yoursite.com", "yourdomain.com", "domain.com",
+  "yourcompany.com", "email.com", "test.com", "sentry.io",
+  "wixpress.com", "godaddy.com", "squarespace.com",
+]);
+
+/**
  * Emails on a fetched page — mailto: links first (an explicit publish-for-
  * contact signal), then a plain-text regex sweep. Obvious asset/tracking
- * false positives (image filenames, sourcemaps) are filtered out.
+ * false positives (image filenames, sourcemaps) and known template
+ * placeholder domains are filtered out.
  */
 export function extractEmailsFromHtml(html: string): string[] {
   const found = new Set<string>();
 
+  function isUsable(email: string): boolean {
+    if (/\.(png|jpe?g|gif|svg|webp|css|js|map)$/i.test(email)) return false;
+    const domain = email.split("@")[1];
+    if (domain && PLACEHOLDER_EMAIL_DOMAINS.has(domain)) return false;
+    return true;
+  }
+
   const mailtoRe = /mailto:([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/gi;
-  for (const m of html.matchAll(mailtoRe)) found.add(m[1].toLowerCase());
+  for (const m of html.matchAll(mailtoRe)) {
+    const email = m[1].toLowerCase();
+    if (isUsable(email)) found.add(email);
+  }
 
   const plainRe = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
   for (const m of html.matchAll(plainRe)) {
     const email = m[0].toLowerCase();
-    if (/\.(png|jpe?g|gif|svg|webp|css|js|map)$/i.test(email)) continue;
-    found.add(email);
+    if (isUsable(email)) found.add(email);
   }
 
   return [...found];
