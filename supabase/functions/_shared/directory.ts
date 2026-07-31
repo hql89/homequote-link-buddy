@@ -48,6 +48,54 @@ export function toE164(raw: string | null | undefined): string | null {
   return null;
 }
 
+/**
+ * CSLB licence status/expiry checks, mirroring src/lib/cslb.ts's
+ * `isActiveLicense`/`isExpired`. Duplicated rather than imported because Deno
+ * edge functions cannot import from src/ — see import-ingest-queue's
+ * docstring on why the browser's filters must be re-applied here too.
+ */
+const ACTIVE_LICENSE_STATUSES = new Set(["CLEAR", "ACTIVE"]);
+
+export function isActiveLicense(status: string | null | undefined): boolean {
+  return ACTIVE_LICENSE_STATUSES.has(String(status ?? "").trim().toUpperCase());
+}
+
+/** CSLB dates are MM/DD/YYYY. An unparseable date is treated as "not expired". */
+export function isExpired(raw: string | null | undefined, now: Date = new Date()): boolean {
+  const m = String(raw ?? "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return false;
+  const [, mm, dd, yyyy] = m;
+  const expiry = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+  return expiry.getTime() < now.getTime();
+}
+
+const RAW_FIELD_ALIASES: Record<"status" | "expires", string[]> = {
+  status: ["primarystatus", "licensestatus", "status"],
+  expires: ["expirationdate", "expiration", "expiresdate", "expdate"],
+};
+
+function rawHeaderKey(h: string): string {
+  return h.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * Reads a field out of a candidate's `raw` object. `raw`'s keys are the
+ * original CSV column headers (e.g. "PrimaryStatus"), not normalised field
+ * names, so this matches the same header aliases src/lib/cslb.ts's
+ * `mapHeaders` uses client-side rather than a single hardcoded key.
+ */
+export function findRawField(
+  raw: Record<string, unknown> | null | undefined,
+  field: "status" | "expires",
+): string | undefined {
+  if (!raw) return undefined;
+  const aliases = RAW_FIELD_ALIASES[field];
+  for (const [key, value] of Object.entries(raw)) {
+    if (aliases.includes(rawHeaderKey(key))) return String(value ?? "").trim();
+  }
+  return undefined;
+}
+
 export interface OutreachTemplate {
   subject: string;
   body: string;

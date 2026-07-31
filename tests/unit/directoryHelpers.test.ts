@@ -4,6 +4,9 @@ import {
   renderTemplate,
   toE164,
   DEFAULT_OUTREACH_TEMPLATES,
+  isActiveLicense,
+  isExpired,
+  findRawField,
 } from "../../supabase/functions/_shared/directory";
 import {
   parseServices,
@@ -138,6 +141,60 @@ describe("isFeatured", () => {
   it("does not treat an unknown tier as featured", () => {
     // A tier added in the DB but not yet handled here must fail closed.
     expect(isFeatured({ listing_tier: "premium" as never })).toBe(false);
+  });
+});
+
+describe("isActiveLicense", () => {
+  it("accepts CLEAR and ACTIVE", () => {
+    expect(isActiveLicense("CLEAR")).toBe(true);
+    expect(isActiveLicense("Active")).toBe(true);
+  });
+
+  it("rejects a suspended licence", () => {
+    expect(isActiveLicense("Work Comp Susp")).toBe(false);
+    expect(isActiveLicense("SOS Suspension")).toBe(false);
+  });
+
+  it("fails closed for missing status", () => {
+    expect(isActiveLicense(null)).toBe(false);
+    expect(isActiveLicense(undefined)).toBe(false);
+    expect(isActiveLicense("")).toBe(false);
+  });
+});
+
+describe("isExpired", () => {
+  const now = new Date("2026-07-30");
+
+  it("flags a past expiration date", () => {
+    expect(isExpired("01/01/2020", now)).toBe(true);
+  });
+
+  it("does not flag a future expiration date", () => {
+    expect(isExpired("01/01/2030", now)).toBe(false);
+  });
+
+  it("treats an unparseable date as not expired", () => {
+    expect(isExpired("not a date", now)).toBe(false);
+    expect(isExpired(null, now)).toBe(false);
+  });
+});
+
+describe("findRawField", () => {
+  it("matches the header regardless of punctuation or casing", () => {
+    const raw = { "Primary Status": "CLEAR", "Expiration Date": "01/01/2030" };
+    expect(findRawField(raw, "status")).toBe("CLEAR");
+    expect(findRawField(raw, "expires")).toBe("01/01/2030");
+  });
+
+  it("matches header aliases used by other CSLB export formats", () => {
+    expect(findRawField({ LicenseStatus: "ACTIVE" }, "status")).toBe("ACTIVE");
+    expect(findRawField({ ExpDate: "05/01/2027" }, "expires")).toBe("05/01/2027");
+  });
+
+  it("returns undefined when the column is absent, rather than guessing", () => {
+    expect(findRawField({ BusinessName: "Acme" }, "status")).toBeUndefined();
+    expect(findRawField(null, "status")).toBeUndefined();
+    expect(findRawField(undefined, "expires")).toBeUndefined();
   });
 });
 

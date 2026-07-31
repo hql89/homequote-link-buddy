@@ -13,7 +13,16 @@
  * will become public, so it is never open to anon callers.
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
-import { corsHeaders, json, logRun, toE164, isPrivilegedCaller } from "../_shared/directory.ts";
+import {
+  corsHeaders,
+  json,
+  logRun,
+  toE164,
+  isPrivilegedCaller,
+  isActiveLicense,
+  isExpired,
+  findRawField,
+} from "../_shared/directory.ts";
 
 const JOB_NAME = "import-ingest-queue";
 
@@ -85,6 +94,8 @@ Deno.serve(async (req) => {
       if (!allowedCities.has(city.toLowerCase())) { bump("city not configured"); continue; }
       if (!allowedVerticals.has(vertical)) { bump("vertical not active"); continue; }
       if (!phone) { bump("unusable phone"); continue; }
+      if (!isActiveLicense(findRawField(c.raw, "status"))) { bump("licence not active"); continue; }
+      if (isExpired(findRawField(c.raw, "expires"))) { bump("licence expired"); continue; }
 
       accepted.push({
         source: "cslb",
