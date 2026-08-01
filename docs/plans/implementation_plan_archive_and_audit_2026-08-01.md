@@ -385,10 +385,29 @@ resolved to bucket `public`, object `blog-images`, because the reserved prefix
 was merely optional in the pattern. Fixed by matching the prefixed form first
 and rejecting `public`/`sign`/`authenticated` as bucket names.
 
-**Pre-existing orphan found:** `business-photos/10cc62dd-.../74416616-....png`
-(2026-07-29) has no matching row — a file stranded by the old hard-delete path,
-i.e. exactly this gap having already happened once. Left in place pending a
-decision; nothing references it.
+**Pre-existing orphan — found and removed 2026-08-01.**
+`business-photos/10cc62dd-.../74416616-....png` (uploaded 2026-07-29, 73 bytes)
+had no referencing row, and the business in its path prefix no longer existed
+either — a file stranded by the old hard-delete path, i.e. this exact gap having
+already happened once. Recorded in `job_run_logs` as `orphaned-storage-cleanup`
+with its full details before deletion, then removed. `business-photos` is now
+empty and `business_photos` holds no rows.
+
+**Tooling gotcha, cost ~20 minutes:** `supabase storage rm` (CLI 2.109.1) returns
+`{"deleted":[],...}` and deletes nothing, with no error and exit code 0 — with or
+without `--linked`, `-r`, `--debug`. `supabase storage ls` on the same path works,
+so it is not a path or auth problem. Delete via the storage REST API instead:
+
+```
+curl -X DELETE "https://<ref>.supabase.co/storage/v1/object/<bucket>/<path>" \
+  -H "Authorization: Bearer $SERVICE_KEY" -H "apikey: $SERVICE_KEY"
+```
+
+which returns `{"message":"Successfully deleted"}` and removes both the object and
+its `storage.objects` row. **Always verify against `storage.objects` rather than
+trusting the CLI's output.** This matters for `purge-archived` too: it uses
+supabase-js `storage.remove()`, not the CLI, so it is unaffected — but the same
+"verify, don't trust the reported count" rule applies to its `files_deleted`.
 5. ~~**Phase 5 — prune-job retention fix.**~~ **COMPLETE** — shipped 2026-08-01 ahead
    of the rest, see "Status of the urgent item" above.
 
