@@ -164,6 +164,10 @@ Deno.serve(async (req) => {
       .from("businesses")
       .select(selectCols)
       .eq("outreach_paused", false)
+      // Someone who replied STOP must never receive another message. The
+      // unsubscribe was being recorded and then ignored here, which is the
+      // one failure in this whole system that is not merely embarrassing.
+      .is("outreach_suppressed_at", null)
       .is("outreach_email_1_sent_at", null)
       .not("email", "is", null)
       // A recipient-side bounce proved this address is dead. Retrying a
@@ -219,6 +223,7 @@ Deno.serve(async (req) => {
       .from("businesses")
       .select(selectCols)
       .eq("outreach_paused", false)
+      .is("outreach_suppressed_at", null)
       .eq("is_claimed", false)
       .is("email_undeliverable_at", null)
       .not("outreach_email_1_sent_at", "is", null)
