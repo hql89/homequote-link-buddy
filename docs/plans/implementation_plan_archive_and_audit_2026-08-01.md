@@ -351,11 +351,44 @@ Phased so the highest-value fix lands first and each phase is independently ship
 archived photos, so a few delete-and-reupload cycles would have permanently
 exhausted an owner's upload slots.
 
-**Known gap:** purging a `business_photos` or `media_assets` row does not delete
-the underlying file from storage. Archiving deliberately leaves the file in
-place (a restored photo with a missing file is worse than an orphaned file), but
-that means purge reclaims no storage. Worth closing before purge is exposed in
-the UI.
+~~**Known gap:** purging a `business_photos` or `media_assets` row does not
+delete the underlying file from storage.~~ **CLOSED 2026-08-01.**
+
+Postgres cannot reach Supabase Storage, so the purge sequence is now driven by
+the `purge-archived` edge function:
+
+1. `admin_purgeable_refs()` — the rows to purge and the files belonging to them
+2. `storage.remove()` — delete those files
+3. `admin_purge_by_ids()` — purge exactly those rows
+
+Ids are passed explicitly between steps 1 and 3 rather than re-running a
+cutoff+limit, which would race with a concurrent archive. Files are deleted
+before rows: a later row-delete failure leaves a visible archived row with a
+missing file, whereas the reverse leaves an orphan nobody can find. Storage
+failures are counted and returned, never fatal — the rows still purge and the
+caller is told space was not fully reclaimed.
+
+Steps 1 and 3 run as the **caller**, not the service role, so `is_admin()`
+resolves and `data_audit_log` names the real admin. Only `storage.remove()` uses
+the service role. A consequence worth knowing: a pure service-role caller passes
+`isPrivilegedCaller` but its RPCs fail on `is_admin()` — purge is a human action
+by construction.
+
+`resolveStorageRef()` (`_shared/storageRefs.ts`, 12 unit tests) maps a stored
+reference to bucket + path: `business_photos.storage_path` is a bare path in
+`business-photos`; `media_assets.url` is a full URL parsed for bucket and key.
+It returns null for anything unrecognised, so an external image URL in
+`media_assets` is never mistaken for one of ours.
+
+**Bug caught by those tests:** `.../object/public/blog-images` with no filename
+resolved to bucket `public`, object `blog-images`, because the reserved prefix
+was merely optional in the pattern. Fixed by matching the prefixed form first
+and rejecting `public`/`sign`/`authenticated` as bucket names.
+
+**Pre-existing orphan found:** `business-photos/10cc62dd-.../74416616-....png`
+(2026-07-29) has no matching row — a file stranded by the old hard-delete path,
+i.e. exactly this gap having already happened once. Left in place pending a
+decision; nothing references it.
 5. ~~**Phase 5 — prune-job retention fix.**~~ **COMPLETE** — shipped 2026-08-01 ahead
    of the rest, see "Status of the urgent item" above.
 
