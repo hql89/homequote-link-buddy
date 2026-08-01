@@ -79,3 +79,62 @@ export async function restoreRow(table: ArchivableTable, id: string): Promise<Ar
   });
   return { error };
 }
+
+/** Human-friendly names for the tables, for the Archive screen. */
+export const ARCHIVABLE_TABLE_LABELS: Record<ArchivableTable, string> = {
+  businesses: "Directory listings",
+  directory_leads: "Quote requests",
+  leads: "Leads",
+  buyers: "Buyers",
+  buyer_profiles: "Provider applications",
+  homeowner_profiles: "Homeowner profiles",
+  posts: "Blog posts",
+  reviews: "Reviews",
+  media_assets: "Media",
+  business_photos: "Listing photos",
+  ingest_queue: "Import queue",
+};
+
+export interface ArchivedSummaryRow {
+  table_name: ArchivableTable;
+  archived_count: number;
+}
+
+export interface ArchivedRow {
+  id: string;
+  /** Best-effort display name resolved server-side; falls back to the id. */
+  label: string;
+  archived_at: string;
+  archived_by: string | null;
+  archive_reason: string | null;
+  row_data: Record<string, unknown>;
+}
+
+/** How many archived rows each table currently holds. */
+export async function fetchArchivedSummary(): Promise<{
+  data: ArchivedSummaryRow[];
+  error: { message: string } | null;
+}> {
+  const { data, error } = await db.rpc("admin_archived_summary", {});
+  // Postgres returns count(*) as bigint, which supabase-js surfaces as a
+  // string. Coerce here so callers can treat it as a number.
+  const rows = ((data as ArchivedSummaryRow[] | null) ?? []).map((r) => ({
+    ...r,
+    archived_count: Number(r.archived_count),
+  }));
+  return { data: rows, error };
+}
+
+/** One table's archived rows, newest first. */
+export async function fetchArchivedRows(
+  table: ArchivableTable,
+  limit = 50,
+  offset = 0,
+): Promise<{ data: ArchivedRow[]; error: { message: string } | null }> {
+  const { data, error } = await db.rpc("admin_list_archived", {
+    p_table: table,
+    p_limit: limit,
+    p_offset: offset,
+  });
+  return { data: (data as ArchivedRow[] | null) ?? [], error };
+}

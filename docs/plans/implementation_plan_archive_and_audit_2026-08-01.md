@@ -306,13 +306,27 @@ Phased so the highest-value fix lands first and each phase is independently ship
    anonymous REST read returns `[]`.
 2. ~~**Phase 2 — `data_audit_log` + archive/restore/purge functions.**~~ **COMPLETE 2026-08-01.**
 3. ~~**Phase 3 — `archived_at` columns, GRANTs, view changes, read-path audit.**~~ **COMPLETE 2026-08-01.**
-4. **Phase 4 — admin purge control (UI).** Outstanding. The `admin_purge_archived`
-   RPC exists and is verified, but is deliberately *not* exposed in the frontend
-   yet — there is no way to permanently delete anything from the UI, which is the
-   safe state. Add a control (with typed confirmation, following the
-   `ManagedJob.confirm` pattern) when size actually becomes a concern. Also
-   outstanding: a UI to *view* and restore archived rows — restoration currently
-   requires calling `admin_restore_row` directly.
+4. **Phase 4 — admin UI.**
+   - ~~View and restore archived rows~~ **COMPLETE 2026-08-01.** `/admin/archive`
+     ("Archive" in the admin nav), backed by two new admin-gated RPCs:
+     `admin_archived_summary()` for per-table counts and `admin_list_archived()`
+     for one table's rows. Both go through the same `archivable_tables()`
+     whitelist as the write side. The screen lists only categories that actually
+     contain something, shows when and why each row was archived, expands to the
+     record's preserved contents, and restores in one click. 5 jsdom tests;
+     suite 273 → 278.
+   - **Purge control — still outstanding, deliberately.** `admin_purge_archived`
+     exists and is verified, but nothing in the frontend calls it: there is no
+     way to permanently delete anything from the UI, which is the safe state.
+     Add it (typed confirmation, following the `ManagedJob.confirm` pattern) only
+     when database size actually demands it, and close the storage-file gap below
+     first.
+
+   **Note on `admin_list_archived`'s `label`:** rows are named by falling through
+   a list of plausible columns (`business_name`, `title`, `full_name`,
+   `contact_name`, `email`, `caption`, `slug`) and ending at the id. A per-table
+   CASE would read better but rots silently the moment a table is added to
+   `archivable_tables()`; this degrades to showing an id instead.
 
 ### Phase 2 + 3 verification (against the live project, 2026-08-01)
 
