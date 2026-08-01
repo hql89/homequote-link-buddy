@@ -255,9 +255,16 @@ export async function markReplyHandled(id: string): Promise<{ message: string } 
  * (the CSLB phone wasn't found on the fetched page). Approving is the only
  * other path to `email_confidence = 'verified'` besides an automatic phone
  * match — an admin who's looked at the source page is an acceptable second
- * source of truth. Rejecting clears the email so it never becomes
- * drip-eligible and is never retried, matching the moderation posture used
- * for photos and inbound replies.
+ * source of truth. Rejecting clears the whole discovered payload — the email
+ * and the source URL/phone/address it was found alongside — so it never
+ * becomes drip-eligible and no stale scraped evidence outlives the rejection,
+ * matching the moderation posture used for photos and inbound replies.
+ *
+ * Every column written here needs a matching column GRANT for `authenticated`
+ * (see 20260731130000_admin_enrichment_review_grants.sql). Adding a field to
+ * either payload without extending that grant fails at runtime with
+ * "permission denied for table businesses" — the grant is checked before RLS,
+ * so it surfaces as a hard error rather than a silent no-op.
  */
 export async function reviewEnrichedEmail(
   id: string,
@@ -267,7 +274,13 @@ export async function reviewEnrichedEmail(
   const values =
     decision === "verified"
       ? { email_confidence: "verified" }
-      : { email: null, email_source_url: null, email_confidence: "rejected" };
+      : {
+          email: null,
+          email_source_url: null,
+          email_source_phone: null,
+          email_source_address: null,
+          email_confidence: "rejected",
+        };
   const { error } = await table.update(values).eq("id", id);
   return error;
 }
