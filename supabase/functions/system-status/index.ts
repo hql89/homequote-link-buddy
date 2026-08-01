@@ -80,7 +80,6 @@ Deno.serve(async (req) => {
       "claim-listing",
       "import-ingest-queue",
       "ingest-business",
-      "migrate-helper",
       "notify-admin-email",
       "process-ingest-queue",
       "publish-scheduled",
