@@ -12,6 +12,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "@/hooks/use-toast";
+import { archiveRow } from "@/lib/archive";
 import { Loader2, Plus, Pencil, Trash2, ExternalLink, FileText, Sparkles, ImageIcon, Wand2, Calendar, Save, History, RotateCcw, Crop } from "lucide-react";
 import { format } from "date-fns";
 import { RichTextEditor } from "@/components/admin/RichTextEditor";
@@ -138,6 +139,8 @@ export default function BlogPostsPage() {
       const { data, error } = await supabase
         .from("posts")
         .select("*")
+        // Archived rows are removed from view but never destroyed — see src/lib/archive.ts
+        .is("archived_at", null)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data as Post[];
@@ -225,7 +228,9 @@ export default function BlogPostsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("posts").delete().eq("id", id);
+      // Archived, not destroyed — published posts may have inbound links and
+      // search rankings, so removal needs to be reversible.
+      const { error } = await archiveRow("posts", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -344,7 +349,7 @@ export default function BlogPostsPage() {
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Delete this post?</AlertDialogTitle>
-              <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
+              <AlertDialogDescription>This removes it from the site. The record is archived, not destroyed, and can be restored.</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>

@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
+import { archiveRow } from "@/lib/archive";
 import { format } from "date-fns";
 import { CheckCircle, XCircle, Eye, Loader2 } from "lucide-react";
 import { VERTICALS } from "@/lib/constants";
@@ -48,6 +49,8 @@ export default function ProviderApplications() {
         .from("buyer_profiles")
         .select("*")
         .is("buyer_id", null)
+        // Archived rows are removed from view but never destroyed — see src/lib/archive.ts
+        .is("archived_at", null)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data as Application[];
@@ -95,10 +98,10 @@ export default function ProviderApplications() {
 
   const rejectMutation = useMutation({
     mutationFn: async (app: Application) => {
-      const { error } = await supabase
-        .from("buyer_profiles")
-        .delete()
-        .eq("id", app.id);
+      // Rejecting an application archives it rather than erasing it. This is a
+      // decision made about a real person's business, and "why was this
+      // rejected, and by whom?" must stay answerable afterwards.
+      const { error } = await archiveRow("buyer_profiles", app.id, "application rejected");
       if (error) throw error;
     },
     onSuccess: () => {
@@ -240,7 +243,7 @@ export default function ProviderApplications() {
             <AlertDialogHeader>
               <AlertDialogTitle>Reject this application?</AlertDialogTitle>
               <AlertDialogDescription>
-                This will permanently remove the provider profile. This cannot be undone.
+                This removes the provider profile from the list. It is archived rather than deleted, so the application and the decision stay on record.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

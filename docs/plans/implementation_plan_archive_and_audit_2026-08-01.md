@@ -304,9 +304,44 @@ Phased so the highest-value fix lands first and each phase is independently ship
    a real test send wrote a row carrying the literal recipient; a row referencing
    deleted business `a807162d…` was accepted (a real FK would have rejected it);
    anonymous REST read returns `[]`.
-2. **Phase 2 — `data_audit_log` + archive/restore/purge functions.**
-3. **Phase 3 — `archived_at` columns, GRANTs, view changes, read-path audit.**
-4. **Phase 4 — UI: admin delete → archive; purge control.**
+2. ~~**Phase 2 — `data_audit_log` + archive/restore/purge functions.**~~ **COMPLETE 2026-08-01.**
+3. ~~**Phase 3 — `archived_at` columns, GRANTs, view changes, read-path audit.**~~ **COMPLETE 2026-08-01.**
+4. **Phase 4 — admin purge control (UI).** Outstanding. The `admin_purge_archived`
+   RPC exists and is verified, but is deliberately *not* exposed in the frontend
+   yet — there is no way to permanently delete anything from the UI, which is the
+   safe state. Add a control (with typed confirmation, following the
+   `ManagedJob.confirm` pattern) when size actually becomes a concern. Also
+   outstanding: a UI to *view* and restore archived rows — restoration currently
+   requires calling `admin_restore_row` directly.
+
+### Phase 2 + 3 verification (against the live project, 2026-08-01)
+
+- Column GRANTs present for all 3 tables lacking table-level UPDATE
+  (`businesses`, `directory_leads`, `ingest_queue`) — the trap that shipped
+  broken 3×. Confirmed via `information_schema.column_privileges`.
+- Archived a real published listing **as an admin JWT** (not service role, which
+  would bypass grants): no permission error; it vanished from
+  `public_business_listings`; anonymous REST returned `[]`; snapshot captured
+  with name and phone. Restore cleared all three columns and it reappeared.
+- Purge safety: with a cutoff 100 years in the future and a limit of 10,000
+  against 536 live rows, `admin_purge_archived` removed **0**. Live rows are
+  structurally unreachable. Config tables rejected (`Table is not archivable`),
+  non-admin rejected (`Forbidden`).
+- Full destroy-and-recover loop on a synthetic row: archived → purged (row gone
+  from `businesses`) → name, email and phone still recoverable from
+  `data_audit_log`. This is the 2026-07-25 scenario, solved.
+- Post-change sanity: 536 live businesses, 536 in the public view, 6 cities —
+  unchanged.
+
+**Bug found and fixed during the pass:** the 12-photo-per-listing cap counted
+archived photos, so a few delete-and-reupload cycles would have permanently
+exhausted an owner's upload slots.
+
+**Known gap:** purging a `business_photos` or `media_assets` row does not delete
+the underlying file from storage. Archiving deliberately leaves the file in
+place (a restored photo with a missing file is worse than an orphaned file), but
+that means purge reclaims no storage. Worth closing before purge is exposed in
+the UI.
 5. ~~**Phase 5 — prune-job retention fix.**~~ **COMPLETE** — shipped 2026-08-01 ahead
    of the rest, see "Status of the urgent item" above.
 

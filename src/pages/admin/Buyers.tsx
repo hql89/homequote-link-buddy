@@ -184,8 +184,8 @@ export default function BuyersPage() {
               <AlertDialogTitle>Delete "{deleteTarget?.name}"?</AlertDialogTitle>
               <AlertDialogDescription>
                 {deleteTarget && deleteTarget.leadCount > 0
-                  ? `This buyer has ${deleteTarget.leadCount} lead${deleteTarget.leadCount !== 1 ? "s" : ""} assigned. Deleting will unassign those leads. This cannot be undone.`
-                  : "Delete this buyer? This cannot be undone."}
+                  ? `This buyer has ${deleteTarget.leadCount} lead${deleteTarget.leadCount !== 1 ? "s" : ""} assigned. Removing will unassign those leads. The buyer is archived rather than deleted and can be restored.`
+                  : "Remove this buyer? They are archived rather than deleted and can be restored."}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

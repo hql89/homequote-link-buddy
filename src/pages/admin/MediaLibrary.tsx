@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "@/hooks/use-toast";
+import { archiveRow } from "@/lib/archive";
 import { Loader2, Trash2, Search, Image as ImageIcon, Copy } from "lucide-react";
 import { format } from "date-fns";
 
@@ -34,6 +35,8 @@ export default function MediaLibraryPage() {
       let query = supabase
         .from("media_assets")
         .select("*")
+        // Archived rows are removed from view but never destroyed — see src/lib/archive.ts
+        .is("archived_at", null)
         .order("created_at", { ascending: false });
 
       if (search.trim()) {
@@ -48,7 +51,10 @@ export default function MediaLibraryPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("media_assets").delete().eq("id", id);
+      // Archived, not destroyed. Note this only affects the database record —
+      // the underlying file in storage is left in place deliberately, since a
+      // restored asset with a missing file would be worse than an orphaned file.
+      const { error } = await archiveRow("media_assets", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -168,7 +174,7 @@ export default function MediaLibraryPage() {
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Delete this asset?</AlertDialogTitle>
-              <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
+              <AlertDialogDescription>This removes it from the site. The record is archived, not destroyed, and can be restored.</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>

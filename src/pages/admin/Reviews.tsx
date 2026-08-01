@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "@/hooks/use-toast";
+import { archiveRow } from "@/lib/archive";
 import { format } from "date-fns";
 import { CheckCircle, Trash2, XCircle } from "lucide-react";
 
@@ -35,6 +36,8 @@ export default function Reviews() {
       const { data, error } = await supabase
         .from("reviews")
         .select("*, buyers(business_name)")
+        // Archived rows are removed from view but never destroyed — see src/lib/archive.ts
+        .is("archived_at", null)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data as ReviewWithBuyer[];
@@ -63,7 +66,10 @@ export default function Reviews() {
 
   const deleteReview = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("reviews").delete().eq("id", id);
+      // Archived rather than destroyed: a review is someone's words about a
+      // business, and removing it is a moderation decision worth being able
+      // to review and reverse.
+      const { error } = await archiveRow("reviews", id, "removed by admin");
       if (error) throw error;
     },
     onSuccess: () => {
@@ -161,7 +167,7 @@ export default function Reviews() {
                             <AlertDialogContent>
                               <AlertDialogHeader>
                                 <AlertDialogTitle>Delete review?</AlertDialogTitle>
-                                <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
+                                <AlertDialogDescription>This removes it from the site. The record is archived, not destroyed, and can be restored.</AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
                                 <AlertDialogCancel>Cancel</AlertDialogCancel>

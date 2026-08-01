@@ -1,12 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { BuyerInsert, BuyerUpdate } from "@/types";
+import { archiveRow } from "@/lib/archive";
 
 export function useBuyers() {
   return useQuery({
     queryKey: ["buyers"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("buyers").select("*").order("business_name");
+      const { data, error } = await supabase.from("buyers").select("*").is("archived_at", null).order("business_name");
       if (error) throw error;
       return data;
     },
@@ -41,7 +42,9 @@ export function useDeleteBuyer() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("buyers").delete().eq("id", id);
+      // Archived, not destroyed — a buyer record is a real business we have a
+      // relationship with. Restorable from the database if removed in error.
+      const { error } = await archiveRow("buyers", id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["buyers"] }),

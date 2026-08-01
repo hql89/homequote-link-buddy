@@ -26,6 +26,7 @@ export default function PhotoModerationPage() {
       .from("business_photos")
       .select("*")
       .eq("status", "pending")
+      .is("archived_at", null)
       .order("created_at", { ascending: true });
 
     if (photoErr) {

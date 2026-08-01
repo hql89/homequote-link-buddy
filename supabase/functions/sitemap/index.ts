@@ -89,13 +89,18 @@ Deno.serve(async (req) => {
     const today = new Date().toISOString().split("T")[0];
 
     const [listingsRes, postsRes, buyersRes] = await Promise.all([
-      // Published listings only — this view filters is_published for us.
+      // Published listings only — this view filters is_published AND
+      // archived_at for us, so archived businesses never reach the sitemap.
       supabase.from("public_business_listings").select("slug, city_slug, created_at"),
+      // posts and buyers are read directly rather than through a view, so the
+      // archived filter has to be explicit here — an archived row must not be
+      // advertised to search engines.
       supabase
         .from("posts")
         .select("slug, updated_at, published_at, tags, category")
-        .eq("status", "published"),
-      supabase.from("buyers").select("id").eq("is_active", true),
+        .eq("status", "published")
+        .is("archived_at", null),
+      supabase.from("buyers").select("id").eq("is_active", true).is("archived_at", null),
     ]);
 
     const entries: Entry[] = [...staticEntries(today)];

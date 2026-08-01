@@ -62,6 +62,7 @@ async function listPhotos(supabase: SupabaseClient, businessId: string) {
     .from("business_photos")
     .select("id, storage_path, caption, sort_order, status, created_at")
     .eq("business_id", businessId)
+    .is("archived_at", null)
     .order("sort_order", { ascending: true });
 
   if (error) throw new Error(`List failed: ${error.message}`);
@@ -88,10 +89,14 @@ async function uploadPhoto(supabase: SupabaseClient, businessId: string, req: Re
   // No session means no per-user rate limiting exists anywhere else in this
   // flow; this cap is what stands between the token endpoint and someone
   // uploading an unbounded number of photos to one listing.
+  // Archived photos must not count toward the cap. They are no longer on the
+  // listing, so counting them would let a few delete-and-reupload cycles
+  // permanently exhaust an owner's twelve slots.
   const { count } = await supabase
     .from("business_photos")
     .select("id", { count: "exact", head: true })
     .eq("business_id", businessId)
+    .is("archived_at", null)
     .neq("status", "rejected");
   if ((count ?? 0) >= MAX_PHOTOS_PER_BUSINESS) {
     return json({ success: false, error: `Limit of ${MAX_PHOTOS_PER_BUSINESS} photos reached.` }, 400);
@@ -134,16 +139,44 @@ async function uploadPhoto(supabase: SupabaseClient, businessId: string, req: Re
 async function deletePhoto(supabase: SupabaseClient, businessId: string, photoId: string) {
   const { data: photo } = await supabase
     .from("business_photos")
-    .select("id, storage_path")
+    .select("*")
     .eq("id", photoId)
     .eq("business_id", businessId) // scoped to this token's own business — cannot touch another listing's photo
+    .is("archived_at", null)
     .maybeSingle();
 
   if (!photo) return json({ success: false, error: "Photo not found." }, 404);
 
-  await supabase.storage.from(BUCKET).remove([photo.storage_path]);
-  const { error } = await supabase.from("business_photos").delete().eq("id", photoId);
-  if (error) throw new Error(`Delete failed: ${error.message}`);
+  // Archived rather than deleted, per the project's archive-first policy.
+  //
+  // Two deliberate choices here:
+  //  1. The storage file is LEFT IN PLACE. Archiving the row while deleting
+  //     the file would make the record unrestorable, which defeats the point.
+  //     Reclaiming that storage belongs with the purge path, not here.
+  //  2. admin_archive_row() is not used: this runs under the service role on
+  //     behalf of a contractor holding a claim token, not a signed-in admin,
+  //     so is_admin() would reject it. The audit row is written directly with
+  //     actor_context 'edge_function' to record that distinction.
+  const { error } = await supabase
+    .from("business_photos")
+    .update({ archived_at: new Date().toISOString(), archive_reason: "removed by business owner" })
+    .eq("id", photoId);
+  if (error) throw new Error(`Archive failed: ${error.message}`);
+
+  const { error: auditError } = await supabase.from("data_audit_log").insert({
+    actor_user_id: null,
+    actor_context: "edge_function",
+    action: "archive",
+    table_name: "business_photos",
+    row_id: photoId,
+    row_snapshot: photo,
+    reason: "removed by business owner",
+  });
+  // The photo is already archived; failing the owner's request because the
+  // audit write failed would be the wrong trade. Surface it and continue.
+  if (auditError) {
+    console.error(`[${JOB_NAME}] failed to write data_audit_log for photo ${photoId}:`, auditError.message);
+  }
 
   return json({ success: true });
 }

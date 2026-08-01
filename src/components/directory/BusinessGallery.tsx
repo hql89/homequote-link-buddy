@@ -41,6 +41,8 @@ export function BusinessGallery({ businessId, businessName, verticalSlug }: Busi
       .select("id, storage_path, caption")
       .eq("business_id", businessId)
       .eq("status", "approved")
+      // Archived photos are removed from the listing but kept on record.
+      .is("archived_at", null)
       .order("sort_order", { ascending: true })
       .then(({ data, error }) => {
         if (cancelled) return;

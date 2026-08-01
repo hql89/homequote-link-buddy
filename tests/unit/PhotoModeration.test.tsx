@@ -39,7 +39,10 @@ const updateCalls: { id: string; status: string }[] = [];
 
 function makeChain(finalRows: unknown[]) {
   const chain: Record<string, unknown> = {};
-  const chainable = ["select", "eq", "in", "order"];
+  // `is` is here because the page filters `.is("archived_at", null)` — an
+  // archived photo must not reappear in the moderation queue. A method missing
+  // from this list silently breaks the chain, so it has to track the page.
+  const chainable = ["select", "eq", "in", "order", "is"];
   for (const method of chainable) {
     chain[method] = () => chain;
   }
