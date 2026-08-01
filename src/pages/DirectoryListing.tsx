@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Phone, Globe, MapPin, Wrench, Loader2, AlertCircle, BadgeCheck, ShieldCheck, Star } from "lucide-react";
 import { SITE_URL, pageTitle } from "@/lib/constants";
+import { safeExternalUrl } from "@/lib/safeUrl";
 import {
   directoryDb,
   formatPhoneDisplay,
@@ -60,6 +61,15 @@ export default function DirectoryListing() {
   }, [loadListing]);
 
   const services = useMemo(() => parseServices(business?.services), [business?.services]);
+
+  // The listing's website is stored data rendered straight into an href.
+  // Anything that isn't a plain http(s) address resolves to null, and the
+  // link is then not rendered at all rather than shown as a dead or
+  // executable one.
+  const safeWebsiteUrl = useMemo(
+    () => safeExternalUrl(business?.website_url),
+    [business?.website_url],
+  );
 
   const breadcrumbs = useMemo(
     () => [
@@ -274,12 +284,12 @@ export default function DirectoryListing() {
                         </a>
                       </p>
                     )}
-                    {business.website_url && (
+                    {safeWebsiteUrl && (
                       <p className="flex items-center gap-2">
                         <Globe className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                         <a
                           className="hover:underline"
-                          href={business.website_url}
+                          href={safeWebsiteUrl}
                           target="_blank"
                           rel="noopener noreferrer nofollow"
                         >
