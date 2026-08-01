@@ -168,6 +168,13 @@ Deno.serve(async (req) => {
       // unsubscribe was being recorded and then ignored here, which is the
       // one failure in this whole system that is not merely embarrassing.
       .is("outreach_suppressed_at", null)
+      // Only addresses the scan could actually corroborate. "verified" means
+      // the contractor's licensed phone number was found on the same website
+      // the address came from; "needs_review" means we found an address but
+      // could not tie it to this business at all. Emailing those risks cold-
+      // mailing a stranger and telling them we have built them a listing.
+      // /admin/enrichment is where a human promotes needs_review -> verified.
+      .eq("email_confidence", "verified")
       .is("outreach_email_1_sent_at", null)
       .not("email", "is", null)
       // A recipient-side bounce proved this address is dead. Retrying a
@@ -224,6 +231,7 @@ Deno.serve(async (req) => {
       .select(selectCols)
       .eq("outreach_paused", false)
       .is("outreach_suppressed_at", null)
+      .eq("email_confidence", "verified")
       .eq("is_claimed", false)
       .is("email_undeliverable_at", null)
       .not("outreach_email_1_sent_at", "is", null)
