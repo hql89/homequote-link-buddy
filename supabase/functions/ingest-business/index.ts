@@ -158,11 +158,21 @@ Deno.serve(async (req) => {
         sender_name: config?.fromName || "The Directory Team",
       };
 
-      const result = await sendOutreachEmail(config, {
-        to: email,
-        subject: renderTemplate(tpl.subject, vars),
-        text: renderTemplate(tpl.body, vars),
-      });
+      const result = await sendOutreachEmail(
+        config,
+        {
+          to: email,
+          subject: renderTemplate(tpl.subject, vars),
+          text: renderTemplate(tpl.body, vars),
+        },
+        {
+          supabase,
+          jobName: JOB_NAME,
+          emailType: "outreach_verify",
+          recipientKind: "business",
+          relatedBusinessId: business.id,
+        },
+      );
 
       if (result.success) {
         await supabase

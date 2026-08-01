@@ -233,11 +233,22 @@ Deno.serve(async (req) => {
         `Source: ${source === "chat" ? "AI chat assistant" : "Website quote form"}`,
       ].filter(Boolean);
 
-      const result = await sendOutreachEmail(config, {
-        to: business.email,
-        subject: `New quote request for ${business.business_name}`,
-        text: lines.join("\n"),
-      });
+      const result = await sendOutreachEmail(
+        config,
+        {
+          to: business.email,
+          subject: `New quote request for ${business.business_name}`,
+          text: lines.join("\n"),
+        },
+        {
+          supabase,
+          jobName: JOB_NAME,
+          emailType: "quote_request",
+          recipientKind: "business",
+          relatedBusinessId: business.id,
+          relatedLeadId: lead.id,
+        },
+      );
 
       notified = result.success;
       notifyError = result.error ?? null;

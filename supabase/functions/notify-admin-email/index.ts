@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
+import { logEmailSend } from "../_shared/emailLog.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -301,6 +302,9 @@ Deno.serve(async (req) => {
     let subject = "";
     let html = "";
     let toEmail = "";
+    // Who the recipient is, for the audit trail. Defaults to the admin, which
+    // is correct for every branch that mails config.adminNotificationEmail.
+    let recipientKind = "admin";
 
     if (notificationType === "new_lead") {
       const result = buildDynamicHtml("new_lead", leadData, customTemplates);
@@ -312,6 +316,7 @@ Deno.serve(async (req) => {
       subject = result.subject;
       html = result.html;
       toEmail = eventData.buyerEmail;
+      recipientKind = "buyer";
     } else if (notificationType === "buyer_inquiry") {
       const result = buildDynamicHtml("buyer_inquiry", buyerInquiry, customTemplates);
       subject = result.subject;
@@ -321,6 +326,7 @@ Deno.serve(async (req) => {
       subject = nurtureData.subject;
       html = nurtureData.html;
       toEmail = nurtureData.toEmail;
+      recipientKind = "lead";
     } else if (notificationType === "feedback_submitted") {
       const result = buildDynamicHtml("feedback_submitted", feedbackData, customTemplates);
       subject = result.subject;
@@ -373,7 +379,35 @@ Deno.serve(async (req) => {
       setTimeout(() => reject(new Error(`SMTP connection timed out after ${SMTP_TIMEOUT_MS / 1000}s.`)), SMTP_TIMEOUT_MS)
     );
 
-    await Promise.race([sendPromise, timeoutPromise]);
+    // Scoped narrowly around the send so that a config/template error above is
+    // never recorded as an attempted delivery — only a real send attempt is.
+    // Both outcomes are logged with the literal recipient address before this
+    // returns; the failure is re-thrown so the outer handler still 500s.
+    try {
+      await Promise.race([sendPromise, timeoutPromise]);
+    } catch (sendErr) {
+      await logEmailSend(supabase, {
+        jobName: "notify-admin-email",
+        emailType: String(notificationType),
+        recipientEmail: toEmail,
+        recipientKind,
+        subject,
+        status: "failed",
+        method: "smtp",
+        errorMessage: sendErr instanceof Error ? sendErr.message : String(sendErr),
+      });
+      throw sendErr;
+    }
+
+    await logEmailSend(supabase, {
+      jobName: "notify-admin-email",
+      emailType: String(notificationType),
+      recipientEmail: toEmail,
+      recipientKind,
+      subject,
+      status: "sent",
+      method: "smtp",
+    });
 
     console.log(`Email sent successfully to ${toEmail}`);
     return new Response(

@@ -80,11 +80,21 @@ Deno.serve(async (req) => {
         sender_name: senderName,
       };
       const tpl = templates.outreach_verify;
-      const result = await sendOutreachEmail(config, {
-        to: row.email,
-        subject: renderTemplate(tpl.subject, vars),
-        text: renderTemplate(tpl.body, vars),
-      });
+      const result = await sendOutreachEmail(
+        config,
+        {
+          to: row.email,
+          subject: renderTemplate(tpl.subject, vars),
+          text: renderTemplate(tpl.body, vars),
+        },
+        {
+          supabase,
+          jobName: JOB_NAME,
+          emailType: "outreach_verify",
+          recipientKind: "business",
+          relatedBusinessId: row.id,
+        },
+      );
 
       if (result.success) {
         await supabase
@@ -129,11 +139,21 @@ Deno.serve(async (req) => {
         sender_name: senderName,
       };
       const tpl = templates.outreach_preview;
-      const result = await sendOutreachEmail(config, {
-        to: row.email,
-        subject: renderTemplate(tpl.subject, vars),
-        text: renderTemplate(tpl.body, vars),
-      });
+      const result = await sendOutreachEmail(
+        config,
+        {
+          to: row.email,
+          subject: renderTemplate(tpl.subject, vars),
+          text: renderTemplate(tpl.body, vars),
+        },
+        {
+          supabase,
+          jobName: JOB_NAME,
+          emailType: "outreach_preview",
+          recipientKind: "business",
+          relatedBusinessId: row.id,
+        },
+      );
 
       if (result.success) {
         await supabase

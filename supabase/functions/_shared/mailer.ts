@@ -8,6 +8,7 @@
  */
 import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
+import { logEmailSend } from "./emailLog.ts";
 
 const SMTP_TIMEOUT_MS = 10_000;
 const IMAP_PORTS = [993, 995];
@@ -120,10 +121,59 @@ async function sendViaResend(email: OutreachEmail, fallbackFrom: string): Promis
 }
 
 /**
+ * Identifies an outbound send for the audit trail.
+ *
+ * Deliberately a REQUIRED argument to `sendOutreachEmail` rather than an
+ * optional one: a new call site that forgets to supply it fails to compile,
+ * which is the only reliable guarantee that every email this project sends
+ * ends up in `email_send_log`.
+ */
+export interface EmailAuditContext {
+  supabase: SupabaseClient;
+  /** The calling function, e.g. "send-outreach-drip". */
+  jobName: string;
+  /** Semantic kind, e.g. "outreach_verify", "quote_request". */
+  emailType: string;
+  recipientKind?: string;
+  /** Soft references — safe to pass ids of rows that may later be deleted. */
+  relatedBusinessId?: string | null;
+  relatedLeadId?: string | null;
+}
+
+/**
  * Attempts SMTP first, then Resend. Never throws — always returns a result so
  * the caller can record per-recipient outcomes without aborting a batch.
+ *
+ * Every outcome, success or failure, is written to `email_send_log` with the
+ * recipient's literal address before this returns.
  */
 export async function sendOutreachEmail(
+  config: SmtpConfig | null,
+  email: OutreachEmail,
+  audit: EmailAuditContext,
+): Promise<SendResult> {
+  const result = await attemptSend(config, email);
+
+  await logEmailSend(audit.supabase, {
+    jobName: audit.jobName,
+    emailType: audit.emailType,
+    recipientEmail: email.to,
+    recipientKind: audit.recipientKind,
+    subject: email.subject,
+    relatedBusinessId: audit.relatedBusinessId,
+    relatedLeadId: audit.relatedLeadId,
+    status: result.success ? "sent" : "failed",
+    method: result.method,
+    // On success via Resend, smtpError still explains why the primary failed —
+    // worth keeping, since a silently-degraded mailer is a real condition.
+    errorMessage: result.success ? (result.smtpError ?? null) : (result.error ?? null),
+  });
+
+  return result;
+}
+
+/** The actual SMTP → Resend attempt. Split out so logging wraps every path. */
+async function attemptSend(
   config: SmtpConfig | null,
   email: OutreachEmail,
 ): Promise<SendResult> {

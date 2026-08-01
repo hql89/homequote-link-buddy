@@ -294,8 +294,16 @@ correct current state for all of them.
 
 Phased so the highest-value fix lands first and each phase is independently shippable:
 
-1. **Phase 1 — `email_send_log` + mailer instrumentation.** Closes the actual gap.
-   Nothing else depends on it. Ship alone if you want the bleeding stopped fast.
+1. ~~**Phase 1 — `email_send_log` + mailer instrumentation.**~~ **COMPLETE — shipped 2026-08-01.**
+   All 9 outbound paths covered via two instrumentation points: `_shared/mailer.ts`
+   (4 direct callers) and `notify-admin-email` (itself + 4 functions that call it
+   over HTTP). The audit context is a **required** argument to `sendOutreachEmail`,
+   so a future call site that omits it fails `deno check` with
+   `TS2554: An argument for 'audit' was not provided` — verified deliberately.
+   8 new unit tests; suite 259 → 267. Verified end-to-end against the live project:
+   a real test send wrote a row carrying the literal recipient; a row referencing
+   deleted business `a807162d…` was accepted (a real FK would have rejected it);
+   anonymous REST read returns `[]`.
 2. **Phase 2 — `data_audit_log` + archive/restore/purge functions.**
 3. **Phase 3 — `archived_at` columns, GRANTs, view changes, read-path audit.**
 4. **Phase 4 — UI: admin delete → archive; purge control.**
@@ -303,6 +311,24 @@ Phased so the highest-value fix lands first and each phase is independently ship
    of the rest, see "Status of the urgent item" above.
 
 ---
+
+## Follow-up uncovered during Phase 1 verification
+
+**`status = 'sent'` is not a delivery confirmation.** The live test send logged
+`sent` while `homequotelink.com` was under an outgoing-mail suspension — the SMTP
+server accepts the handoff without error and the discard happens downstream. The
+bounce arrives later as a *separate inbound email* that nothing currently reads.
+
+Documented on the column itself (migration `20260801190000`) so no future UI
+mislabels it "delivered".
+
+Closing it properly is its own piece of work: ingest bounce notifications via the
+existing `receive-inbound-email` function, match them back to `email_send_log`, and
+add a `bounced` status. Worth doing **before** cold outreach runs at any volume —
+without it, a campaign can report 100% "sent" while delivering nothing, which is
+exactly the condition the domain is in today. Not scheduled; raise when the email
+provider question (Byethost vs. Resend) is settled, since the answer changes the
+implementation.
 
 ## Rollback
 
