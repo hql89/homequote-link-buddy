@@ -95,6 +95,21 @@ export function phoneMatchesPage(cslbPhone: string | null, pagePhones: string[])
 }
 
 /**
+ * A "<city>, CA <zip>" location snippet found on a fetched page — not a full
+ * street-address parser, just enough for a human reviewer to spot a business
+ * whose site clearly lists an address outside the service area. Same posture
+ * as the rest of this module: extract and surface, never auto-decide, since
+ * there's no single authoritative in-area zip list to compare against without
+ * duplicating one (see the memory note on the verticals two-sources bug).
+ */
+export function extractAddressFromHtml(html: string): string | null {
+  const text = html.replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ");
+  const match = text.match(/[A-Za-z][A-Za-z\s]{1,40},\s*CA\s+\d{5}(?:-\d{4})?/);
+  if (!match) return null;
+  return match[0].replace(/\s+/g, " ").replace(/\s+,/g, ",").trim();
+}
+
+/**
  * Minimal robots.txt check: true if the given user-agent (falling back to
  * the wildcard group) disallows the given path. Deliberately not a full
  * parser — it only needs to catch the real-world case that matters here,

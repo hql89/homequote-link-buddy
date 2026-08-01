@@ -84,6 +84,8 @@ export interface AdminBusinessRow {
   created_at: string;
   email: string | null;
   email_source_url: string | null;
+  email_source_phone: string | null;
+  email_source_address: string | null;
   email_confidence: "verified" | "needs_review" | "rejected" | null;
 }
 

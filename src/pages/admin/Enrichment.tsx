@@ -22,7 +22,14 @@ interface EnrichmentConfig {
 
 type NeedsReviewRow = Pick<
   AdminBusinessRow,
-  "id" | "business_name" | "city" | "phone" | "email" | "email_source_url"
+  | "id"
+  | "business_name"
+  | "city"
+  | "phone"
+  | "email"
+  | "email_source_url"
+  | "email_source_phone"
+  | "email_source_address"
 >;
 
 export default function EnrichmentPage() {
@@ -40,7 +47,9 @@ export default function EnrichmentPage() {
       supabase.from("admin_settings").select("setting_value").eq("setting_key", SETTING_KEY).maybeSingle(),
       directoryDb
         .from("businesses")
-        .select("id, business_name, city, phone, email, email_source_url")
+        .select(
+          "id, business_name, city, phone, email, email_source_url, email_source_phone, email_source_address",
+        )
         .eq("email_confidence", "needs_review")
         .order("business_name", { ascending: true }),
       supabase.rpc("admin_recent_job_runs", { p_limit: 25 }),
@@ -128,6 +137,9 @@ export default function EnrichmentPage() {
             only a URL — then fetches that page itself and looks for an email and a phone number
             on it. A row only becomes eligible for outreach when the phone found on the page
             matches the one CSLB has on file; otherwise it lands below for you to confirm by eye.
+            It also pulls a "City, CA zip" snippet from the page if one is there — that never
+            decides anything automatically, but it's shown next to CSLB's city so you can spot a
+            business whose site clearly lists an address outside the service area.
           </HelpTip>
         </div>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
@@ -210,7 +222,15 @@ export default function EnrichmentPage() {
                           <p className="mt-2 text-sm">
                             Found: <span className="font-mono">{row.email}</span>
                           </p>
+                          <p className="text-sm text-muted-foreground">CSLB city on file: {row.city}</p>
                           <p className="text-sm text-muted-foreground">CSLB phone on file: {row.phone ?? "none"}</p>
+                          <p className="text-sm text-muted-foreground">
+                            Phone on site: {row.email_source_phone ?? "none found"}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            Address on site:{" "}
+                            {row.email_source_address ?? "none found"}
+                          </p>
                           {row.email_source_url && (
                             <a
                               href={row.email_source_url}

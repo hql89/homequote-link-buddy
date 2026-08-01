@@ -29,6 +29,7 @@ import {
   extractUrlFromModelText,
   extractEmailsFromHtml,
   extractPhonesFromHtml,
+  extractAddressFromHtml,
   phoneMatchesPage,
   isDisallowedByRobots,
   resolveConfidence,
@@ -143,12 +144,15 @@ async function enrichOne(
     const phones = extractPhonesFromHtml(html);
     const matched = phoneMatchesPage(row.phone, phones);
     const confidence = resolveConfidence(matched);
+    const address = extractAddressFromHtml(html);
 
     await supabase
       .from("businesses")
       .update({
         email: emails[0],
         email_source_url: candidateUrl,
+        email_source_phone: phones[0] ?? null,
+        email_source_address: address,
         email_confidence: confidence,
         enriched_at: new Date().toISOString(),
       })

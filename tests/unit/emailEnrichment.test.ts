@@ -3,6 +3,7 @@ import {
   extractUrlFromModelText,
   extractEmailsFromHtml,
   extractPhonesFromHtml,
+  extractAddressFromHtml,
   phoneMatchesPage,
   isDisallowedByRobots,
   resolveConfidence,
@@ -82,6 +83,30 @@ describe("extractPhonesFromHtml", () => {
 
   it("returns empty when no phone-shaped text exists", () => {
     expect(extractPhonesFromHtml("<p>No phone listed.</p>")).toEqual([]);
+  });
+});
+
+describe("extractAddressFromHtml", () => {
+  it("finds a City, CA zip snippet in page content", () => {
+    const html = "<p>Visit us at 123 Main St, Burbank, CA 91504</p>";
+    expect(extractAddressFromHtml(html)).toBe("Burbank, CA 91504");
+  });
+
+  it("finds a snippet split across HTML tags", () => {
+    const html = "<span>Sherman Oaks</span>, <span>CA</span> <span>91403</span>";
+    expect(extractAddressFromHtml(html)).toBe("Sherman Oaks, CA 91403");
+  });
+
+  it("handles a zip+4", () => {
+    expect(extractAddressFromHtml("<p>Van Nuys, CA 91401-1234</p>")).toBe("Van Nuys, CA 91401-1234");
+  });
+
+  it("returns null when no City, CA zip pattern exists", () => {
+    expect(extractAddressFromHtml("<p>We serve the whole valley!</p>")).toBeNull();
+  });
+
+  it("returns null for an out-of-state mention with no zip", () => {
+    expect(extractAddressFromHtml("<p>Our sister company is based in Reno, NV.</p>")).toBeNull();
   });
 });
 
