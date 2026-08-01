@@ -44,6 +44,101 @@ export function extractName(from: string): string {
   return "Unknown sender";
 }
 
+/**
+ * Bounce detection.
+ *
+ * Checked BEFORE every other rule, and that ordering is itself a fix: bounce
+ * bodies routinely quote the original message and contain words like "remove"
+ * or "stop", so an undeliverable notice could previously be read as the
+ * recipient asking to unsubscribe — suppressing a business that never said
+ * anything, on the strength of a machine-generated failure notice.
+ */
+const BOUNCE_SENDER_RE =
+  /\b(mailer-daemon|postmaster|mail delivery (system|subsystem)|no-?reply@.*(bounce|mail))/i;
+
+const BOUNCE_SUBJECT_RE =
+  /\b(mail delivery failed|undelivered mail|undeliverable|delivery status notification|returned mail|returning message to sender|delivery failure)\b/i;
+
+const BOUNCE_BODY_RE =
+  /\b(could not be delivered|delivery to the following recipient failed|permanent (error|failure)|this is an automatically generated (delivery status|message)|the following address(es)? failed)\b/i;
+
+/** Our own domain cannot send — retryable once the block is lifted. */
+const SENDER_BLOCKED_RE =
+  /\b(outgoing mail suspension|sending (is )?disabled|account (is )?suspended|relay access denied|blocked by policy|not authoriz(s|z)ed to send|exceeded .* sending (limit|quota))\b/i;
+
+/**
+ * The recipient's mailbox does not exist — never retryable.
+ *
+ * The second alternative covers Gmail's phrasing, "The email account that you
+ * tried to reach does not exist", where the noun and "does not exist" are
+ * separated by a clause. Bounded to one sentence so it cannot reach across
+ * unrelated text.
+ */
+const RECIPIENT_INVALID_RE = new RegExp(
+  [
+    /\b(user unknown|no such user|unknown user)\b/.source,
+    /\bmailbox (unavailable|not found|does not exist)\b/.source,
+    /\brecipient address rejected\b/.source,
+    /\b(no mailbox here|invalid recipient)\b/.source,
+    /\b(email )?(account|address|mailbox|user)\b[^.!?]{0,60}?\b(does not exist|doesn't exist|not found)\b/.source,
+  ].join("|"),
+  "i",
+);
+
+export type BounceKind = "sender_blocked" | "recipient_invalid" | "unknown";
+
+/**
+ * Whether an inbound message is a delivery-failure notice.
+ *
+ * Any one of sender/subject/body matching is enough. Bounce formats vary
+ * wildly between providers, and the cost of missing one is high: an
+ * undetected bounce leaves a business permanently marked as contacted.
+ */
+export function isBounce(from: string, subject: string, bodyText: string): boolean {
+  return (
+    BOUNCE_SENDER_RE.test(from ?? "") ||
+    BOUNCE_SUBJECT_RE.test(subject ?? "") ||
+    BOUNCE_BODY_RE.test(bodyText ?? "")
+  );
+}
+
+/**
+ * Why the delivery failed, which decides whether to retry.
+ *
+ * Sender-side is checked first: when our own domain is blocked, the bounce
+ * may also quote recipient-shaped text from the original message, and
+ * misreading "our sending is broken" as "their address is dead" would
+ * permanently discard a perfectly good contact.
+ */
+export function classifyBounce(bodyText: string): BounceKind {
+  const body = bodyText ?? "";
+  if (SENDER_BLOCKED_RE.test(body)) return "sender_blocked";
+  if (RECIPIENT_INVALID_RE.test(body)) return "recipient_invalid";
+  return "unknown";
+}
+
+/**
+ * The address that actually failed, which is quoted inside the bounce rather
+ * than being the bounce's own sender. Returns the first plausible address
+ * that is not one of ours.
+ */
+export function extractBouncedRecipient(bodyText: string, ourDomain: string): string | null {
+  const body = bodyText ?? "";
+  const matches = body.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g);
+  if (!matches) return null;
+
+  const domain = (ourDomain ?? "").toLowerCase();
+  for (const raw of matches) {
+    const address = raw.toLowerCase();
+    // Skip our own addresses and the daemon's — the failed recipient is a
+    // third party, and every bounce mentions both of the others.
+    if (domain && address.endsWith(`@${domain}`)) continue;
+    if (/^(mailer-daemon|postmaster|no-?reply)@/.test(address)) continue;
+    return address;
+  }
+  return null;
+}
+
 const UNSUBSCRIBE_RE = /\b(stop|unsubscribe|remove me|opt[\s-]?out|take me off)\b/i;
 const CONFIRM_RE = /\byes\b/i;
 const URL_RE = /https?:\/\/[^\s<>")\]]+|(?:www\.)[a-z0-9-]+\.[a-z]{2,}[^\s<>")\]]*/i;

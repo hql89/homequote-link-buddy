@@ -6,7 +6,7 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
-import { Loader2, Eye, EyeOff, Save, SendHorizonal } from "lucide-react";
+import { Loader2, Eye, EyeOff, Save, SendHorizonal, CheckCircle2 } from "lucide-react";
 
 export interface SmtpConfig {
   smtpHost: string;
@@ -31,9 +31,55 @@ export function SMTPSettings({ config, setConfig, addLog }: SMTPSettingsProps) {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  // Set once a test has been dispatched, so "I received it" only appears when
+  // there is actually something to have received.
+  const [testDispatched, setTestDispatched] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
   function updateField<K extends keyof SmtpConfig>(key: K, value: SmtpConfig[K]) {
     setConfig((prev) => ({ ...prev, [key]: value }));
+  }
+
+  /**
+   * Records that a human saw the test email land.
+   *
+   * send-outreach-drip reads this and refuses to send without a recent one.
+   * It is deliberately a separate, manual step from sending the test: the
+   * send succeeding proves only that SMTP accepted the message.
+   */
+  async function handleConfirmDelivery() {
+    setConfirming(true);
+    try {
+      const { data: existing } = await supabase
+        .from("admin_settings")
+        .select("setting_value")
+        .eq("setting_key", "outreach_config")
+        .maybeSingle();
+
+      const merged = {
+        ...((existing?.setting_value as Record<string, unknown>) ?? {}),
+        delivery_verified_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase
+        .from("admin_settings")
+        .upsert({ setting_key: "outreach_config", setting_value: merged }, { onConflict: "setting_key" });
+
+      if (error) throw error;
+
+      setTestDispatched(false);
+      addLog("success", "Delivery confirmed — outreach may send for the next 14 days.");
+      toast({
+        title: "Delivery confirmed",
+        description: "Outreach emails can send again. This expires in 14 days.",
+      });
+    } catch (err) {
+      const error = err as Error;
+      addLog("error", `Could not record delivery confirmation: ${error.message}`);
+      toast({ title: "Couldn't save", description: error.message, variant: "destructive" });
+    } finally {
+      setConfirming(false);
+    }
   }
 
   async function handleSave() {
@@ -104,6 +150,7 @@ export function SMTPSettings({ config, setConfig, addLog }: SMTPSettingsProps) {
         return;
       }
 
+      setTestDispatched(true);
       addLog("success", `Test email dispatched to ${config.adminNotificationEmail}. Check inbox to confirm delivery.`);
       toast({ title: "Test email dispatched", description: `Check ${config.adminNotificationEmail} to confirm it arrived.` });
     } catch (err) {
@@ -224,6 +271,32 @@ export function SMTPSettings({ config, setConfig, addLog }: SMTPSettingsProps) {
             Send Test Email
           </Button>
         </div>
+
+        {/*
+          The outreach drip refuses to send without this. "Dispatched" only
+          means the mail server accepted the message — on 2026-08-01 it
+          accepted every one and discarded them all. Only a human who saw the
+          email arrive can confirm delivery, so only a human can clear this.
+        */}
+        {testDispatched && (
+          <div className="rounded-md border border-primary/30 bg-primary/5 p-4">
+            <p className="text-sm font-medium">Did the test email actually arrive?</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Check {config.adminNotificationEmail} — including spam. A message being accepted by the
+              mail server does not mean it was delivered. Outreach emails stay switched off until
+              this is confirmed, and the confirmation expires after 14 days.
+            </p>
+            <Button
+              size="sm"
+              className="mt-3 gap-2"
+              disabled={confirming}
+              onClick={handleConfirmDelivery}
+            >
+              {confirming ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              Yes, it arrived
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -3,6 +3,9 @@ import {
   extractEmail,
   extractName,
   classifyReply,
+  isBounce,
+  classifyBounce,
+  extractBouncedRecipient,
 } from "../../supabase/functions/_shared/inboundClassifier";
 
 describe("extractEmail", () => {
@@ -143,5 +146,99 @@ describe("classifyReply — isPriority (sort hint, never an action)", () => {
     const result = classifyReply("STOP — and what does this cost anyway?");
     expect(result.classification).toBe("unsubscribe");
     expect(result.isPriority).toBe(true);
+  });
+});
+
+/**
+ * Fixture is the real bounce received on 2026-08-01 at 17:01 UTC, verbatim.
+ * It is the exact case the outreach drip must survive: our own domain is
+ * blocked, SMTP accepted the message anyway, and the failure only shows up
+ * as a separate inbound email afterwards.
+ */
+const REAL_SUSPENSION_BOUNCE = `This message was created automatically by mail delivery software.
+
+A message that you sent could not be delivered to one or more of its
+recipients. This is a permanent error. The following address(es) failed:
+
+  dgarcia89@gmail.com
+    Domain homequotelink.com has an outgoing mail suspension.  Message discarded.
+
+---------- Forwarded message ----------
+From: Home Quote Link <admin@homequotelink.com>
+To: <dgarcia89@gmail.com>
+Subject: HomeQuoteLink — Test Email`;
+
+describe("isBounce", () => {
+  it("recognises the real suspension bounce", () => {
+    expect(
+      isBounce(
+        "Mail Delivery System <MAILER-DAEMON@sv20.byethost20.org>",
+        "Mail delivery failed: returning message to sender",
+        REAL_SUSPENSION_BOUNCE,
+      ),
+    ).toBe(true);
+  });
+
+  it("recognises a bounce from any one signal alone", () => {
+    expect(isBounce("MAILER-DAEMON@example.com", "", "")).toBe(true);
+    expect(isBounce("", "Undelivered Mail Returned to Sender", "")).toBe(true);
+    expect(isBounce("", "", "Your message could not be delivered.")).toBe(true);
+  });
+
+  it("does not treat a genuine reply as a bounce", () => {
+    expect(isBounce("Dana <owner@luxairhvac.com>", "Re: Quick question", "Yes that's correct, thanks!"))
+      .toBe(false);
+    expect(isBounce("Dana <owner@luxairhvac.com>", "Re: Quick question", "Please remove me from your list"))
+      .toBe(false);
+  });
+});
+
+describe("classifyBounce", () => {
+  it("classifies our own domain being suspended as sender-side, so it can be retried", () => {
+    expect(classifyBounce(REAL_SUSPENSION_BOUNCE)).toBe("sender_blocked");
+  });
+
+  it("classifies a dead mailbox as recipient-side, so it is never retried", () => {
+    expect(classifyBounce("550 5.1.1 <nobody@example.com>: Recipient address rejected: User unknown"))
+      .toBe("recipient_invalid");
+    expect(classifyBounce("The email account that you tried to reach does not exist."))
+      .toBe("recipient_invalid");
+  });
+
+  it("prefers sender-side when a bounce shows both, so a good contact is not discarded", () => {
+    // Our block is the real cause; recipient-shaped text is quoted noise.
+    const mixed = "Domain homequotelink.com has an outgoing mail suspension. user unknown";
+    expect(classifyBounce(mixed)).toBe("sender_blocked");
+  });
+
+  it("falls back to unknown rather than guessing", () => {
+    expect(classifyBounce("Delivery failed for reasons we did not explain.")).toBe("unknown");
+  });
+});
+
+describe("extractBouncedRecipient", () => {
+  it("pulls the failed address out of the real bounce, not our own", () => {
+    expect(extractBouncedRecipient(REAL_SUSPENSION_BOUNCE, "homequotelink.com"))
+      .toBe("dgarcia89@gmail.com");
+  });
+
+  it("skips the daemon's own address", () => {
+    const body = "From: MAILER-DAEMON@sv20.byethost20.org\nFailed: owner@luxairhvac.com";
+    expect(extractBouncedRecipient(body, "homequotelink.com")).toBe("owner@luxairhvac.com");
+  });
+
+  it("returns null when no third-party address appears", () => {
+    expect(extractBouncedRecipient("admin@homequotelink.com only", "homequotelink.com")).toBeNull();
+    expect(extractBouncedRecipient("no addresses here", "homequotelink.com")).toBeNull();
+  });
+});
+
+describe("classifyReply — bounces must not be mistaken for replies", () => {
+  it("does not read a bounce quoting 'remove' as an unsubscribe", () => {
+    // The pre-existing hazard this guards: bounce bodies quote the original
+    // message and often contain 'remove'/'stop'. Suppressing a business on
+    // the strength of a machine-generated failure notice would be wrong.
+    const bounce = "Delivery failed. Please remove this address and try again.";
+    expect(isBounce("MAILER-DAEMON@x.com", "Undeliverable", bounce)).toBe(true);
   });
 });

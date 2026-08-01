@@ -21,11 +21,25 @@
  * auto-responder meeting a vacation auto-responder is a mail loop, and that
  * failure mode is worse than the one this function exists to prevent.
  */
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 import { corsHeaders, json } from "../_shared/directory.ts";
-import { extractEmail, extractName, classifyReply } from "../_shared/inboundClassifier.ts";
+import {
+  extractEmail,
+  extractName,
+  classifyReply,
+  isBounce,
+  classifyBounce,
+  extractBouncedRecipient,
+  type BounceKind,
+} from "../_shared/inboundClassifier.ts";
 
 const JOB_NAME = "receive-inbound-email";
+
+/**
+ * Our sending domain. Used to tell the failed recipient inside a bounce apart
+ * from our own address, which every bounce also quotes.
+ */
+const OUR_DOMAIN = (Deno.env.get("OUTREACH_DOMAIN") ?? "homequotelink.com").toLowerCase();
 
 interface InboundPayload {
   from?: string;
@@ -39,6 +53,96 @@ interface InboundPayload {
 /** Strips tags for the rare case a sender's client sends HTML-only with no text part. */
 function stripHtml(html: string): string {
   return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+interface BounceOutcome {
+  kind: BounceKind;
+  recipient: string | null;
+  businessId: string | null;
+  /** Whether this business will be offered to the drip again. */
+  retryable: boolean;
+}
+
+/**
+ * Reconciles a delivery failure against what we thought we had sent.
+ *
+ * The distinction that matters:
+ *
+ *   sender_blocked    — our own domain could not send (e.g. the Byethost
+ *                       suspension). The business never heard from us, so the
+ *                       sent stamps are CLEARED and it re-enters the queue
+ *                       once sending works again. This is the case that was
+ *                       silently losing contacts.
+ *
+ *   recipient_invalid — the address is dead. The send genuinely happened; the
+ *                       stamps stay, and the address is marked undeliverable
+ *                       so the drip stops retrying it. Repeatedly mailing
+ *                       non-existent mailboxes is what damages sender
+ *                       reputation.
+ *
+ *   unknown           — recorded, but nothing is undone. Guessing wrong in
+ *                       either direction is worse than leaving it for a human.
+ */
+async function handleBounce(supabase: SupabaseClient, bodyText: string): Promise<BounceOutcome> {
+  const kind = classifyBounce(bodyText);
+  const recipient = extractBouncedRecipient(bodyText, OUR_DOMAIN);
+  const now = new Date().toISOString();
+
+  if (!recipient) {
+    console.warn(`[${JOB_NAME}] bounce received with no identifiable recipient (kind: ${kind})`);
+    return { kind, recipient: null, businessId: null, retryable: false };
+  }
+
+  // Record it against the original send, so email_send_log stops claiming
+  // "sent" for something that demonstrably did not arrive.
+  await supabase
+    .from("email_send_log")
+    .update({ status: "bounced", bounced_at: now, bounce_kind: kind })
+    .ilike("recipient_email", escapeIlike(recipient))
+    .eq("status", "sent");
+
+  const { data: business } = await supabase
+    .from("businesses")
+    .select("id")
+    .ilike("email", escapeIlike(recipient))
+    .maybeSingle();
+
+  if (!business) {
+    // Still worth having updated email_send_log above: the address may belong
+    // to a lead or an admin notification rather than a directory listing.
+    return { kind, recipient, businessId: null, retryable: false };
+  }
+
+  if (kind === "sender_blocked") {
+    await supabase
+      .from("businesses")
+      .update({
+        outreach_email_1_sent_at: null,
+        outreach_email_2_sent_at: null,
+        outreach_bounced_at: now,
+        outreach_bounce_kind: kind,
+      })
+      .eq("id", business.id);
+    return { kind, recipient, businessId: business.id, retryable: true };
+  }
+
+  if (kind === "recipient_invalid") {
+    await supabase
+      .from("businesses")
+      .update({
+        email_undeliverable_at: now,
+        outreach_bounced_at: now,
+        outreach_bounce_kind: kind,
+      })
+      .eq("id", business.id);
+    return { kind, recipient, businessId: business.id, retryable: false };
+  }
+
+  await supabase
+    .from("businesses")
+    .update({ outreach_bounced_at: now, outreach_bounce_kind: kind })
+    .eq("id", business.id);
+  return { kind, recipient, businessId: business.id, retryable: false };
 }
 
 /**
@@ -88,6 +192,49 @@ Deno.serve(async (req) => {
 
     const fromEmail = extractEmail(payload.from);
     const fromName = extractName(payload.from);
+
+    // ── Bounce handling ────────────────────────────────────────────────────
+    // Checked before classifyReply for two reasons: a bounce is not a reply,
+    // and bounce bodies quote the original message, so one containing
+    // "remove" would otherwise be read as the business asking to unsubscribe.
+    //
+    // A bounce's SENDER is the mail daemon, not the business — the address
+    // that actually failed is quoted inside the body, so the lookup differs
+    // from the reply path below.
+    const bounced = isBounce(payload.from, payload.subject ?? "", bodyText);
+
+    if (bounced) {
+      const outcome = await handleBounce(supabase, bodyText);
+
+      const { error: bounceInsertError } = await supabase
+        .from("inbound_emails")
+        .insert({
+          message_id: messageId,
+          business_id: outcome.businessId,
+          from_email: fromEmail,
+          from_name: fromName,
+          subject: payload.subject ?? null,
+          body_text: bodyText || null,
+          classification: "bounce",
+          extracted_url: null,
+          is_priority: false,
+        });
+
+      if (bounceInsertError && bounceInsertError.code !== "23505") {
+        throw new Error(`Insert failed: ${bounceInsertError.message}`);
+      }
+
+      return json({
+        success: true,
+        classification: "bounce",
+        bounce_kind: outcome.kind,
+        failed_recipient: outcome.recipient,
+        matched: Boolean(outcome.businessId),
+        retryable: outcome.retryable,
+        duplicate: bounceInsertError?.code === "23505",
+      });
+    }
+
     const { classification, extractedUrl, isPriority } = classifyReply(bodyText);
 
     const { data: business } = await supabase

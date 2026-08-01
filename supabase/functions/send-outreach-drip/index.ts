@@ -24,6 +24,31 @@ const JOB_NAME = "send-outreach-drip";
 const DRIP_DELAY_DAYS = 3;
 const BATCH_LIMIT = 50;
 
+/**
+ * How long a human's confirmation that mail actually arrives stays good for.
+ *
+ * SMTP acceptance is not delivery — on 2026-08-01 the server accepted every
+ * message and discarded it, while this job would have stamped each business
+ * as contacted and never retried it. Nothing available to this function can
+ * detect that: the bounce arrives later, as a separate inbound email, and the
+ * n8n bridge that would ingest it is not always running.
+ *
+ * So delivery is asserted by a person (Admin -> Settings -> Email, after a
+ * test email actually lands) and that assertion expires, because a domain can
+ * be suspended at any time without warning — as this one was, between a
+ * working test on 26 July and a discarded one on 1 August.
+ */
+const DELIVERY_PROOF_MAX_AGE_DAYS = 14;
+
+/**
+ * Halt if bounces dominate recent sends. Belt to the gate's braces: it needs
+ * bounce ingestion to be running, but when it is, it catches a domain that
+ * breaks mid-campaign without waiting for the proof to expire.
+ */
+const BOUNCE_CIRCUIT_WINDOW_DAYS = 7;
+const BOUNCE_CIRCUIT_MIN_SAMPLE = 10;
+const BOUNCE_CIRCUIT_THRESHOLD = 0.5;
+
 interface BusinessRow {
   id: string;
   business_name: string;
@@ -51,6 +76,82 @@ Deno.serve(async (req) => {
   const errors: string[] = [];
 
   try {
+    // ── Gate 1: has anyone confirmed mail actually arrives? ────────────────
+    const { data: outreachCfgRow } = await supabase
+      .from("admin_settings")
+      .select("setting_value")
+      .eq("setting_key", "outreach_config")
+      .maybeSingle();
+
+    const outreachCfg = (outreachCfgRow?.setting_value ?? {}) as {
+      delivery_verified_at?: string;
+    };
+    const verifiedAt = outreachCfg.delivery_verified_at
+      ? Date.parse(outreachCfg.delivery_verified_at)
+      : NaN;
+    const proofAgeMs = Date.now() - verifiedAt;
+    const maxAgeMs = DELIVERY_PROOF_MAX_AGE_DAYS * 86_400_000;
+
+    if (Number.isNaN(verifiedAt) || proofAgeMs > maxAgeMs) {
+      const reason = Number.isNaN(verifiedAt)
+        ? "delivery has never been confirmed"
+        : `delivery was last confirmed ${Math.floor(proofAgeMs / 86_400_000)} days ago`;
+
+      // Not an error: refusing to send is the correct outcome, and saying so
+      // plainly is what stops this being mistaken for a quiet no-op.
+      await logRun(supabase, JOB_NAME, "success", Date.now() - startedAt, null, {
+        halted: "delivery_unverified",
+        reason,
+        ...summary,
+      });
+      return json({
+        success: true,
+        halted: "delivery_unverified",
+        reason:
+          `${reason}. Send a test email from Admin → Settings → Email, confirm it arrived, ` +
+          `then outreach will resume. SMTP accepting a message does not prove it was delivered.`,
+        ...summary,
+      });
+    }
+
+    // ── Gate 2: are recent sends mostly bouncing? ──────────────────────────
+    const windowStart = new Date(
+      Date.now() - BOUNCE_CIRCUIT_WINDOW_DAYS * 86_400_000,
+    ).toISOString();
+
+    const { count: recentSends } = await supabase
+      .from("email_send_log")
+      .select("id", { count: "exact", head: true })
+      .eq("job_name", JOB_NAME)
+      .gte("sent_at", windowStart);
+
+    const { count: recentBounces } = await supabase
+      .from("email_send_log")
+      .select("id", { count: "exact", head: true })
+      .eq("job_name", JOB_NAME)
+      .eq("status", "bounced")
+      .gte("sent_at", windowStart);
+
+    const sends = recentSends ?? 0;
+    const bounces = recentBounces ?? 0;
+
+    if (sends >= BOUNCE_CIRCUIT_MIN_SAMPLE && bounces / sends >= BOUNCE_CIRCUIT_THRESHOLD) {
+      await logRun(supabase, JOB_NAME, "partial", Date.now() - startedAt, null, {
+        halted: "bounce_rate",
+        recent_sends: sends,
+        recent_bounces: bounces,
+        ...summary,
+      });
+      return json({
+        success: true,
+        halted: "bounce_rate",
+        reason:
+          `${bounces} of the last ${sends} outreach emails bounced. Sending is stopped until ` +
+          `the cause is fixed — continuing would damage the domain's sending reputation.`,
+        ...summary,
+      });
+    }
+
     const { config } = await loadSmtpConfig(supabase);
     const templates = await loadOutreachTemplates(supabase);
     const senderName = config?.fromName || "The Directory Team";
@@ -65,6 +166,9 @@ Deno.serve(async (req) => {
       .eq("outreach_paused", false)
       .is("outreach_email_1_sent_at", null)
       .not("email", "is", null)
+      // A recipient-side bounce proved this address is dead. Retrying a
+      // non-existent mailbox is what damages sender reputation.
+      .is("email_undeliverable_at", null)
       .order("created_at", { ascending: true })
       .limit(BATCH_LIMIT);
 
@@ -116,6 +220,7 @@ Deno.serve(async (req) => {
       .select(selectCols)
       .eq("outreach_paused", false)
       .eq("is_claimed", false)
+      .is("email_undeliverable_at", null)
       .not("outreach_email_1_sent_at", "is", null)
       .lte("outreach_email_1_sent_at", cutoff)
       .is("outreach_email_2_sent_at", null)
