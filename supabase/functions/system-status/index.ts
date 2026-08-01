@@ -98,7 +98,6 @@ Deno.serve(async (req) => {
       "system-status",
       "track-event",
       "track-view",
-      "twilio-missed-call",
     ];
 
     // Ping each function to check health
