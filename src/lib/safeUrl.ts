@@ -27,6 +27,7 @@ export function safeExternalUrl(raw: string | null | undefined): string | null {
 
   // Control characters are used to smuggle a scheme past naive checks
   // ("java\tscript:alert(1)"), and are never legitimate in a URL.
+  // eslint-disable-next-line no-control-regex -- intentional: this check exists to reject them.
   if (/[\u0000-\u001f\u007f]/.test(trimmed)) return null;
 
   const candidate = /^[a-z][a-z0-9+.-]*:/i.test(trimmed) ? trimmed : `https://${trimmed}`;
