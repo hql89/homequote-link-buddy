@@ -1,3 +1,4 @@
+import { serviceRoleKey as readServiceRoleKey } from "../_shared/supabaseKeys.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 
 const corsHeaders = {
@@ -23,7 +24,7 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      readServiceRoleKey()
     );
 
     // Find feedback record by token
@@ -73,7 +74,7 @@ Deno.serve(async (req) => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+        Authorization: `Bearer ${readServiceRoleKey()}`,
       },
       body: JSON.stringify({
         notificationType: "feedback_submitted",

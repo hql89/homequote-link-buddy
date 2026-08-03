@@ -1,3 +1,4 @@
+import { serviceRoleKey as readServiceRoleKey } from "../_shared/supabaseKeys.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 import { logEmailSend } from "../_shared/emailLog.ts";
@@ -248,7 +249,7 @@ Deno.serve(async (req) => {
     const { notificationType, leadData, eventData, buyerInquiry, nurtureData, feedbackData, testData } = body;
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const serviceRoleKey = readServiceRoleKey();
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     const { data: settingsRow, error: settingsError } = await supabase

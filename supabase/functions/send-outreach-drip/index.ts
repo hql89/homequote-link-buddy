@@ -10,6 +10,7 @@
  *
  * Every send goes through the SMTP → Resend failover mailer.
  */
+import { serviceRoleKey as readServiceRoleKey } from "../_shared/supabaseKeys.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 import {
   corsHeaders,
@@ -68,7 +69,7 @@ Deno.serve(async (req) => {
 
   const startedAt = Date.now();
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const serviceRoleKey = readServiceRoleKey();
   const supabase = createClient(supabaseUrl, serviceRoleKey);
   const siteUrl = (Deno.env.get("PUBLIC_SITE_URL") || "https://homequotelink.com").replace(/\/+$/, "");
 

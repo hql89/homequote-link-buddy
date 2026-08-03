@@ -21,6 +21,7 @@
  * auto-responder meeting a vacation auto-responder is a mail loop, and that
  * failure mode is worse than the one this function exists to prevent.
  */
+import { serviceRoleKey as readServiceRoleKey } from "../_shared/supabaseKeys.ts";
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 import { corsHeaders, json } from "../_shared/directory.ts";
 import {
@@ -160,7 +161,7 @@ Deno.serve(async (req) => {
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    readServiceRoleKey(),
   );
 
   try {

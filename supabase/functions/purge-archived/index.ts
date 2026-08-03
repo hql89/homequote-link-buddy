@@ -27,6 +27,7 @@
  *
  * Auth: admin JWT or service role, same as the other privileged endpoints.
  */
+import { serviceRoleKey as readServiceRoleKey, publishableKey as readPublishableKey } from "../_shared/supabaseKeys.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 import { corsHeaders, json, logRun, isPrivilegedCaller } from "../_shared/directory.ts";
 import { resolveStorageRef } from "../_shared/storageRefs.ts";
@@ -44,8 +45,8 @@ Deno.serve(async (req) => {
 
   const startedAt = Date.now();
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+  const serviceRoleKey = readServiceRoleKey();
+  const anonKey = readPublishableKey();
 
   // Service role: storage deletion only.
   const admin = createClient(supabaseUrl, serviceRoleKey);

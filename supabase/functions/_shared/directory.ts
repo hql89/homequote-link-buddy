@@ -2,6 +2,7 @@
  * Shared helpers for the directory / outreach engine.
  */
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
+import { publishableKey } from "./supabaseKeys.ts";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -227,10 +228,16 @@ export async function isPrivilegedCaller(req: Request): Promise<boolean> {
   if (!token) return false;
 
   const url = Deno.env.get("SUPABASE_URL");
-  const anon = Deno.env.get("SUPABASE_ANON_KEY");
-  if (!url || !anon) return false;
+  if (!url) return false;
 
   try {
+    // Resolved inside the try deliberately. publishableKey() throws when the
+    // key is misconfigured, and this is the auth gate for every privileged
+    // endpoint — an auth gate must fail CLOSED (deny) rather than propagate
+    // and turn a 403 into a 500. The catch below still logs it, so the
+    // failure stays loud without becoming permissive.
+    const anon = publishableKey();
+
     const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.98.0");
     const caller = createClient(url, anon, {
       global: { headers: { Authorization: `Bearer ${token}` } },
