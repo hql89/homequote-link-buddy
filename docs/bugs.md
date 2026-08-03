@@ -179,3 +179,34 @@ a client carrying the caller's own JWT. `knownFunctions` expanded to all 26 entr
 **Prevention**: `deno check` passes on the edited file. **Not deployed** — per this project's
 "Deployment → `/deploy` only, never push ad-hoc" rule, the fix is committed to the repo but
 inert in production until deployed deliberately.
+
+---
+
+## `migrate-helper` hardcoded the gate key to the DB URL and service role key — 2026-08-01
+**Symptom**: None observed — found by inspection, not by any failure.
+**Root Cause**: `supabase/functions/migrate-helper/index.ts` returned
+`SUPABASE_DB_URL` and `SUPABASE_SERVICE_ROLE_KEY` (bypasses all RLS) to any caller supplying
+the right `x-access-key` header. That header's expected value,
+`ACCESS_KEY = "6^kkRHET6ZBW^E6-cB"`, was hardcoded in plaintext in the committed file — not
+the DB URL or service-role key themselves, which were only read from env at request time, but
+the door key to them if the function were ever live and someone had it.
+**Fix**: File deleted outright in `2bc0c66` (also dropped from `config.toml` and
+`system-status`'s health-check list) rather than gated better — nothing used it.
+**Severity, verified in a follow-up session rather than assumed**:
+- Repo is **private** (`gh repo view` confirms), not public — exposure was limited to whoever
+  has repo access, not the open internet.
+- File existed 2026-07-19 → 2026-08-01 (~13 days). The `BUILD_ID = "2026-03-04"` string inside
+  it is stale boilerplate text, not the real creation date — don't read the file's own claims
+  about itself at face value.
+- Two independent signals say the function was **never deployed**: the removal commit says so,
+  and a separate `supabase functions list` check earlier the same week independently showed
+  `migrate-helper` absent from the deployed set. Not provable back further than that from here
+  — no access to Supabase's deploy history — but two independent misses on a private repo over
+  13 days is a low-probability gap.
+- The access-key string doesn't reappear anywhere else in git history — not a reused pattern.
+**Prevention**: **Still open as of this entry — the service role key has not been rotated.**
+Recommended out of caution (the asymmetry: rotation costs minutes and Supabase auto-injects
+the new key into every edge function without a redeploy; not rotating costs everything if the
+low-probability read on deployment history is wrong). Rotating a project credential is a
+security-settings change outside what any AI session should do unprompted — it's the human
+owner's action, in the Supabase dashboard, Project Settings → API.
