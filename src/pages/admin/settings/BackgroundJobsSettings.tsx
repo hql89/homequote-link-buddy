@@ -104,7 +104,7 @@ const MANAGED_JOBS: ManagedJob[] = [
       "Sends a probe email roughly hourly and confirms whether it actually arrived, so a delivery " +
       "outage is caught automatically instead of being discovered by an admin noticing nothing came " +
       "through.",
-    schedule: "Checked every 15 minutes",
+    schedule: "Checked hourly",
     confirm: {
       title: "Turn on the email delivery check?",
       body:

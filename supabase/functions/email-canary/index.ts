@@ -11,9 +11,18 @@
  *   1. Checks previously-sent probes for ones that have gone unconfirmed
  *      past the grace period and alarms each one exactly once
  *      (alarm_raised_at is set so a persistent outage doesn't re-alarm on
- *      the same row every 15 minutes).
+ *      the same row every time this runs).
  *   2. Sends a new probe if enough time has passed since the last one
  *      (shouldSendNewProbe — roughly hourly by default).
+ *
+ * Checked hourly (cron schedule set in admin_toggle_cron_job). A tighter
+ * check interval would catch an overdue probe sooner — the 20-minute grace
+ * period only bites at check time, so hourly checks mean up to ~an hour's
+ * detection latency for the "SMTP accepted it and silently discarded it"
+ * failure mode specifically (a synchronous send failure is still caught
+ * immediately regardless of check frequency, inside the same invocation
+ * that attempts the send). Set to hourly deliberately, trading detection
+ * speed for a simpler schedule — see migration 20260804160000.
  *
  * The confirming half lives in confirm-canary and is driven by a SEPARATE
  * system: an n8n workflow with a Gmail API trigger (not IMAP — see
