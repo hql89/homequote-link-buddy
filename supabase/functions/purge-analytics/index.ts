@@ -1,3 +1,4 @@
+import { serviceRoleKey as readServiceRoleKey, publishableKey as readPublishableKey } from "../_shared/supabaseKeys.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -40,7 +41,7 @@ Deno.serve(async (req) => {
 
     const anonClient = createClient(
       Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
+      readPublishableKey(),
       { global: { headers: { Authorization: authHeader } } }
     );
 
@@ -56,7 +57,7 @@ Deno.serve(async (req) => {
     const userId = user.id;
     const serviceClient = createClient(
       Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      readServiceRoleKey()
     );
 
     const { data: adminRow } = await serviceClient

@@ -1,6 +1,8 @@
+import { serviceRoleKey as readServiceRoleKey } from "../_shared/supabaseKeys.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 import { logEmailSend } from "../_shared/emailLog.ts";
+import { isSelfAddressed, checkVolumeCircuitBreaker } from "../_shared/mailer.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -248,7 +250,7 @@ Deno.serve(async (req) => {
     const { notificationType, leadData, eventData, buyerInquiry, nurtureData, feedbackData, testData } = body;
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const serviceRoleKey = readServiceRoleKey();
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     const { data: settingsRow, error: settingsError } = await supabase
@@ -350,6 +352,47 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({ success: false, error: `Unknown notification type: ${notificationType}` }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Checked against the REAL recipient, right before the send is attempted —
+    // not against a default, and not earlier in the branch above where a
+    // caller-supplied `to` (buyerEmail, nurtureData.toEmail) could still
+    // legitimately differ. See _shared/mailer.ts's isSelfAddressed for why
+    // this exists: it is the same class of bug that caused a real incident
+    // in a sibling project, where a notification mailed to itself was
+    // re-ingested by an inbound poller as a new lead, forever.
+    const breaker = await checkVolumeCircuitBreaker(supabase);
+    if (breaker.tripped) {
+      await logEmailSend(supabase, {
+        jobName: "notify-admin-email",
+        emailType: String(notificationType),
+        recipientEmail: toEmail,
+        recipientKind,
+        subject,
+        status: "failed",
+        errorMessage: breaker.reason ?? "Circuit breaker tripped.",
+      });
+      return new Response(
+        JSON.stringify({ success: false, error: breaker.reason }),
+        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    if (isSelfAddressed(toEmail, config)) {
+      const message = `Refused: recipient (${toEmail}) is one of this project's own sending addresses.`;
+      await logEmailSend(supabase, {
+        jobName: "notify-admin-email",
+        emailType: String(notificationType),
+        recipientEmail: toEmail,
+        recipientKind,
+        subject,
+        status: "failed",
+        errorMessage: message,
+      });
+      return new Response(
+        JSON.stringify({ success: false, error: message }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 

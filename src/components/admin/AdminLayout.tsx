@@ -20,7 +20,7 @@ const navItems = [
   { to: "/admin/applications", label: "Applications", icon: ClipboardList },
   { to: "/admin/verticals", label: "Verticals", icon: Layers },
   { to: "/admin/ingest", label: "Ingestion", icon: DownloadCloud },
-  { to: "/admin/enrichment", label: "Enrichment", icon: Search },
+  { to: "/admin/enrichment", label: "Email Finder", icon: Search },
   { to: "/admin/photos", label: "Photos", icon: Camera },
   { to: "/admin/replies", label: "Replies", icon: MailOpen },
   { to: "/admin/spam", label: "Spam", icon: ShieldAlert },

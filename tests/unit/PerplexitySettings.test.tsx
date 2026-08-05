@@ -57,9 +57,9 @@ describe("PerplexitySettings", () => {
     expect(input.type).toBe("password");
   });
 
-  it("cannot enable enrichment before a key exists", async () => {
+  it("cannot enable the Email Finder before a key exists", async () => {
     render(<PerplexitySettings />);
     await waitFor(() => expect(screen.getByText(/No key configured/i)).toBeInTheDocument());
-    expect(screen.getByRole("switch", { name: /Enable Perplexity enrichment/i })).toBeDisabled();
+    expect(screen.getByRole("switch", { name: /Enable Perplexity for the Email Finder/i })).toBeDisabled();
   });
 });

@@ -31,6 +31,14 @@ export interface SendResult {
   smtpError?: string;
 }
 
+// Loop / runaway-volume guards live in emailSafety.ts, which has no runtime
+// import of its own and so can be unit-tested directly — mailer.ts cannot be,
+// because SMTPClient below is a real network import. Re-exported here so
+// existing call sites (`import { isSelfAddressed } from "../_shared/mailer.ts"`)
+// don't need to know about the split.
+export { isSelfAddressed, checkVolumeCircuitBreaker } from "./emailSafety.ts";
+import { isSelfAddressed, checkVolumeCircuitBreaker } from "./emailSafety.ts";
+
 export interface OutreachEmail {
   to: string;
   subject: string;
@@ -152,7 +160,17 @@ export async function sendOutreachEmail(
   email: OutreachEmail,
   audit: EmailAuditContext,
 ): Promise<SendResult> {
-  const result = await attemptSend(config, email);
+  const breaker = await checkVolumeCircuitBreaker(audit.supabase);
+
+  const result = breaker.tripped
+    ? { success: false as const, method: "none" as const, error: breaker.reason! }
+    : config && isSelfAddressed(email.to, config)
+      ? {
+          success: false as const,
+          method: "none" as const,
+          error: `Refused: recipient (${email.to}) is one of this project's own sending addresses — sending would risk a self-feedback loop.`,
+        }
+      : await attemptSend(config, email);
 
   await logEmailSend(audit.supabase, {
     jobName: audit.jobName,

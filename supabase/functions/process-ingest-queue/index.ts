@@ -14,6 +14,7 @@
  *
  * Auth: any privileged caller (admin JWT or service role) — see isPrivilegedCaller.
  */
+import { serviceRoleKey as readServiceRoleKey } from "../_shared/supabaseKeys.ts";
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 import { corsHeaders, json, logRun, slugify, toE164, isPrivilegedCaller } from "../_shared/directory.ts";
 import { displayBusinessName } from "../_shared/cslbNames.ts";
@@ -63,7 +64,7 @@ Deno.serve(async (req) => {
   const startedAt = Date.now();
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    readServiceRoleKey(),
   );
 
   try {

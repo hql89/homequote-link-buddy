@@ -14,6 +14,7 @@
  *     That view exposes published rows only, so an unpublished listing can
  *     never leak into the sitemap and get crawled before it is ready.
  */
+import { serviceRoleKey as readServiceRoleKey } from "../_shared/supabaseKeys.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -81,7 +82,7 @@ Deno.serve(async (req) => {
   try {
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      readServiceRoleKey(),
     );
 
     const domain = Deno.env.get("SITE_DOMAIN") || DEFAULT_DOMAIN;

@@ -100,7 +100,7 @@ export default function EnrichmentPage() {
       if (error || data?.success === false) {
         throw new Error(data?.error ?? error?.message ?? "Run failed.");
       }
-      toast({ title: "Enrichment run complete" });
+      toast({ title: "Search complete" });
       await load();
     } catch (err) {
       toast({
@@ -127,10 +127,10 @@ export default function EnrichmentPage() {
 
   return (
     <AdminLayout>
-      <PageMeta title="Email Enrichment | Admin" description="Discover and verify business email addresses." />
+      <PageMeta title="Email Finder | Admin" description="Find and verify business email addresses." />
       <div className="mx-auto max-w-4xl px-4 py-8">
         <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-bold font-sans">Email Enrichment</h1>
+          <h1 className="text-2xl font-bold font-sans">Email Finder</h1>
           <HelpTip>
             CSLB doesn't publish email addresses, so nothing in the directory has one until this
             runs. It asks Perplexity for a business's website — never for their email or phone,
@@ -155,7 +155,7 @@ export default function EnrichmentPage() {
             <div className="mt-6 rounded-lg border border-border bg-card p-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <Label>Enable enrichment</Label>
+                  <Label>Search automatically</Label>
                   <p className="mt-1 text-xs text-muted-foreground">
                     When off, "Run now" still works — this only controls whether it would run on a
                     schedule once one exists.
@@ -165,7 +165,7 @@ export default function EnrichmentPage() {
                   checked={Boolean(config.enabled)}
                   onCheckedChange={(v) => saveConfig({ enabled: v })}
                   disabled={saving}
-                  aria-label="Enable enrichment"
+                  aria-label="Search for email addresses automatically"
                 />
               </div>
 

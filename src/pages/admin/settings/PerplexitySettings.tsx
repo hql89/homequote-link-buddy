@@ -99,7 +99,7 @@ export function PerplexitySettings() {
       setUpdatedAt(next.updated_at ?? null);
       toast({
         title: trimmed ? "API key saved" : "Settings saved",
-        description: trimmed ? "Enrichment can now use Perplexity." : undefined,
+        description: trimmed ? "The Email Finder can now use Perplexity." : undefined,
       });
     } catch (err) {
       toast({
@@ -117,7 +117,7 @@ export function PerplexitySettings() {
     <div className="max-w-2xl rounded-lg border bg-card p-6 mb-6 space-y-5">
       <h2 className="font-semibold font-sans flex items-center gap-2">
         <Sparkles className="h-4 w-4" />
-        Perplexity (business enrichment)
+        Perplexity (powers the Email Finder)
       </h2>
 
       <p className="text-xs text-muted-foreground">
@@ -176,7 +176,7 @@ export function PerplexitySettings() {
 
           <div className="flex items-center justify-between">
             <div>
-              <Label>Enable enrichment</Label>
+              <Label>Enabled</Label>
               <p className="mt-1 text-xs text-muted-foreground">
                 When off, ingestion still runs — businesses are listed with their phone number
                 and no website lookup is attempted.
@@ -186,7 +186,7 @@ export function PerplexitySettings() {
               checked={enabled}
               onCheckedChange={(v) => save(v)}
               disabled={saving || !hint}
-              aria-label="Enable Perplexity enrichment"
+              aria-label="Enable Perplexity for the Email Finder"
             />
           </div>
 

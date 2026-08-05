@@ -38,6 +38,12 @@ verify_jwt = false
 [functions.send-outreach-drip]
 verify_jwt = false
 
+[functions.email-canary]
+verify_jwt = false
+
+[functions.confirm-canary]
+verify_jwt = false
+
 [functions.claim-listing]
 verify_jwt = false
 
