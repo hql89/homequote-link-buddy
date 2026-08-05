@@ -33,6 +33,7 @@ import {
   extractBouncedRecipient,
   type BounceKind,
 } from "../_shared/inboundClassifier.ts";
+import { loadSmtpConfig, isSelfAddressed } from "../_shared/mailer.ts";
 
 const JOB_NAME = "receive-inbound-email";
 
@@ -193,6 +194,48 @@ Deno.serve(async (req) => {
 
     const fromEmail = extractEmail(payload.from);
     const fromName = extractName(payload.from);
+
+    // ── Self-sent guard ─────────────────────────────────────────────────────
+    // Rejects by SENDER, checked before bounce or reply classification and
+    // regardless of the `to` address. Ported after a real incident in a
+    // sibling project (Mivos.ai, 2026-08): a self-addressed notification was
+    // re-ingested by its own inbound poller as a new lead, which produced
+    // another notification, forever. This function never sends mail itself
+    // (see the header comment), so that exact loop cannot reproduce today —
+    // but that is a property of the current code, not something this check
+    // depends on. The lesson from that incident was explicit: checking only
+    // "sender == recipient" is not enough, because any other mailbox this
+    // endpoint also ingests from reproduces the loop with one extra hop —
+    // hence a sender-only check, independent of `to` entirely.
+    const { config: smtpConfig } = await loadSmtpConfig(supabase);
+    if (smtpConfig && isSelfAddressed(fromEmail, smtpConfig)) {
+      const { error: selfSentInsertError } = await supabase
+        .from("inbound_emails")
+        .insert({
+          message_id: messageId,
+          business_id: null,
+          from_email: fromEmail,
+          from_name: fromName,
+          subject: payload.subject ?? null,
+          body_text: bodyText || null,
+          classification: "self_sent",
+          extracted_url: null,
+          is_priority: false,
+        });
+
+      if (selfSentInsertError && selfSentInsertError.code !== "23505") {
+        throw new Error(`Insert failed: ${selfSentInsertError.message}`);
+      }
+
+      console.warn(`[${JOB_NAME}] rejected self-sent message from ${fromEmail} — possible mail loop`);
+
+      return json({
+        success: true,
+        classification: "self_sent",
+        matched: false,
+        duplicate: selfSentInsertError?.code === "23505",
+      });
+    }
 
     // ── Bounce handling ────────────────────────────────────────────────────
     // Checked before classifyReply for two reasons: a bounce is not a reply,
