@@ -135,7 +135,7 @@ not a feature; a key with readers and no writers is a control you think you have
 
 ---
 
-## `system-status` called an RPC that does not exist  *(fixed in code, redeploy pending)*
+## `system-status` called an RPC that does not exist  *(fixed & deployed 2026-08-01)*
 **Context**: Verifying the Scheduled Tasks card on the System Status page.
 
 **Learning**: `supabase/functions/system-status/index.ts` called `adminClient.rpc("get_cron_jobs")`.
@@ -162,8 +162,65 @@ gated on `is_admin()` needs a client carrying the *caller's* JWT, not a service-
 same gotcha as the migration-time `Forbidden` case already in this file, just triggered from
 an edge function instead of a migration.
 
-**Still open**: this is a code fix sitting in the repo. Edge functions run whatever was last
-deployed regardless of source — per this project's global rule ("Deployment → `/deploy` only,
-never push ad-hoc"), it wasn't deployed as part of this fix. The Scheduled Tasks card keeps
-showing its old behavior in production until `/deploy` (or an equivalent deliberate deploy
-step) ships `system-status` again.
+**Status**: Fixed in `7c307b5`. Deployed to production.
+
+---
+
+## SECURITY DEFINER views aren't always wrong — context matters
+**Context**: Supabase's security linter flagged `public_business_listings` and
+`public_directory_cities` as CRITICAL for being SECURITY DEFINER-style views. The reflex
+fix (set `security_invoker = true`) would break the public directory.
+
+**Learning**: `public.businesses` has exactly two RLS policies, both gated on `is_admin()` —
+anon has zero read access. These two views are the **only path** a site visitor ever sees a
+business through. A DEFINER-style view runs the query as the owner (bypassing the caller's
+RLS) — that's what lets it hand a filtered slice to anon despite anon having no direct grant
+on the table. Flipping to `security_invoker = true` would enforce the *caller's* RLS instead,
+and since anon's RLS on businesses is nothing, the entire public directory would return zero
+rows to every visitor.
+
+**Pattern**: The view's own WHERE clause (`is_published = true AND archived_at IS NULL`,
+see `20260801240000`) is not a convenience filter on top of RLS — for anon, it *is* the
+entire access control. If that clause is ever loosened or dropped without adding an
+equivalent anon-readable RLS policy to businesses first, unpublished/archived rows become
+public with nothing to catch it. Document this caveat on the view objects themselves via
+`COMMENT ON VIEW` (appears in Supabase dashboard schema view, not just code). See
+`20260801290000_document_view_security_definer_rationale.sql`.
+
+---
+
+## Admin writes fail silently without column GRANTs
+**Context**: `Enrichment.tsx`'s Confirm/Dismiss buttons failed in production with
+"permission denied for table businesses", even though the RLS policy passed (is_admin()).
+
+**Learning**: Supabase grants privileges in two layers: table-level and column-level. An RLS
+policy gates *rows*. A `GRANT UPDATE (column_name)` gates *columns* within those rows. A write
+can pass RLS and still fail at the column grant step. The review queue was built and shipped
+without a `GRANT UPDATE (email, email_source_url, ...)` on the columns it writes, so every
+admin write was rejected.
+
+**Pattern**: When adding a new admin write path, check what columns the code writes, then
+add a `GRANT UPDATE (col1, col2, ...)` in a migration. The existing "Admins can publish
+businesses" RLS policy already covers the row level; the grant adds the column level. This
+has shipped broken three times on this project (is_published, outreach_suppressed_at,
+email_* columns) — verify in production against your actual RLS policies before assuming
+the pattern is in place.
+
+---
+
+## Hand-declared tables need WritableTable casts for proper typing
+**Context**: `PhotoModeration.tsx` failed TypeScript with "Argument of type '{ status:
+'rejected' | 'approved' }' is not assignable to parameter of type 'never'" when updating
+`business_photos`.
+
+**Learning**: Supabase's client auto-generates types from the schema in `types.ts`. Tables
+manually typed in the codebase (like `business_photos`, defined only in migrations and RLS,
+not schema inspection) resolve their write generics as `never` because the client has no
+schema for them. This doesn't affect reads — only writes.
+
+**Pattern**: For hand-declared tables, use the `WritableTable` cast pattern already
+established in `directory.ts` for the `businesses` table. Create a typed function once (e.g.,
+`setBusinessPhotoStatus`), apply the narrow `as unknown as WritableTable` cast there, and
+call that function from everywhere else. This keeps the cast in one place and gives you real
+type-checking on the values passed to it. See `src/integrations/supabase/directory.ts:269`
+for the working example.
