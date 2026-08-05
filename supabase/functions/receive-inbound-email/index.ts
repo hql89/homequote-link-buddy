@@ -34,6 +34,7 @@ import {
   type BounceKind,
 } from "../_shared/inboundClassifier.ts";
 import { loadSmtpConfig, isSelfAddressed } from "../_shared/mailer.ts";
+import { raiseAlarm } from "../_shared/alarm.ts";
 
 const JOB_NAME = "receive-inbound-email";
 
@@ -145,6 +146,64 @@ async function handleBounce(supabase: SupabaseClient, bodyText: string): Promise
     .update({ outreach_bounced_at: now, outreach_bounce_kind: kind })
     .eq("id", business.id);
   return { kind, recipient, businessId: business.id, retryable: false };
+}
+
+/**
+ * Alarms when auto-suppressions arrive far above the normal rate.
+ *
+ * Deliberately an ALERT ON RATE rather than a cap on ingest. A cap would be
+ * the wrong instrument: the failure here isn't volume, it's that each
+ * individual suppression is silent and irreversible in effect — a business
+ * removed from outreach forever, with nobody notified. Single losses never
+ * trip a volume threshold, so what's needed is noticing when the *pattern*
+ * changes.
+ *
+ * Two things this catches:
+ *
+ *  - A regex false positive in classifyReply. "unsubscribe" wins over every
+ *    other signal by design (see inboundClassifier), so a bad match silently
+ *    drops a real business.
+ *  - Forged unsubscribes. An email's From header is unauthenticated and this
+ *    endpoint acts on it, so anyone who learns the inbound address can
+ *    suppress arbitrary businesses by spoofing the sender. That is cheap to
+ *    do and currently invisible; a rate alarm is the difference between
+ *    noticing in a day and never.
+ *
+ * Threshold is ABSOLUTE, not relative to a baseline, because there is no
+ * baseline: `outreach_suppressed_at` is non-null on 0 of 536 businesses and
+ * the inbound bridge has never delivered a message. 10/24h is ~20% of the
+ * largest batch the drip can send in a day (50), which would be a
+ * remarkable unsubscribe rate for legitimate traffic. Revisit as a relative
+ * threshold once real traffic establishes what normal looks like.
+ */
+async function checkSuppressionRate(supabase: SupabaseClient): Promise<void> {
+  const WINDOW_HOURS = 24;
+  const THRESHOLD = 10;
+
+  const windowStart = new Date(Date.now() - WINDOW_HOURS * 3_600_000).toISOString();
+
+  const { count, error } = await supabase
+    .from("businesses")
+    .select("id", { count: "exact", head: true })
+    .gte("outreach_suppressed_at", windowStart);
+
+  // Unlike the send-volume breaker, a failure to count here is NOT fail-closed:
+  // there is no action to withhold. The suppression already happened and is
+  // correct; only the anomaly check is degraded, so it logs and moves on.
+  if (error) {
+    console.error(`[${JOB_NAME}] could not check suppression rate: ${error.message}`);
+    return;
+  }
+
+  if ((count ?? 0) < THRESHOLD) return;
+
+  await raiseAlarm(
+    supabase,
+    "suppression_spike",
+    `${count} businesses auto-suppressed in the last ${WINDOW_HOURS}h (threshold ${THRESHOLD}). ` +
+      `Either classifyReply is over-matching, or unsubscribes are being forged — the From header is unauthenticated.`,
+    { suppressions_in_window: count, window_hours: WINDOW_HOURS, threshold: THRESHOLD },
+  );
 }
 
 /**
@@ -291,10 +350,25 @@ Deno.serve(async (req) => {
     // Everything else — applying a URL, or just reading an inquiry — is a
     // human decision made in /admin/replies.
     if (classification === "unsubscribe" && business) {
-      await supabase
+      // Checked, unlike before: an unchecked write here means someone who
+      // said STOP is NOT actually suppressed while this returns success —
+      // and they keep receiving mail. Of every silent write failure in this
+      // project, that is the one that matters most.
+      const { error: suppressError } = await supabase
         .from("businesses")
         .update({ outreach_suppressed_at: new Date().toISOString() })
         .eq("id", business.id);
+
+      if (suppressError) {
+        await raiseAlarm(
+          supabase,
+          "action_write_failed",
+          `Unsubscribe from ${fromEmail} was NOT applied — business ${business.id} is still receiving outreach.`,
+          { business_id: business.id, from_email: fromEmail, error: suppressError.message },
+        );
+      } else {
+        await checkSuppressionRate(supabase);
+      }
     }
 
     // message_id is UNIQUE; ON CONFLICT DO NOTHING makes a re-poll a true

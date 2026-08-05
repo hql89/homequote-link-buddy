@@ -14,6 +14,7 @@
  * maps onto this project.
  */
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
+import { raiseAlarm } from "./alarm.ts";
 
 /** The subset of SmtpConfig these guards need — avoids importing mailer.ts. */
 export interface SendingIdentity {
@@ -161,9 +162,18 @@ export async function checkVolumeCircuitBreaker(
   // rather than being caught by the disabled flag.
   if (disableError) {
     console.error("[checkVolumeCircuitBreaker] failed to disable smtp_config.enabled:", disableError.message);
-  } else {
-    console.error(`[checkVolumeCircuitBreaker] ${reason}`);
   }
+
+  // Raised regardless of whether the kill switch could be written — the
+  // condition is the same either way, and a failure to disable makes the
+  // alarm MORE important, not less.
+  await raiseAlarm(supabase, "email_circuit_breaker", reason, {
+    sends_in_window: count,
+    window_minutes: WINDOW_MINUTES,
+    threshold: THRESHOLD,
+    sending_disabled: !disableError,
+    ...(disableError ? { disable_error: disableError.message } : {}),
+  });
 
   return { tripped: true, reason };
 }
