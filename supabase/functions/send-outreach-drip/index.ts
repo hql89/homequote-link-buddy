@@ -73,7 +73,11 @@ Deno.serve(async (req) => {
   const supabase = createClient(supabaseUrl, serviceRoleKey);
   const siteUrl = (Deno.env.get("PUBLIC_SITE_URL") || "https://homequotelink.com").replace(/\/+$/, "");
 
-  const summary = { email1_sent: 0, email2_sent: 0, failed: 0 };
+  // stamp_write_failed: the send succeeded but recording that fact did not.
+  // Distinct from `failed` (send itself failed) because these businesses WERE
+  // emailed — the risk is a duplicate send next run, not a missed one — and
+  // that difference matters when reading the log after the fact.
+  const summary = { email1_sent: 0, email2_sent: 0, failed: 0, stamp_write_failed: 0 };
   const errors: string[] = [];
 
   try {
@@ -213,11 +217,23 @@ Deno.serve(async (req) => {
       );
 
       if (result.success) {
-        await supabase
+        summary.email1_sent++;
+        // Unchecked before: if this write silently failed, the business
+        // stayed eligible (outreach_email_1_sent_at still null) and would be
+        // emailed again on the next run. The message already went out — a
+        // failure here can only cause a DUPLICATE send, never a missed one —
+        // so it is logged loudly rather than swallowed.
+        const { error: stampErr } = await supabase
           .from("businesses")
           .update({ outreach_email_1_sent_at: new Date().toISOString() })
           .eq("id", row.id);
-        summary.email1_sent++;
+        if (stampErr) {
+          summary.stamp_write_failed++;
+          errors.push(
+            `${row.id} (email 1): sent successfully but outreach_email_1_sent_at ` +
+              `failed to write — will be re-sent next run: ${stampErr.message}`,
+          );
+        }
       } else {
         summary.failed++;
         errors.push(`${row.id} (email 1): ${result.error}`);
@@ -275,18 +291,28 @@ Deno.serve(async (req) => {
       );
 
       if (result.success) {
-        await supabase
+        summary.email2_sent++;
+        const { error: stampErr } = await supabase
           .from("businesses")
           .update({ outreach_email_2_sent_at: new Date().toISOString() })
           .eq("id", row.id);
-        summary.email2_sent++;
+        if (stampErr) {
+          summary.stamp_write_failed++;
+          errors.push(
+            `${row.id} (email 2): sent successfully but outreach_email_2_sent_at ` +
+              `failed to write — will be re-sent next run: ${stampErr.message}`,
+          );
+        }
       } else {
         summary.failed++;
         errors.push(`${row.id} (email 2): ${result.error}`);
       }
     }
 
-    const status = summary.failed > 0 ? "partial" : "success";
+    // A stamp-write failure is worse than an ordinary send failure — it risks
+    // a duplicate send, not just a missed one — so it must surface the run as
+    // partial exactly like an outright failure would.
+    const status = summary.failed > 0 || summary.stamp_write_failed > 0 ? "partial" : "success";
     await logRun(
       supabase,
       JOB_NAME,
