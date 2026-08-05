@@ -79,6 +79,8 @@ Deno.serve(async (req) => {
       "analyze-lead",
       "check-blocklist",
       "claim-listing",
+      "confirm-canary",
+      "email-canary",
       "import-ingest-queue",
       "ingest-business",
       "notify-admin-email",

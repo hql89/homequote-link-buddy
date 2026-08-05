@@ -97,6 +97,24 @@ const MANAGED_JOBS: ManagedJob[] = [
     description: "Keeps cron, request, and job-run logs from growing indefinitely.",
     schedule: "Daily at 3:17 AM UTC",
   },
+  {
+    name: "email-canary-check",
+    label: "Check email delivery (canary)",
+    description:
+      "Sends a probe email roughly hourly and confirms whether it actually arrived, so a delivery " +
+      "outage is caught automatically instead of being discovered by an admin noticing nothing came " +
+      "through.",
+    schedule: "Checked every 15 minutes",
+    confirm: {
+      title: "Turn on the email delivery check?",
+      body:
+        "This needs a separate piece set up outside this admin panel: an automation that watches the " +
+        "notification inbox and reports back when a probe email arrives. Until that's set up, every " +
+        "probe will correctly report as undelivered — which is expected, not a bug, but it will look " +
+        "like a wall of alarms if you're not expecting it.",
+      action: "Turn on anyway",
+    },
+  },
 ];
 
 export function BackgroundJobsSettings() {

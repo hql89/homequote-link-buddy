@@ -41,7 +41,9 @@ export type AlarmKind =
   /** Unsubscribe auto-suppressions arriving far above the normal rate. */
   | "suppression_spike"
   /** An automatic action's write failed, so the action did not actually take effect. */
-  | "action_write_failed";
+  | "action_write_failed"
+  /** A delivery-canary probe was unconfirmed past its grace period, or could not be sent at all. */
+  | "delivery_canary_failed";
 
 /**
  * Records an alarm. Never throws.
