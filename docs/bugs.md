@@ -210,3 +210,45 @@ the new key into every edge function without a redeploy; not rotating costs ever
 low-probability read on deployment history is wrong). Rotating a project credential is a
 security-settings change outside what any AI session should do unprompted — it's the human
 owner's action, in the Supabase dashboard, Project Settings → API.
+
+---
+
+## Every Vercel deployment silently blocked since 2026-08-02 — 2026-08-08
+**Symptom**: The live site (`homequotelink.com`) kept serving a build from Aug 1 no matter how
+many commits landed on `main` afterward — including a security-relevant one (the frontend API
+key migration). No error surfaced anywhere in the repo, tests, or build; the only place it was
+visible at all was Vercel's own Deployments list, which nobody was watching.
+
+**Root cause — took three wrong theories to find**:
+1. First guess: commit author (`AntiGravity AI <admin@homequotelink.com>`) wasn't a real GitHub
+   identity Vercel could match → wrong. Verified `admin@homequotelink.com` is a *verified* email
+   on the `dgarcia891` GitHub account, and `gh auth status` confirmed the actual push was
+   authenticated as `dgarcia891` directly.
+2. Second guess: Vercel wanted the GitHub account's *primary* email specifically, not just any
+   verified one → tested by pushing a commit authored as `dgarcia89@gmail.com` (the primary).
+   Still blocked. Disproved.
+3. Actual cause, found by comparing the exact commit where deploys flipped from Ready to
+   Blocked (`103def0`, Aug 1, Ready → `7c307b5`, Aug 2, Blocked) and finding the **same commit
+   author on both sides** — proving author identity was never the variable. What changed instead:
+   the Vercel *project* was transferred to a new account (`admin@homequotelink.com`, created to
+   dodge the Hobby-plan project-count limit) that had **no GitHub account linked** under Account
+   Settings → Authentication. With nothing to match any pusher's identity against, the account
+   blocked every commit from everyone — a private-repo Hobby-plan restriction, not a code issue.
+
+**Fix**: User reconnected GitHub under that Vercel account's Authentication settings. Verified
+immediately after with a disposable empty test commit — Vercel showed `Ready` within 30s.
+
+**Full verification chain used, not just Vercel's own "Ready" status**:
+- `curl` the live bundle URL directly and diff its hash against the local build's hash
+- Grep the deployed bundle for the new key string, confirming it's actually in the shipped JS,
+  not just committed to the repo
+- Browser console clean, real data rendering (business listings, correct phone numbers, correct
+  per-city counts) — data that could only appear with a working, authenticated Supabase key
+
+**Prevention**: When "I pushed and nothing changed" — check the deploy platform's own dashboard
+*before* re-diagnosing the code. Two disposable empty test commits (`git commit --allow-empty`)
+were the fastest way to get a real, isolated signal on each theory, cheaper than re-reading
+account settings speculatively. If Vercel ever shows a fresh wave of `Blocked` deployments
+again, check Account Settings → Authentication → GitHub connection first, before assuming
+anything code-side changed — this project's Vercel account has already silently dropped that
+connection once.
