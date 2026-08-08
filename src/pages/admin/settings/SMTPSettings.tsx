@@ -6,7 +6,7 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
-import { Loader2, Eye, EyeOff, Save, SendHorizonal, CheckCircle2 } from "lucide-react";
+import { Loader2, Eye, EyeOff, Save, SendHorizonal, CheckCircle2, Wifi, RadioTower } from "lucide-react";
 
 export interface SmtpConfig {
   smtpHost: string;
@@ -35,6 +35,11 @@ export function SMTPSettings({ config, setConfig, addLog }: SMTPSettingsProps) {
   // there is actually something to have received.
   const [testDispatched, setTestDispatched] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  // Offered right after a confirmed delivery — a one-click shortcut to the
+  // same toggle Background Jobs exposes, so "the test just passed" and
+  // "turn the checker on" don't require a trip to a different screen.
+  const [offerCanary, setOfferCanary] = useState(false);
+  const [enablingCanary, setEnablingCanary] = useState(false);
 
   function updateField<K extends keyof SmtpConfig>(key: K, value: SmtpConfig[K]) {
     setConfig((prev) => ({ ...prev, [key]: value }));
@@ -73,12 +78,51 @@ export function SMTPSettings({ config, setConfig, addLog }: SMTPSettingsProps) {
         title: "Delivery confirmed",
         description: "Outreach emails can send again. This expires in 14 days.",
       });
+      // A confirmed delivery is the one trustworthy moment to offer this —
+      // not the send succeeding, which is exactly the signal that looked
+      // fine while Byethost silently discarded everything (see mailer.ts's
+      // isSelfAddressed / _shared/canary.ts header for that history).
+      setOfferCanary(true);
     } catch (err) {
       const error = err as Error;
       addLog("error", `Could not record delivery confirmation: ${error.message}`);
       toast({ title: "Couldn't save", description: error.message, variant: "destructive" });
     } finally {
       setConfirming(false);
+    }
+  }
+
+  /**
+   * Turns on the delivery-canary check (Background Jobs' "Check email
+   * delivery" toggle), reusing the same admin_toggle_cron_job RPC that
+   * screen calls. Offered here rather than done silently: a confirmed test
+   * proves regular email works, but the canary's OWN confirmation loop needs
+   * a separate watcher (an n8n Gmail trigger) that this cannot verify exists
+   * — so the false-alarm warning stays visible right up to the click, it
+   * just doesn't require leaving this page to act on it.
+   */
+  async function handleEnableCanary() {
+    setEnablingCanary(true);
+    try {
+      const { error } = await supabase.rpc("admin_toggle_cron_job", {
+        p_jobname: "email-canary-check",
+        p_enable: true,
+      });
+      if (error) throw error;
+
+      setOfferCanary(false);
+      addLog("success", "Delivery check turned on — runs hourly.");
+      toast({
+        title: "Delivery check turned on",
+        description:
+          "It will alarm every hour until the separate inbox-watching automation exists — that's expected, not a fault.",
+      });
+    } catch (err) {
+      const error = err as Error;
+      addLog("error", `Could not turn on the delivery check: ${error.message}`);
+      toast({ title: "Couldn't turn it on", description: error.message, variant: "destructive" });
+    } finally {
+      setEnablingCanary(false);
     }
   }
 
@@ -105,6 +149,9 @@ export function SMTPSettings({ config, setConfig, addLog }: SMTPSettingsProps) {
 
   async function handleTest() {
     setTesting(true);
+    // A fresh attempt should not carry over an offer tied to a previous,
+    // now-stale confirmation.
+    setOfferCanary(false);
     addLog("success", "Initiating test email…");
     try {
       // Save first so the edge function reads latest config
@@ -279,22 +326,76 @@ export function SMTPSettings({ config, setConfig, addLog }: SMTPSettingsProps) {
           email arrive can confirm delivery, so only a human can clear this.
         */}
         {testDispatched && (
+          <div className="rounded-md border border-primary/30 bg-primary/5 p-4 space-y-3">
+            {/*
+              This IS the "connected and authenticated" signal — reaching this
+              render at all means the send didn't throw, so the server accepted
+              the login. Labelled explicitly and separately from "delivered"
+              rather than left implicit, since conflating the two is exactly
+              what made the Byethost outage take days to diagnose: the server
+              accepted every message here too, right up until it silently
+              discarded each one.
+            */}
+            <div className="flex items-start gap-2 text-sm">
+              <Wifi className="h-4 w-4 mt-0.5 shrink-0 text-primary" aria-hidden="true" />
+              <p>
+                <span className="font-medium">Connected and logged in.</span>{" "}
+                <span className="text-muted-foreground">
+                  The server accepted these credentials. That's not the same as delivered — a server can
+                  accept a message and still silently drop it, which is exactly what happened here before.
+                </span>
+              </p>
+            </div>
+
+            <div className="border-t pt-3">
+              <p className="text-sm font-medium">Did the test email actually arrive?</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Check {config.adminNotificationEmail} — including spam. Outreach emails stay switched off
+                until this is confirmed, and the confirmation expires after 14 days.
+              </p>
+              <Button
+                size="sm"
+                className="mt-3 gap-2"
+                disabled={confirming}
+                onClick={handleConfirmDelivery}
+              >
+                {confirming ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                Yes, it arrived
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/*
+          Offered only after a CONFIRMED delivery (see handleConfirmDelivery),
+          never after a bare send success — the whole point being that "sent"
+          and "arrived" are different claims, and this shortcut must only ever
+          follow the stronger one.
+        */}
+        {offerCanary && (
           <div className="rounded-md border border-primary/30 bg-primary/5 p-4">
-            <p className="text-sm font-medium">Did the test email actually arrive?</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Check {config.adminNotificationEmail} — including spam. A message being accepted by the
-              mail server does not mean it was delivered. Outreach emails stay switched off until
-              this is confirmed, and the confirmation expires after 14 days.
-            </p>
-            <Button
-              size="sm"
-              className="mt-3 gap-2"
-              disabled={confirming}
-              onClick={handleConfirmDelivery}
-            >
-              {confirming ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-              Yes, it arrived
-            </Button>
+            <div className="flex items-start gap-2">
+              <RadioTower className="h-4 w-4 mt-0.5 shrink-0 text-primary" aria-hidden="true" />
+              <div className="flex-1">
+                <p className="text-sm font-medium">Turn on the automatic delivery check?</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Checks hourly, going forward, that email is still actually arriving — not just being
+                  accepted — so an outage like this one is caught automatically instead of discovered by
+                  accident. One thing to know first: it needs a separate piece (an automation watching the
+                  inbox and reporting back) that isn't built yet. Until it is, every check will correctly
+                  report "not confirmed" — an hourly false alarm, not a real one.
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <Button size="sm" className="gap-2" disabled={enablingCanary} onClick={handleEnableCanary}>
+                    {enablingCanary ? <Loader2 className="h-4 w-4 animate-spin" /> : <RadioTower className="h-4 w-4" />}
+                    Turn on delivery check
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setOfferCanary(false)}>
+                    Not now
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
