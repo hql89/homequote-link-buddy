@@ -3,6 +3,7 @@
  */
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 import { publishableKey } from "./supabaseKeys.ts";
+import { pickVariant, type TemplateVariant } from "./outreachVariants.ts";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -105,6 +106,13 @@ export interface OutreachTemplate {
 /**
  * Blueprint-specified copy. Email 1 deliberately contains no links or HTML to
  * maximise deliverability on a cold send; Email 2 carries the claim link.
+ *
+ * As of 20260814130000 these are no longer read at send time — they were
+ * seeded into `outreach_template_variants` as each stage's variant 'A'
+ * (verified byte-for-byte identical at migration time) and every send now
+ * picks from that table via {@link pickOutreachVariant}. They stay here as
+ * the reference the seed was taken from, and as the copy a fresh environment
+ * gets re-seeded with.
  */
 export const DEFAULT_OUTREACH_TEMPLATES: Record<string, OutreachTemplate> = {
   outreach_verify: {
@@ -130,29 +138,67 @@ export const DEFAULT_OUTREACH_TEMPLATES: Record<string, OutreachTemplate> = {
   },
 };
 
+/** A variant chosen for one specific send. */
+export interface ChosenVariant extends OutreachTemplate {
+  variantKey: string;
+}
+
 /**
- * Loads admin-editable outreach templates, falling back to the defaults above
- * for any template the admin has not customised.
+ * Loads the active variants for one stage and picks one, weighted.
+ *
+ * Returns null when the admin has left no active, positively-weighted
+ * variant for this stage. Callers must treat that as "send nothing for this
+ * stage" and say so — NOT as a cue to fall back to
+ * {@link DEFAULT_OUTREACH_TEMPLATES}. Deactivating every variant is a
+ * deliberate act, and quietly mailing the original hardcoded copy to real
+ * businesses because of it is precisely the kind of silent substitution this
+ * table was introduced to end.
+ *
+ * Throws on a read failure, which is a different condition entirely: "the
+ * admin turned everything off" and "we could not find out what the admin
+ * wants" must not collapse into the same behaviour.
  */
-export async function loadOutreachTemplates(
+export async function pickOutreachVariant(
   supabase: SupabaseClient,
-): Promise<Record<string, OutreachTemplate>> {
-  const { data } = await supabase
-    .from("admin_settings")
-    .select("setting_value")
-    .eq("setting_key", "outreach_templates")
-    .maybeSingle();
+  emailType: "outreach_verify" | "outreach_preview",
+): Promise<ChosenVariant | null> {
+  const { data, error } = await supabase
+    .from("outreach_template_variants")
+    .select("variant_key, subject, body, weight, is_active")
+    .eq("email_type", emailType)
+    .eq("is_active", true);
 
-  const custom = (data?.setting_value ?? {}) as Record<string, Partial<OutreachTemplate>>;
-  const merged: Record<string, OutreachTemplate> = {};
+  if (error) throw new Error(`Failed to read outreach variants: ${error.message}`);
 
-  for (const [key, fallback] of Object.entries(DEFAULT_OUTREACH_TEMPLATES)) {
-    merged[key] = {
-      subject: custom[key]?.subject?.trim() || fallback.subject,
-      body: custom[key]?.body?.trim() || fallback.body,
-    };
-  }
-  return merged;
+  const chosen = pickVariant((data ?? []) as TemplateVariant[]);
+  if (!chosen) return null;
+
+  return { variantKey: chosen.variant_key, subject: chosen.subject, body: chosen.body };
+}
+
+/**
+ * Records a delivered outreach email against the variant that produced it.
+ *
+ * This log is what makes the daily cap real (it is the only place that can
+ * answer "how many outreach emails have gone out since midnight" — the two
+ * timestamp columns on `businesses` hold only the latest send per stage) and
+ * what makes A/B results possible. Called only after a genuinely successful
+ * send, so a failed attempt neither consumes budget nor pollutes results.
+ *
+ * A failure here is returned rather than thrown: the email is already gone,
+ * and aborting the batch over a bookkeeping error would strand the rest of
+ * it. The caller surfaces it as a partial run.
+ */
+export async function recordOutreachSend(
+  supabase: SupabaseClient,
+  args: { businessId: string; emailType: string; variantKey: string },
+): Promise<string | null> {
+  const { error } = await supabase.from("outreach_sends").insert({
+    business_id: args.businessId,
+    email_type: args.emailType,
+    variant_key: args.variantKey,
+  });
+  return error ? error.message : null;
 }
 
 export interface PerplexityConfig {

@@ -8,10 +8,15 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { directoryDb, reviewEnrichedEmail, type AdminBusinessRow } from "@/integrations/supabase/directory";
+import {
+  directoryDb,
+  reviewEnrichedEmail,
+  setBusinessOutreachPaused,
+  type AdminBusinessRow,
+} from "@/integrations/supabase/directory";
 import { HelpTip } from "@/components/admin/HelpTip";
 import { summariseRun } from "@/lib/jobRunSummary";
-import { Loader2, Play, Check, X, Mail, ExternalLink } from "lucide-react";
+import { Loader2, Play, Check, X, Mail, ExternalLink, Send } from "lucide-react";
 
 const SETTING_KEY = "enrichment_config";
 
@@ -32,18 +37,25 @@ type NeedsReviewRow = Pick<
   | "email_source_address"
 >;
 
+type OutreachReadyRow = Pick<
+  AdminBusinessRow,
+  "id" | "business_name" | "city" | "phone" | "email" | "outreach_paused" | "outreach_email_1_sent_at"
+>;
+
 export default function EnrichmentPage() {
   const [config, setConfig] = useState<EnrichmentConfig>({ daily_limit: 15, enabled: false });
   const [needsReview, setNeedsReview] = useState<NeedsReviewRow[]>([]);
+  const [outreachReady, setOutreachReady] = useState<OutreachReadyRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
   const [lastRun, setLastRun] = useState<string | null>(null);
   const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [cfgRes, reviewRes, runsRes] = await Promise.all([
+    const [cfgRes, reviewRes, outreachRes, runsRes] = await Promise.all([
       supabase.from("admin_settings").select("setting_value").eq("setting_key", SETTING_KEY).maybeSingle(),
       directoryDb
         .from("businesses")
@@ -51,6 +63,12 @@ export default function EnrichmentPage() {
           "id, business_name, city, phone, email, email_source_url, email_source_phone, email_source_address",
         )
         .eq("email_confidence", "needs_review")
+        .order("business_name", { ascending: true }),
+      directoryDb
+        .from("businesses")
+        .select("id, business_name, city, phone, email, outreach_paused, outreach_email_1_sent_at")
+        .eq("email_confidence", "verified")
+        .not("email", "is", null)
         .order("business_name", { ascending: true }),
       supabase.rpc("admin_recent_job_runs", { p_limit: 25 }),
     ]);
@@ -63,6 +81,16 @@ export default function EnrichmentPage() {
       toast({ title: "Couldn't load review queue", description: reviewRes.error.message, variant: "destructive" });
     } else {
       setNeedsReview((reviewRes.data ?? []) as NeedsReviewRow[]);
+    }
+
+    if (outreachRes.error) {
+      toast({
+        title: "Couldn't load outreach list",
+        description: outreachRes.error.message,
+        variant: "destructive",
+      });
+    } else {
+      setOutreachReady((outreachRes.data ?? []) as OutreachReadyRow[]);
     }
 
     const runs = (runsRes.data ?? []) as { job_name: string; metadata: Record<string, unknown> }[];
@@ -123,6 +151,20 @@ export default function EnrichmentPage() {
       toast({ title: decision === "verified" ? "Confirmed" : "Dismissed" });
     }
     setReviewingId(null);
+  }
+
+  async function toggleOutreach(id: string, nextEnabled: boolean) {
+    setTogglingId(id);
+    const error = await setBusinessOutreachPaused(id, !nextEnabled);
+    if (error) {
+      toast({ title: "Couldn't save", description: error.message, variant: "destructive" });
+    } else {
+      setOutreachReady((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, outreach_paused: !nextEnabled } : r)),
+      );
+      toast({ title: nextEnabled ? "Outreach enabled" : "Outreach paused" });
+    }
+    setTogglingId(null);
   }
 
   return (
@@ -262,6 +304,64 @@ export default function EnrichmentPage() {
                             <X className="h-3.5 w-3.5" aria-hidden="true" />
                             Dismiss
                           </Button>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="mt-8">
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-semibold font-sans">Ready for outreach</h2>
+                {outreachReady.filter((r) => r.outreach_paused).length > 0 && (
+                  <Badge variant="secondary">
+                    {outreachReady.filter((r) => r.outreach_paused).length} paused
+                  </Badge>
+                )}
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Every business starts paused when it's imported, on purpose — nothing gets
+                emailed until you turn it on here. This never touches whether the listing page
+                itself is published, and turning one on doesn't send anything by itself; the
+                outreach job still has to run.
+              </p>
+
+              {outreachReady.length === 0 ? (
+                <div className="mt-6 flex flex-col items-center gap-2 py-10 text-center text-muted-foreground">
+                  <Send className="h-8 w-8" aria-hidden="true" />
+                  <p className="text-sm">No verified businesses with an email yet.</p>
+                </div>
+              ) : (
+                <ul className="mt-4 space-y-3">
+                  {outreachReady.map((row) => (
+                    <li key={row.id} className="rounded-lg border border-border bg-card p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="font-medium">{row.business_name}</p>
+                          <p className="text-sm text-muted-foreground">{row.city}</p>
+                          <p className="mt-2 text-sm">
+                            <span className="font-mono">{row.email}</span>
+                          </p>
+                          <p className="text-sm text-muted-foreground">Phone: {row.phone ?? "none"}</p>
+                          {row.outreach_email_1_sent_at && (
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              Already emailed {new Date(row.outreach_email_1_sent_at).toLocaleDateString()}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Label htmlFor={`outreach-${row.id}`} className="text-sm text-muted-foreground">
+                            {row.outreach_paused ? "Paused" : "Enabled"}
+                          </Label>
+                          <Switch
+                            id={`outreach-${row.id}`}
+                            checked={!row.outreach_paused}
+                            onCheckedChange={(v) => toggleOutreach(row.id, v)}
+                            disabled={togglingId === row.id}
+                            aria-label={`Enable outreach for ${row.business_name}`}
+                          />
                         </div>
                       </div>
                     </li>

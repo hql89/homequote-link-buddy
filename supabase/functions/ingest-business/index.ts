@@ -15,7 +15,8 @@ import {
   corsHeaders,
   json,
   logRun,
-  loadOutreachTemplates,
+  pickOutreachVariant,
+  recordOutreachSend,
   renderTemplate,
   slugify,
 } from "../_shared/directory.ts";
@@ -148,41 +149,59 @@ Deno.serve(async (req) => {
 
     if (shouldSend) {
       const { config } = await loadSmtpConfig(supabase);
-      const templates = await loadOutreachTemplates(supabase);
-      const tpl = templates.outreach_verify;
+      // Same variant pool the drip sends from, so copy edited in
+      // Admin → Outreach applies here too. Deliberately NOT capped by
+      // daily_limit: this path is one admin adding one business by hand, not
+      // an automated batch. It IS recorded to outreach_sends below, so it
+      // counts against the same day's allowance and shows up in A/B results
+      // rather than being invisible to both.
+      const variant = await pickOutreachVariant(supabase, "outreach_verify");
 
-      const vars: Record<string, string> = {
-        business_name: businessName,
-        city,
-        owner_name: business.owner_name || "there",
-        phone: business.phone || "the number on your listing",
-        sender_name: config?.fromName || "The Directory Team",
-      };
+      if (!variant) {
+        emailResult = {
+          sent: false,
+          method: "skipped",
+          error: "No active Email 1 template variant — nothing was sent. Check Admin → Outreach.",
+        };
+      } else {
+        const vars: Record<string, string> = {
+          business_name: businessName,
+          city,
+          owner_name: business.owner_name || "there",
+          phone: business.phone || "the number on your listing",
+          sender_name: config?.fromName || "The Directory Team",
+        };
 
-      const result = await sendOutreachEmail(
-        config,
-        {
-          to: email,
-          subject: renderTemplate(tpl.subject, vars),
-          text: renderTemplate(tpl.body, vars),
-        },
-        {
-          supabase,
-          jobName: JOB_NAME,
-          emailType: "outreach_verify",
-          recipientKind: "business",
-          relatedBusinessId: business.id,
-        },
-      );
+        const result = await sendOutreachEmail(
+          config,
+          {
+            to: email,
+            subject: renderTemplate(variant.subject, vars),
+            text: renderTemplate(variant.body, vars),
+          },
+          {
+            supabase,
+            jobName: JOB_NAME,
+            emailType: "outreach_verify",
+            recipientKind: "business",
+            relatedBusinessId: business.id,
+          },
+        );
 
-      if (result.success) {
-        await supabase
-          .from("businesses")
-          .update({ outreach_email_1_sent_at: new Date().toISOString() })
-          .eq("id", business.id);
+        if (result.success) {
+          await recordOutreachSend(supabase, {
+            businessId: business.id,
+            emailType: "outreach_verify",
+            variantKey: variant.variantKey,
+          });
+          await supabase
+            .from("businesses")
+            .update({ outreach_email_1_sent_at: new Date().toISOString() })
+            .eq("id", business.id);
+        }
+
+        emailResult = { sent: result.success, method: result.method, error: result.error };
       }
-
-      emailResult = { sent: result.success, method: result.method, error: result.error };
     }
 
     await logRun(supabase, JOB_NAME, emailResult.error ? "partial" : "success", Date.now() - startedAt, emailResult.error ?? null, {

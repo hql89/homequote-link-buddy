@@ -16,8 +16,8 @@
       "position": [380, 240],
       "credentials": {
         "imap": {
-          "id": "YOUR_IMAP_CREDENTIALS_ID",
-          "name": "Outreach Mailbox (IMAP)"
+          "id": "LGYS3R4mIZTgmMom",
+          "name": "admin@homequotelink.com - IMAP account"
         }
       }
     },
@@ -86,14 +86,14 @@
     }
   },
   "settings": {
-    "settings": {
-      "executionOrder": "v1"
-    }
+    "executionOrder": "v1"
   },
   "staticData": null,
   "meta": {
-    "templateCredsSetupCompleted": false,
-    "notes": "Pattern adapted (read-only reference) from Mivos.ai's n8n_email_webhook_workflow.json. Two placeholders to fill in after import: the IMAP credential (Outreach Mailbox) and YOUR_INBOUND_EMAIL_WEBHOOK_TOKEN in the header parameter — matches the INBOUND_EMAIL_WEBHOOK_TOKEN secret set on the Supabase project. `message_id` is optional; the receiving function falls back to a composite key from sender+subject+body if the IMAP node's messageId field is unavailable."
+    "templateCredsSetupCompleted": true,
+    "n8nInstance": "https://n8n.srv946115.hstgr.cloud/",
+    "n8nWorkflowId": "8Shw97zD18yNiD2X",
+    "notes": "Pattern adapted (read-only reference) from Mivos.ai's n8n_email_webhook_workflow.json — a separate workflow ('Mivos CRM Inbound Email Bridge') on the same n8n instance, confirmed not shared. Live as workflow id 8Shw97zD18yNiD2X on https://n8n.srv946115.hstgr.cloud/, activated 2026-08-11. The IMAP node uses 'admin@homequotelink.com - IMAP account' (n8n credential id LGYS3R4mIZTgmMom) — the same mailbox outreach sends from, which is what makes replies and bounces visible to it. YOUR_INBOUND_EMAIL_WEBHOOK_TOKEN is a PLACEHOLDER and must stay one: the real value is a secret, held in n8n's own copy of this workflow and in the Supabase INBOUND_EMAIL_WEBHOOK_TOKEN secret (rotated 2026-08-11), and must never be committed here. To update the live workflow, fill the token in a local copy and PUT to /api/v1/workflows/8Shw97zD18yNiD2X — updating in place rather than creating a second workflow. `message_id` is optional; the receiving function falls back to a composite key from sender+subject+body if the IMAP node's messageId field is unavailable."
   },
   "pinData": {}
 }

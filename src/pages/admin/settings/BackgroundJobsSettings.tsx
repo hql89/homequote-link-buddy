@@ -82,12 +82,13 @@ const MANAGED_JOBS: ManagedJob[] = [
     name: "send-outreach-drip-daily",
     label: "Send outreach emails",
     description:
-      "Emails businesses in the directory that haven't been contacted yet, inviting them to claim their listing.",
+      "Emails businesses in the directory that haven't been contacted yet, inviting them to claim their listing. " +
+      "What the emails say, and how many go out per day, are set in Admin → Outreach.",
     schedule: "Daily at 3:00 PM UTC",
     confirm: {
       title: "Start emailing businesses daily?",
       body:
-        "This sends cold outreach to real businesses in the directory every day, automatically, with no per-send review. Recipients are people who never asked to hear from you, and a sent email can't be recalled. Only turn this on when the listings and the outreach copy are both ready to be seen.",
+        "This sends cold outreach to real businesses in the directory every day, automatically, with no per-send review. Recipients are people who never asked to hear from you, and a sent email can't be recalled. Only businesses you've individually switched on in Email Finder are eligible, and no more than the daily limit set in Admin → Outreach will go out per day. Only turn this on when the listings and the outreach copy are both ready to be seen.",
       action: "Start sending",
     },
   },

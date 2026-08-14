@@ -101,6 +101,54 @@ function summariseEnrichment(meta: Record<string, unknown>): RunSummary {
   return { text: parts.join(" · "), noChange: verified === 0 && needsReview === 0 };
 }
 
+/**
+ * The outreach drip has more ways to legitimately send nothing than any other
+ * job — three gates, plus an exhausted daily budget — and the generic
+ * formatter renders all of them as an indistinguishable row of zeroes. Each
+ * halt reason says specifically what stopped it and what to do about it.
+ */
+function summariseOutreach(meta: Record<string, unknown>): RunSummary {
+  const halted = typeof meta.halted === "string" ? meta.halted : null;
+
+  if (halted === "delivery_unverified") {
+    return { text: "held — delivery not confirmed recently", noChange: true };
+  }
+  if (halted === "bounce_rate") {
+    const bounces = num(meta, "recent_bounces") ?? 0;
+    const sends = num(meta, "recent_sends") ?? 0;
+    return { text: `stopped — ${bounces} of last ${sends} bounced`, noChange: true };
+  }
+  if (halted === "daily_limit_reached") {
+    const limit = num(meta, "daily_limit") ?? 0;
+    const sent = num(meta, "sent_today") ?? 0;
+    return { text: `daily limit reached — ${sent} of ${limit} sent today`, noChange: true };
+  }
+
+  const email1 = num(meta, "email1_sent");
+  const email2 = num(meta, "email2_sent");
+  if (email1 === null && email2 === null) return { text: null, noChange: false };
+
+  const sent1 = email1 ?? 0;
+  const sent2 = email2 ?? 0;
+  const failed = num(meta, "failed") ?? 0;
+  const stampFailed = num(meta, "stamp_write_failed") ?? 0;
+  const logFailed = num(meta, "send_log_write_failed") ?? 0;
+
+  const parts = [`${sent1 + sent2} sent`];
+  if (sent1 + sent2 > 0) parts.push(`${sent1} verification · ${sent2} preview`);
+  if (failed > 0) parts.push(`${failed} failed`);
+  // Both of these mean an email went out that the system failed to record.
+  // Worth naming separately: one risks a duplicate send, the other
+  // understates the day's count against the cap.
+  if (stampFailed > 0) parts.push(`${stampFailed} may re-send`);
+  if (logFailed > 0) parts.push(`${logFailed} uncounted`);
+
+  const limit = num(meta, "daily_limit");
+  if (limit !== null) parts.push(`limit ${limit}/day`);
+
+  return { text: parts.join(" · "), noChange: sent1 + sent2 === 0 && failed === 0 };
+}
+
 /** Fallback for jobs with no bespoke formatter: show whatever counts exist. */
 function summariseGeneric(meta: Record<string, unknown>): RunSummary {
   const counts = Object.entries(meta).filter(
@@ -126,6 +174,8 @@ export function summariseRun(
       return summariseProcess(metadata);
     case "enrich-business-email":
       return summariseEnrichment(metadata);
+    case "send-outreach-drip":
+      return summariseOutreach(metadata);
     default:
       return summariseGeneric(metadata);
   }

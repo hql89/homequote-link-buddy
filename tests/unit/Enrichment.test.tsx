@@ -1,0 +1,178 @@
+import { render, screen, waitFor, within, fireEvent } from "@testing-library/react";
+import { vi, describe, it, expect, beforeEach } from "vitest";
+
+/**
+ * The property this locks in: "Ready for outreach" reflects each business's
+ * real `outreach_paused` value on load, and flipping the switch calls
+ * setBusinessOutreachPaused with the *inverse* of paused (checked = enabled =
+ * !paused) for the right business id — never touching is_published or any
+ * other column. A switch that silently no-ops, or that flips the wrong
+ * business, is indistinguishable here from a real send being one step away.
+ */
+
+const needsReviewRows = [
+  {
+    id: "review-1",
+    business_name: "Maybe Plumbing",
+    city: "Encino",
+    phone: "555-0001",
+    email: "info@maybeplumbing.test",
+    email_source_url: "https://maybeplumbing.test",
+    email_source_phone: "555-9999",
+    email_source_address: null,
+  },
+];
+
+const outreachRows = [
+  {
+    id: "biz-paused",
+    business_name: "Valley Roofing Co",
+    city: "Van Nuys",
+    phone: "555-1111",
+    email: "hello@valleyroofing.test",
+    outreach_paused: true,
+    outreach_email_1_sent_at: null,
+  },
+  {
+    id: "biz-enabled",
+    business_name: "Sunset Electric",
+    city: "Sherman Oaks",
+    phone: "555-2222",
+    email: "contact@sunsetelectric.test",
+    outreach_paused: false,
+    outreach_email_1_sent_at: "2026-08-05T00:00:00Z",
+  },
+];
+
+const outreachToggleCalls: { id: string; paused: boolean }[] = [];
+
+function makeBusinessChain() {
+  const filters: Record<string, unknown> = {};
+  const chain: Record<string, unknown> = {};
+  const chainable = ["select", "eq", "not", "order", "is", "in"];
+  for (const method of chainable) {
+    chain[method] = (...args: unknown[]) => {
+      if (method === "eq" || method === "not") filters[String(args[0])] = args[1];
+      return chain;
+    };
+  }
+  chain.then = (resolve: (v: { data: unknown; error: null }) => void) => {
+    if (filters.email_confidence === "needs_review") {
+      resolve({ data: needsReviewRows, error: null });
+    } else if (filters.email_confidence === "verified") {
+      resolve({ data: outreachRows, error: null });
+    } else {
+      resolve({ data: [], error: null });
+    }
+  };
+  return chain;
+}
+
+vi.mock("../../src/integrations/supabase/client", () => ({
+  supabase: {
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: () => Promise.resolve({ data: null, error: null }),
+        }),
+      }),
+    }),
+    rpc: () => Promise.resolve({ data: [], error: null }),
+  },
+}));
+
+vi.mock("../../src/hooks/use-toast", () => ({ toast: vi.fn() }));
+
+vi.mock("../../src/components/admin/AdminLayout", () => ({
+  AdminLayout: ({ children }: { children: unknown }) => children,
+}));
+
+vi.mock("../../src/integrations/supabase/directory", () => ({
+  directoryDb: {
+    from: (table: string) => {
+      if (table === "businesses") return makeBusinessChain();
+      throw new Error(`Unexpected table: ${table}`);
+    },
+  },
+  reviewEnrichedEmail: () => Promise.resolve(null),
+  setBusinessOutreachPaused: (id: string, paused: boolean) => {
+    outreachToggleCalls.push({ id, paused });
+    return Promise.resolve(null);
+  },
+}));
+
+const { default: EnrichmentPage } = await import("../../src/pages/admin/Enrichment");
+const { TooltipProvider } = await import("../../src/components/ui/tooltip");
+
+function renderPage() {
+  return render(
+    <TooltipProvider delayDuration={0}>
+      <EnrichmentPage />
+    </TooltipProvider>,
+  );
+}
+
+beforeEach(() => {
+  outreachToggleCalls.length = 0;
+});
+
+describe("EnrichmentPage — Ready for outreach", () => {
+  it("lists verified businesses with their current outreach state", async () => {
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText("Valley Roofing Co")).toBeInTheDocument());
+    expect(screen.getByText("Sunset Electric")).toBeInTheDocument();
+
+    const pausedCard = screen.getByText("Valley Roofing Co").closest("li")!;
+    expect(within(pausedCard).getByText("Paused")).toBeInTheDocument();
+    expect(within(pausedCard).getByRole("switch")).not.toBeChecked();
+
+    const enabledCard = screen.getByText("Sunset Electric").closest("li")!;
+    expect(within(enabledCard).getByText("Enabled")).toBeInTheDocument();
+    expect(within(enabledCard).getByRole("switch")).toBeChecked();
+  });
+
+  it("flags a business that's already been emailed", async () => {
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText("Sunset Electric")).toBeInTheDocument());
+    const card = screen.getByText("Sunset Electric").closest("li")!;
+    expect(within(card).getByText(/Already emailed/i)).toBeInTheDocument();
+
+    const untouchedCard = screen.getByText("Valley Roofing Co").closest("li")!;
+    expect(within(untouchedCard).queryByText(/Already emailed/i)).not.toBeInTheDocument();
+  });
+
+  it("turning the switch on sends paused: false for that business only", async () => {
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText("Valley Roofing Co")).toBeInTheDocument());
+    const card = screen.getByText("Valley Roofing Co").closest("li")!;
+    fireEvent.click(within(card).getByRole("switch"));
+
+    await waitFor(() =>
+      expect(outreachToggleCalls).toContainEqual({ id: "biz-paused", paused: false }),
+    );
+    // The already-enabled business wasn't touched by that click.
+    expect(outreachToggleCalls.some((c) => c.id === "biz-enabled")).toBe(false);
+  });
+
+  it("turning the switch off sends paused: true", async () => {
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText("Sunset Electric")).toBeInTheDocument());
+    const card = screen.getByText("Sunset Electric").closest("li")!;
+    fireEvent.click(within(card).getByRole("switch"));
+
+    await waitFor(() =>
+      expect(outreachToggleCalls).toContainEqual({ id: "biz-enabled", paused: true }),
+    );
+  });
+
+  it("shows the needs-review queue unaffected by the outreach section", async () => {
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText("Maybe Plumbing")).toBeInTheDocument());
+    expect(screen.getByText("Valley Roofing Co")).toBeInTheDocument();
+  });
+});

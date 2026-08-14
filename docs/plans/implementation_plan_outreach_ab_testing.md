@@ -1,22 +1,49 @@
 # Implementation Plan — Outreach Admin Panel, A/B Testing, True Daily Rate
 
-**Date:** 2026-07-29
-**Status:** Awaiting approval
-**Blocks:** every claim, and therefore every photo — outreach is currently
-paused on all 536 published listings and there is no admin page to unpause
-it, edit its copy, or control its rate.
+**Date:** 2026-07-29, revised 2026-08-14
+**Status:** Awaiting approval (revision)
+**Blocks:** you can't safely turn outreach on without a real daily cap, and
+you can't edit or A/B test the copy at all right now — there's no UI for
+either.
 
-## What exists today (verified by reading the code, not assumed)
+## Revision note (2026-08-14)
 
-- Two fixed templates, hardcoded in `_shared/directory.ts`: `outreach_verify`
-  (Email 1) and `outreach_preview` (Email 2, carries the claim link).
-  Overridable via an `admin_settings` row, but **no UI ever writes to it.**
+Since this was first drafted, three of its original blockers shipped through
+separate, smaller pieces of work — this revision removes what's done and
+keeps only what's still missing:
+
+- **`businesses.outreach_suppressed_at`** — already exists, already wired
+  into `send-outreach-drip`'s query filters.
+- **Manual suppress/unsuppress UI** — already live on `/admin/replies`
+  (`setBusinessSuppressed`, called from `Replies.tsx`).
+- **Inbound email capability** — the original plan assumed none existed
+  ("this system currently has no inbound-email capability at all"). That's
+  no longer true: an n8n IMAP bridge (`HomeQuoteLink Inbound Email Bridge`,
+  active as of 2026-08-11) reads the outreach mailbox and posts to
+  `receive-inbound-email`, which auto-suppresses on a STOP reply. The manual
+  action on Replies.tsx is now the human-override path, not the only path.
+- **`outreach_paused` review UI** — already live on `/admin/enrichment`
+  ("Ready for outreach" section, shipped this session).
+
+Also correcting one internal-consistency issue in the original: it used
+`stage: 'verify' | 'preview'`, but every other place in this codebase
+(`email_send_log.email_type`, `DEFAULT_OUTREACH_TEMPLATES` keys, the
+`renderTemplate` call sites) already uses `outreach_verify` /
+`outreach_preview`. This revision uses those same strings throughout instead
+of introducing a third vocabulary for the same two things.
+
+## What's still actually missing
+
 - `send-outreach-drip`'s `BATCH_LIMIT = 50` is a hardcoded constant, not
-  admin-configurable — unlike `ingest_config.daily_limit`.
-- That limit is **per invocation, not per day.** Nothing counts how many
-  emails have gone out since midnight, so two runs in one day send double.
-- No admin page for outreach exists at all — no enable toggle reachable from
-  the UI, no "Run now," no send history, no per-template performance.
+  admin-configurable, and it's **per invocation, not per day** — nothing
+  counts sends since midnight, so two runs (or two "Run now" clicks) in one
+  day would double it. This is the exact risk flagged this session: *"i
+  don't want to turn it on and it send 100 per day when i set it to 10."*
+- Two fixed templates, hardcoded in `_shared/directory.ts`. Overridable in
+  principle via an `admin_settings` row, but **no UI has ever written to
+  it** — there's no way to edit copy or run more than one variant.
+- No admin page for outreach content/rate/results exists — only the on/off
+  cron toggle on Background Jobs.
 
 ## Scope
 
@@ -24,197 +51,170 @@ it, edit its copy, or control its rate.
 
 **New table `outreach_sends`** — a log, not a JSON blob, because it has to
 answer two different questions: "how many emails went out today" (rate
-enforcement) and "which variant converts better" (A/B). Overloading
-`businesses`' two timestamp columns can't do either cleanly.
+enforcement) and "which variant converts better" (A/B). Reusing
+`businesses`' two timestamp columns, or bolting a column onto
+`email_send_log`, can't cleanly do either.
 
-```
+```sql
 outreach_sends
-  id, business_id → businesses(id)
-  stage: 'verify' | 'preview'
-  variant_key text          -- which template variant was used
-  sent_at timestamptz
+  id uuid primary key default gen_random_uuid()
+  business_id uuid references businesses(id)
+  email_type text not null check (email_type in ('outreach_verify','outreach_preview'))
+  variant_key text not null          -- which template variant was used
+  sent_at timestamptz not null default now()
 ```
 
 **New table `outreach_template_variants`** — replaces the single
-subject/body pair per stage with N variants, each independently toggleable
-and weighted.
+subject/body pair per email with N variants, each independently
+active/inactive and weighted.
 
-```
+```sql
 outreach_template_variants
-  id, stage: 'verify' | 'preview'
-  variant_key text          -- 'a', 'b', ... admin-assigned
-  subject text, body text
-  weight int default 1      -- relative send frequency
-  is_active bool default true
-  created_at, updated_at
+  id uuid primary key default gen_random_uuid()
+  email_type text not null check (email_type in ('outreach_verify','outreach_preview'))
+  variant_key text not null          -- 'A', 'B', ... admin-assigned
+  subject text not null
+  body text not null
+  weight int not null default 1      -- relative send frequency
+  is_active bool not null default true
+  created_at timestamptz not null default now()
+  updated_at timestamptz not null default now()
+  unique (email_type, variant_key)
 ```
 
-**`admin_settings` row `outreach_config`:** `{ daily_limit: 10, enabled: false }`
-— same shape as `ingest_config`, same reason: changeable without a deploy.
-Starts `enabled: false` and a low default; nothing sends until you turn it on.
+Seeded in the same migration with the current live copy from
+`DEFAULT_OUTREACH_TEMPLATES` as each email's variant `'A'`, `is_active =
+true`, `weight = 1` — so this ships as a no-op for anyone not actively
+editing: same copy, same behavior, just now in an editable table instead of
+a code constant.
 
-**New column `businesses.outreach_suppressed_at timestamptz`.** Deliberately
-separate from the existing `outreach_paused` — that flag is an *admin*
-control (temporarily hold a row), this one is a *recipient's own* opt-out and
-must never be auto-cleared or overridden by re-enabling outreach. Every
-outreach query (both stages, present and future) excludes rows where this is
-set, permanently.
+**`admin_settings.outreach_config` gets a new `daily_limit` field**
+(default `10` — deliberately low; matches the field already used for
+`ingest_config`/`enrichment_config`, read-merge-written the same way
+`SMTPSettings.tsx` already merges `delivery_verified_at` into this same
+key). No separate `enabled` flag — that's already the existing
+`send-outreach-drip-daily` cron toggle on Background Jobs; a second on/off
+switch controlling the same job would just be confusing.
 
-RLS: identical posture to `ingest_queue` — admin-read, service-role-write.
-Verified against production the same way every other table this session was.
+RLS: admin-read (`is_admin()`), no client insert/update/delete policy —
+both tables are written only by the service-role edge function, same
+posture as `job_run_logs`.
 
 ### 2. `send-outreach-drip` rewrite
 
-- Reads `outreach_config`; exits immediately if disabled (matches
-  `process-ingest-queue`'s pattern) or if today's send count already meets
-  `daily_limit`.
-- **True daily cap:** `SELECT count(*) FROM outreach_sends WHERE sent_at >= today`,
-  subtracted from `daily_limit` to get this run's actual budget — holds even
-  across multiple manual "Run now" clicks in the same day.
-- **Both candidate queries (Email 1 and Email 2) exclude
-  `outreach_suppressed_at IS NOT NULL`.** A suppressed business is invisible
-  to every future run, permanently, independent of the enabled/paused flags.
-- Picks a variant per send via weighted random among `is_active` variants for
-  that stage; logs the choice to `outreach_sends`.
-- Everything else (drip delay, claim-token URL, SMTP failover) is unchanged.
-
-### 2a. The no-link verification template
-
-Replaces the default Email 1 (`outreach_verify`) copy with the plain-text,
-link-free, HTML-free structure below — this becomes the seed "a" variant.
-The mechanic: no links or styling to trip spam classifiers, and the message
-asks about *their own business* rather than pitching anything, so it reads
-as a real person, not a campaign. The P.S. asking for their site URL works
-because most owners want their link listed for free and will volunteer it —
-at zero engineering cost, since a human already has to read every reply to
-process the phone-confirmation and unsubscribe requests below.
-
-```
-Subject: Quick question about {{business_name}} in {{city}}
-
-Hi {{owner_name}},
-
-I built a local online directory to help promote businesses in {{city}} and
-I've added {{business_name}} to it.
-
-I just want to make sure I have your correct business phone number:
-{{phone}}.
-
-If this is correct, please reply YES. If not, just let me know what to
-change.
-
-Best,
-{{sender_name}}
-
-P.S. I also want to make sure I add your website to the listing. Just
-reply with your URL and I'll get it added for you.
-
----
-Don't want to be contacted about this listing? Reply STOP and I'll remove
-you.
-```
-
-Email 2 (`outreach_preview`) is unchanged in structure — it's the one
-message in the sequence that's *supposed* to carry a link, sent only after
-a reply has (per the mechanic) put the sender's address in good standing —
-but gets the same one-line reply-to-opt-out addition.
-
-**Non-blocking guard in the variant editor:** if a `verify`-stage variant's
-body appears to contain a URL, show a warning — "Email 1's reply rate
-depends on having zero links; this variant looks like it has one" — without
-blocking save. The whole point of A/B testing this stage is that someone
-might deliberately want to test that assumption; the guard exists so it
-doesn't happen by accident.
+- Reads `outreach_config.daily_limit`.
+- **True daily cap, not per-run:** `SELECT count(*) FROM outreach_sends
+  WHERE sent_at >= <start of today, UTC>` → this run's budget is `daily_limit
+  minus that count`, clamped to zero. Holds across multiple runs or manual
+  "Run now" clicks on the same calendar day — the exact gap flagged this
+  session.
+- Budget is shared across both emails combined (not 10 of each) — matches
+  how the number was described when asked for: *"set to 10 = at most 10 go
+  out."*
+- `BATCH_LIMIT` stays as an internal page-size ceiling on each query, now
+  additionally capped by remaining budget:
+  `.limit(Math.max(0, Math.min(BATCH_LIMIT, remainingBudget)))`. If budget
+  hits zero after Email 1, the Email 2 query is skipped outright rather than
+  fetched and discarded.
+- For each send, picks a variant via weighted-random among that email's
+  `is_active` rows in `outreach_template_variants` (falls back to failing
+  that email type loudly, not silently, if an admin has deactivated every
+  variant), renders subject/body from the picked variant, and logs
+  `{business_id, email_type, variant_key}` to `outreach_sends` immediately
+  after a successful send.
+- Everything else — drip delay, claim-token URL, suppression/pause/
+  undeliverable filters, SMTP failover — unchanged.
+- Run metadata gains `daily_limit`, `sent_today_before_run`,
+  `budget_remaining_after` for the Recent Runs panel and for debugging "why
+  didn't it send."
 
 ### 3. Admin UI — new `/admin/outreach` page
 
-Mirrors `Ingest.tsx`'s shape, since it's the same pattern (rate-limited
-worker, admin-adjustable, "Run now" button):
-
-- Enabled toggle + daily limit input, writes `outreach_config`
-- Template variant editor per stage: add/edit/deactivate variants, adjust
-  weight, non-blocking link warning on `verify`-stage variants
-- **Per-variant results:** sent count, claimed count, claim rate — computed
-  by joining `outreach_sends` to `businesses.is_claimed`
-- Recent runs (reuses existing `job_run_logs` + `jobRunSummary` — extends it
-  with a `send-outreach-drip` formatter, same as was done for
-  `process-ingest-queue`)
-- "Run now," since pg_cron still isn't installed
-- **Suppress a business:** a lookup-by-name/email field with a "Suppress"
-  action, setting `outreach_suppressed_at`. Reversible (a business can be
-  un-suppressed) but never automatic in either direction.
-
-### 3a. Unsubscribe — what this can and can't do yet
-
-The template's opt-out line ("Reply STOP") only works end-to-end if
-something reads that reply. **This system currently has no inbound-email
-capability at all** — it sends via SMTP/Resend and nothing parses replies.
-Building automatic "STOP" detection would mean standing up mail-receiving
-infrastructure (an inbound webhook or IMAP polling, a parser, verification)
-that nothing else in this project has any version of — a genuinely separate
-piece of work, not an incremental add to this plan.
-
-The honest MVP, and what this plan builds: a **manual** suppression action
-in the admin UI, used by whoever reads the reply inbox — which the template
-already requires for the phone-confirmation and website-URL asks, so no new
-habit is being introduced. Once suppressed, a business is excluded from
-every future send, permanently, regardless of the enabled/paused state.
-
-This meaningfully reduces risk at the 10–30 email/day volumes this plan
-targets, but it is not the same guarantee as an automated pipeline, and
-"instant" is bounded by how quickly the inbox gets checked. Flagging this
-plainly rather than asserting compliance — worth a real legal read if this
-scales past a manual-review volume.
-
-### 4. Nav entry
-`/admin/outreach` added to `AdminLayout`'s nav list, same as `/admin/photos`.
+- **Daily send limit** — number input, writes `outreach_config.daily_limit`
+  (merge-write, same pattern as the SMTP page's delivery confirmation).
+- **Template variant editor**, per email (`outreach_verify` labeled "Email
+  1 — phone verification", `outreach_preview` labeled "Email 2 — listing
+  preview + claim link"):
+  - Cards per variant: Subject input, Body textarea, weight, active toggle.
+  - Live preview panel per variant, resolved with a real business from
+    "Ready for outreach" when one exists, otherwise clearly-labeled example
+    data ("Example data — no eligible business yet") — never silently
+    faked as real.
+  - Add variant (max 3, to keep the UI and the sample-size math sane) /
+    remove variant (blocked at 1 remaining — an email type must always have
+    something to send).
+  - **Non-blocking warning** on `outreach_verify` variants whose body
+    contains something that looks like a URL: "Email 1's reply rate depends
+    on having zero links; this variant looks like it has one." Doesn't block
+    save — someone might deliberately want to test that assumption — it
+    just stops it from happening by accident.
+  - Save per email type, upserts into `outreach_template_variants`.
+- **Per-variant results** — sent count, plus (for `outreach_verify`) count
+  of businesses with any inbound reply after the send, or (for
+  `outreach_preview`) count and rate of `businesses.is_claimed` after the
+  send. Computed via a new admin-gated RPC
+  (`admin_outreach_variant_stats`, `SECURITY DEFINER`, `is_admin()`-checked,
+  same shape as `admin_recent_job_runs`) joining `outreach_sends` to
+  `inbound_emails` / `businesses`.
+- **Recent runs** — reuses the existing `job_run_logs` panel; adds a
+  bespoke `send-outreach-drip` formatter to `jobRunSummary.ts` (same
+  treatment `process-ingest-queue` and `enrich-business-email` already got)
+  instead of relying on the generic numeric fallback.
+- **"Run now"** button (`supabase.functions.invoke("send-outreach-drip")`),
+  same pattern as Ingest and Enrichment pages — useful since pg_cron still
+  isn't installed on this project and the job is only reachable by schedule
+  or by hand.
+- Nav entry in `AdminLayout`: `/admin/outreach`.
+- One-line pointer added to the "Send outreach emails" row on Background
+  Jobs: content, daily limit, and results now live on the new page; the
+  on/off switch stays where it is.
 
 ## Explicitly out of scope here
 
-- **Installing pg_cron.** Still a separate decision; "Run now" is how every
-  worker in this project runs today.
-- **Actually turning outreach on.** This plan builds the control panel.
-  Flipping the switch on real businesses is a decision made in the UI
-  afterward, in a small first batch, per the earlier recommendation.
-- **Statistical significance testing.** Claim-rate is shown as a raw ratio.
-  Formal significance (confidence intervals, early-stopping rules) is a
-  reasonable follow-up once there's enough send volume for it to matter —
-  premature at 10-30 emails/day.
+- **Installing pg_cron.** Separate decision, unaffected by this.
+- **Turning outreach on, or un-pausing anyone.** This plan builds the
+  control panel and the real cap. Flipping the switch and choosing who gets
+  un-paused stays a decision made afterward, by you, same as every prior
+  step this session.
+- **Statistical significance testing.** Rates are shown as raw ratios.
+  Confidence intervals / early-stopping is a reasonable follow-up once
+  there's real send volume — premature at today's 15 eligible businesses.
 
 ## Test strategy
 
-- `outreach_sends`/`outreach_template_variants` RLS verified against
-  production with the same anon-write-must-fail method used for
-  `business_photos` and the businesses-publish fix
-- Weighted variant selection: deterministic given a seeded random source,
-  unit tested for distribution
-- Daily-cap math: unit tested against synthetic `outreach_sends` rows
-  spanning a day boundary
-- `jobRunSummary` extension: unit tested against the real metadata shape
-  the rewritten function emits
+- jsdom tests for the new Outreach page (mocked `directoryDb`/`supabase`,
+  same pattern as `Enrichment.test.tsx`): variant list renders, add/remove
+  variant, save calls the right upsert shape, link-warning fires on a body
+  containing `http`, results table renders from a mocked RPC response.
+- Daily-cap math and weighted-variant selection: pure-function unit tests
+  (no Deno runtime needed — same reason `emailSafety.ts` was split out of
+  `mailer.ts` so it's testable under vitest) against synthetic
+  `outreach_sends` counts spanning a UTC day boundary.
+- `jobRunSummary` extension: unit tested against the actual metadata shape
+  the rewritten function emits.
+- Full suite + `tsc --noEmit` gate, as with every change this session.
 
 ## Acceptance criteria
 
-- [ ] `/admin/outreach` renders enabled/limit controls, template variants,
-      per-variant results, recent runs
-- [ ] Daily limit is enforced across multiple runs in one calendar day, not
-      just within one run
+- [ ] `/admin/outreach` renders daily-limit control, template variants,
+      per-variant results, recent runs, "Run now"
+- [ ] Daily limit is enforced across multiple runs/clicks in one calendar
+      day, not just within a single run
 - [ ] A variant marked inactive is never selected for a new send
-- [ ] Claim rate per variant is computed correctly against real `is_claimed` data
-- [ ] Outreach stays `enabled: false` by default after this ships — nothing
-      sends until you turn it on
-- [ ] A suppressed business is excluded from both send queries, verified
-      against production
-- [ ] Every default template ends with a plain-text reply-to-opt-out line
-- [ ] Gate clean: tests, lint, tsc, build
+- [ ] Reply/claim rate per variant is computed correctly against real data
+- [ ] Nothing sends differently by default — seeded variant 'A' matches
+      today's live copy exactly
+- [ ] No behavior change to suppression, pausing, or the cron toggle
+- [ ] Gate clean: tests, lint, `tsc --noEmit`
 
 ## Rollback
+
 ```sql
 DROP TABLE IF EXISTS public.outreach_sends;
 DROP TABLE IF EXISTS public.outreach_template_variants;
-ALTER TABLE public.businesses DROP COLUMN IF EXISTS outreach_suppressed_at;
-DELETE FROM admin_settings WHERE setting_key = 'outreach_config';
+UPDATE admin_settings
+  SET setting_value = setting_value - 'daily_limit'
+  WHERE setting_key = 'outreach_config';
 ```
-`send-outreach-drip` reverts to the previous commit; the hardcoded defaults
-in `_shared/directory.ts` are untouched by this plan, so this is a clean
-revert with no data loss on `businesses`.
+`send-outreach-drip` reverts to the previous commit (back to hardcoded
+`BATCH_LIMIT = 50`, per-run, no variants). No data loss on `businesses`.

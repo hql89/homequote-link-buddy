@@ -87,6 +87,8 @@ export interface AdminBusinessRow {
   email_source_phone: string | null;
   email_source_address: string | null;
   email_confidence: "verified" | "needs_review" | "rejected" | null;
+  outreach_paused: boolean;
+  outreach_email_1_sent_at: string | null;
 }
 
 /**
@@ -126,6 +128,42 @@ export interface InboundEmailRow {
   received_at: string;
 }
 
+/**
+ * The two cold-outreach emails. Same strings as `email_send_log.email_type`
+ * and the seeded `outreach_template_variants.email_type` — one vocabulary for
+ * these two stages everywhere, rather than a separate 'verify'/'preview' set.
+ */
+export type OutreachEmailType = "outreach_verify" | "outreach_preview";
+
+/**
+ * One editable version of one outreach email. Several may be active per
+ * stage; the send job picks between them by `weight` and records which one
+ * it used, which is what makes A/B comparison possible.
+ */
+export interface OutreachVariantRow {
+  id: string;
+  email_type: OutreachEmailType;
+  /** Admin-assigned label, unique per email_type. 'A' is the seeded original. */
+  variant_key: string;
+  subject: string;
+  body: string;
+  /** Relative send frequency among active variants. 0 means never send. */
+  weight: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** One row of `admin_outreach_variant_stats()`. */
+export interface OutreachVariantStats {
+  email_type: OutreachEmailType;
+  variant_key: string;
+  sent_count: number;
+  replied_count: number;
+  claimed_count: number;
+  last_sent_at: string | null;
+}
+
 interface DirectoryDatabase {
   // supabase-js resolves its Insert/Update generics through this key; without
   // it, writes to these tables type as `never`.
@@ -154,6 +192,17 @@ interface DirectoryDatabase {
         Row: InboundEmailRow;
         Insert: Partial<InboundEmailRow> & { message_id: string; from_email: string };
         Update: Partial<InboundEmailRow>;
+        Relationships: [];
+      };
+      outreach_template_variants: {
+        Row: OutreachVariantRow;
+        Insert: Partial<OutreachVariantRow> & {
+          email_type: OutreachEmailType;
+          variant_key: string;
+          subject: string;
+          body: string;
+        };
+        Update: Partial<OutreachVariantRow>;
         Relationships: [];
       };
     };
@@ -300,6 +349,77 @@ export async function setBusinessSuppressed(
   const { error } = await table
     .update({ outreach_suppressed_at: suppressed ? new Date().toISOString() : null })
     .eq("id", id);
+  return error;
+}
+
+/**
+ * Turns cold outreach on or off for a single business. Every ingested row
+ * starts paused (process-ingest-queue sets outreach_paused: true so a fresh
+ * import is silent until reviewed) and nothing in the UI could flip it back
+ * — this is that switch. Deliberately separate from `setBusinessSuppressed`:
+ * suppression is the recipient's own opt-out and must survive this being
+ * toggled either way; this is the sender-side "should we contact them at
+ * all yet" decision.
+ */
+export async function setBusinessOutreachPaused(
+  id: string,
+  paused: boolean,
+): Promise<{ message: string } | null> {
+  const table = directoryDb.from("businesses") as unknown as WritableTable;
+  const { error } = await table.update({ outreach_paused: paused }).eq("id", id);
+  return error;
+}
+
+/** Loads every outreach template variant, both stages, for the editor. */
+export async function loadOutreachVariants(): Promise<{
+  variants: OutreachVariantRow[];
+  error: { message: string } | null;
+}> {
+  const { data, error } = await directoryDb
+    .from("outreach_template_variants")
+    .select("id, email_type, variant_key, subject, body, weight, is_active, created_at, updated_at")
+    .order("email_type", { ascending: true })
+    .order("variant_key", { ascending: true });
+
+  return { variants: (data ?? []) as OutreachVariantRow[], error };
+}
+
+/**
+ * Saves one variant's editable fields.
+ *
+ * `email_type` and `variant_key` are deliberately not updatable — they are
+ * the identity the send log references. Renaming a variant after it has sent
+ * would silently re-attribute or orphan its results.
+ */
+export async function saveOutreachVariant(
+  id: string,
+  values: Pick<OutreachVariantRow, "subject" | "body" | "weight" | "is_active">,
+): Promise<{ message: string } | null> {
+  const { error } = await directoryDb
+    .from("outreach_template_variants")
+    .update({ ...values, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  return error;
+}
+
+/** Adds a new variant for a stage, seeded from whatever the admin was editing. */
+export async function createOutreachVariant(
+  values: Pick<OutreachVariantRow, "email_type" | "variant_key" | "subject" | "body"> &
+    Partial<Pick<OutreachVariantRow, "weight" | "is_active">>,
+): Promise<{ message: string } | null> {
+  const { error } = await directoryDb.from("outreach_template_variants").insert({
+    weight: 1,
+    // New variants start switched off. Adding one is an editing step, not a
+    // decision to start mailing it — that's the active toggle, made once the
+    // copy actually reads the way the admin wants.
+    is_active: false,
+    ...values,
+  });
+  return error;
+}
+
+export async function deleteOutreachVariant(id: string): Promise<{ message: string } | null> {
+  const { error } = await directoryDb.from("outreach_template_variants").delete().eq("id", id);
   return error;
 }
 

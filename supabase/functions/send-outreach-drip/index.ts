@@ -15,15 +15,30 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 import {
   corsHeaders,
   json,
-  loadOutreachTemplates,
   logRun,
+  pickOutreachVariant,
+  recordOutreachSend,
   renderTemplate,
 } from "../_shared/directory.ts";
+import { remainingDailyBudget, startOfUtcDay } from "../_shared/outreachVariants.ts";
 import { loadSmtpConfig, sendOutreachEmail } from "../_shared/mailer.ts";
 
 const JOB_NAME = "send-outreach-drip";
 const DRIP_DELAY_DAYS = 3;
-const BATCH_LIMIT = 50;
+
+/**
+ * Page size for each candidate query — an upper bound on how much this reads
+ * at once, NOT the send limit. The real limit is the admin's daily_limit,
+ * counted across every run of the calendar day (see remainingDailyBudget).
+ *
+ * Until 2026-08-14 this constant WAS the limit, applied per invocation: two
+ * runs in one day sent 100 emails, and no admin-visible number existed to
+ * change that.
+ */
+const BATCH_PAGE_SIZE = 50;
+
+/** Used only if outreach_config has no daily_limit — matches the migration's seed. */
+const DEFAULT_DAILY_LIMIT = 10;
 
 /**
  * How long a human's confirmation that mail actually arrives stays good for.
@@ -77,7 +92,14 @@ Deno.serve(async (req) => {
   // Distinct from `failed` (send itself failed) because these businesses WERE
   // emailed — the risk is a duplicate send next run, not a missed one — and
   // that difference matters when reading the log after the fact.
-  const summary = { email1_sent: 0, email2_sent: 0, failed: 0, stamp_write_failed: 0 };
+  const summary = {
+    email1_sent: 0,
+    email2_sent: 0,
+    failed: 0,
+    stamp_write_failed: 0,
+    /** Sends that went out but couldn't be logged to outreach_sends. */
+    send_log_write_failed: 0,
+  };
   const errors: string[] = [];
 
   try {
@@ -90,6 +112,7 @@ Deno.serve(async (req) => {
 
     const outreachCfg = (outreachCfgRow?.setting_value ?? {}) as {
       delivery_verified_at?: string;
+      daily_limit?: number;
     };
     const verifiedAt = outreachCfg.delivery_verified_at
       ? Date.parse(outreachCfg.delivery_verified_at)
@@ -157,15 +180,68 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ── Gate 3: has today's send allowance already been used? ──────────────
+    // Counted from outreach_sends, which records one row per delivered
+    // outreach email, so the cap holds across every run of the calendar day
+    // — repeated cron firings, manual "Run now" clicks, or both. The old
+    // BATCH_LIMIT was per invocation and could not do this.
+    const dayStart = startOfUtcDay();
+
+    const { count: sentTodayCount, error: sentTodayErr } = await supabase
+      .from("outreach_sends")
+      .select("id", { count: "exact", head: true })
+      .gte("sent_at", dayStart);
+
+    // Unreadable count means the budget is unknown. Sending on an unknown
+    // budget is how a "limit 10" turns into an unbounded send, so this stops
+    // rather than assuming zero.
+    if (sentTodayErr) {
+      throw new Error(`Could not read today's send count: ${sentTodayErr.message}`);
+    }
+
+    const dailyLimit = Number.isFinite(outreachCfg.daily_limit)
+      ? Number(outreachCfg.daily_limit)
+      : DEFAULT_DAILY_LIMIT;
+    const sentToday = sentTodayCount ?? 0;
+    let budget = remainingDailyBudget(dailyLimit, sentToday);
+
+    if (budget <= 0) {
+      await logRun(supabase, JOB_NAME, "success", Date.now() - startedAt, null, {
+        halted: "daily_limit_reached",
+        daily_limit: dailyLimit,
+        sent_today: sentToday,
+        ...summary,
+      });
+      return json({
+        success: true,
+        halted: "daily_limit_reached",
+        reason:
+          `${sentToday} of today's limit of ${dailyLimit} outreach emails have already been sent. ` +
+          `Sending resumes tomorrow, or sooner if you raise the limit in Admin → Outreach.`,
+        daily_limit: dailyLimit,
+        sent_today: sentToday,
+        ...summary,
+      });
+    }
+
     const { config } = await loadSmtpConfig(supabase);
-    const templates = await loadOutreachTemplates(supabase);
     const senderName = config?.fromName || "The Directory Team";
 
     const selectCols =
       "id, business_name, slug, city, city_slug, owner_name, phone, email, claim_token, outreach_email_1_sent_at, outreach_email_2_sent_at";
 
     // ── Email 1: never sent ────────────────────────────────────────────────
-    const { data: pendingFirst, error: firstErr } = await supabase
+    // Null when the admin has deactivated every variant for this stage.
+    // Sending the old hardcoded copy in that case would be a silent
+    // substitution of content nobody approved, so the stage is skipped and
+    // the reason recorded.
+    const verifyVariant = await pickOutreachVariant(supabase, "outreach_verify");
+    if (!verifyVariant) {
+      errors.push("Email 1 skipped: no active template variant.");
+    }
+
+    const { data: pendingFirst, error: firstErr } = verifyVariant
+      ? await supabase
       .from("businesses")
       .select(selectCols)
       .eq("outreach_paused", false)
@@ -186,12 +262,16 @@ Deno.serve(async (req) => {
       // non-existent mailbox is what damages sender reputation.
       .is("email_undeliverable_at", null)
       .order("created_at", { ascending: true })
-      .limit(BATCH_LIMIT);
+      // Never read more than today's remaining allowance — the cap is
+      // enforced here, at the query, not by breaking out of the loop later.
+      .limit(Math.min(BATCH_PAGE_SIZE, budget))
+      : { data: [], error: null };
 
     if (firstErr) throw new Error(`Query (email 1) failed: ${firstErr.message}`);
 
     for (const row of (pendingFirst ?? []) as BusinessRow[]) {
-      if (!row.email) continue;
+      if (!row.email || !verifyVariant) continue;
+      if (budget <= 0) break;
       const vars = {
         business_name: row.business_name,
         city: row.city,
@@ -199,13 +279,12 @@ Deno.serve(async (req) => {
         phone: row.phone || "the number on your listing",
         sender_name: senderName,
       };
-      const tpl = templates.outreach_verify;
       const result = await sendOutreachEmail(
         config,
         {
           to: row.email,
-          subject: renderTemplate(tpl.subject, vars),
-          text: renderTemplate(tpl.body, vars),
+          subject: renderTemplate(verifyVariant.subject, vars),
+          text: renderTemplate(verifyVariant.body, vars),
         },
         {
           supabase,
@@ -218,6 +297,22 @@ Deno.serve(async (req) => {
 
       if (result.success) {
         summary.email1_sent++;
+        budget--;
+        // Consumes today's allowance and attributes the send to its variant.
+        // Logged even if it fails, because an unrecorded send is one the cap
+        // can't see — it would let the next run exceed the limit.
+        const sendLogErr = await recordOutreachSend(supabase, {
+          businessId: row.id,
+          emailType: "outreach_verify",
+          variantKey: verifyVariant.variantKey,
+        });
+        if (sendLogErr) {
+          summary.send_log_write_failed++;
+          errors.push(
+            `${row.id} (email 1): sent successfully but the send log write failed — ` +
+              `today's count is now understated: ${sendLogErr}`,
+          );
+        }
         // Unchecked before: if this write silently failed, the business
         // stayed eligible (outreach_email_1_sent_at still null) and would be
         // emailed again on the next run. The message already went out — a
@@ -241,9 +336,20 @@ Deno.serve(async (req) => {
     }
 
     // ── Email 2: Email 1 sent >= DRIP_DELAY_DAYS ago, not yet claimed ──────
+    // The budget is shared between both stages, not per-stage: "limit 10"
+    // means ten outreach emails today in total. If Email 1 consumed it all,
+    // this query is skipped outright rather than fetched and discarded.
     const cutoff = new Date(Date.now() - DRIP_DELAY_DAYS * 86_400_000).toISOString();
 
-    const { data: pendingSecond, error: secondErr } = await supabase
+    const previewVariant = budget > 0
+      ? await pickOutreachVariant(supabase, "outreach_preview")
+      : null;
+    if (budget > 0 && !previewVariant) {
+      errors.push("Email 2 skipped: no active template variant.");
+    }
+
+    const { data: pendingSecond, error: secondErr } = previewVariant
+      ? await supabase
       .from("businesses")
       .select(selectCols)
       .eq("outreach_paused", false)
@@ -256,12 +362,14 @@ Deno.serve(async (req) => {
       .is("outreach_email_2_sent_at", null)
       .not("email", "is", null)
       .order("outreach_email_1_sent_at", { ascending: true })
-      .limit(BATCH_LIMIT);
+      .limit(Math.min(BATCH_PAGE_SIZE, budget))
+      : { data: [], error: null };
 
     if (secondErr) throw new Error(`Query (email 2) failed: ${secondErr.message}`);
 
     for (const row of (pendingSecond ?? []) as BusinessRow[]) {
-      if (!row.email) continue;
+      if (!row.email || !previewVariant) continue;
+      if (budget <= 0) break;
       const claimUrl =
         `${siteUrl}/directory/${row.city_slug}/${row.slug}/claim?token=${row.claim_token}`;
 
@@ -273,13 +381,12 @@ Deno.serve(async (req) => {
         claim_url: claimUrl,
         sender_name: senderName,
       };
-      const tpl = templates.outreach_preview;
       const result = await sendOutreachEmail(
         config,
         {
           to: row.email,
-          subject: renderTemplate(tpl.subject, vars),
-          text: renderTemplate(tpl.body, vars),
+          subject: renderTemplate(previewVariant.subject, vars),
+          text: renderTemplate(previewVariant.body, vars),
         },
         {
           supabase,
@@ -292,6 +399,19 @@ Deno.serve(async (req) => {
 
       if (result.success) {
         summary.email2_sent++;
+        budget--;
+        const sendLogErr = await recordOutreachSend(supabase, {
+          businessId: row.id,
+          emailType: "outreach_preview",
+          variantKey: previewVariant.variantKey,
+        });
+        if (sendLogErr) {
+          summary.send_log_write_failed++;
+          errors.push(
+            `${row.id} (email 2): sent successfully but the send log write failed — ` +
+              `today's count is now understated: ${sendLogErr}`,
+          );
+        }
         const { error: stampErr } = await supabase
           .from("businesses")
           .update({ outreach_email_2_sent_at: new Date().toISOString() })
@@ -311,18 +431,31 @@ Deno.serve(async (req) => {
 
     // A stamp-write failure is worse than an ordinary send failure — it risks
     // a duplicate send, not just a missed one — so it must surface the run as
-    // partial exactly like an outright failure would.
-    const status = summary.failed > 0 || summary.stamp_write_failed > 0 ? "partial" : "success";
+    // partial exactly like an outright failure would. A send-log write
+    // failure is the same class of problem for the cap: it understates
+    // today's count, which risks exceeding the limit on the next run.
+    const status =
+      summary.failed > 0 || summary.stamp_write_failed > 0 || summary.send_log_write_failed > 0
+        ? "partial"
+        : "success";
+    const runMeta = {
+      ...summary,
+      daily_limit: dailyLimit,
+      sent_today_before_run: sentToday,
+      budget_remaining: budget,
+      variant_verify: verifyVariant?.variantKey ?? null,
+      variant_preview: previewVariant?.variantKey ?? null,
+    };
     await logRun(
       supabase,
       JOB_NAME,
       status,
       Date.now() - startedAt,
       errors.length ? errors.slice(0, 5).join(" | ") : null,
-      summary,
+      runMeta,
     );
 
-    return json({ success: true, ...summary });
+    return json({ success: true, ...runMeta });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[${JOB_NAME}]`, message);
