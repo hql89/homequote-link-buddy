@@ -18,7 +18,9 @@
         "pollTimes": {
           "item": [
             {
-              "mode": "everyMinute"
+              "mode": "everyX",
+              "value": 5,
+              "unit": "minutes"
             }
           ]
         },
@@ -39,7 +41,7 @@
           "name": "dgarcia89@gmail.com - Gmail account"
         }
       },
-      "notes": "Watches ONLY for delivery-probe subjects. Deliberately narrow, for the reason recorded in _shared/emailSafety.ts: a sibling project's inbound workflow forwarded every message in its mailbox with no filter, and a self-addressed notification got re-ingested into a loop ~1,000+ times. newer_than:1d stops old probes being re-confirmed if this trigger is ever reset. Polling every minute is well inside the 20-minute grace period in _shared/canary.ts, so a confirmation always beats the alarm."
+      "notes": "Watches ONLY for delivery-probe subjects. Deliberately narrow, for the reason recorded in _shared/emailSafety.ts: a sibling project's inbound workflow forwarded every message in its mailbox with no filter, and a self-addressed notification got re-ingested into a loop ~1,000+ times. newer_than:1d stops old probes being re-confirmed if this trigger is ever reset.\n\nPolls every 5 minutes, not every minute (changed 2026-08-14). Probes arrive hourly and GRACE_MINUTES is 20, so a 5-minute poll still confirms with roughly a 4x margin before anything alarms — polling every minute meant ~59 of every 60 checks found nothing, for no gain in protection. Do not raise this above ~15 minutes without also raising GRACE_MINUTES, or a probe can be alarmed as undelivered before the poll that would have confirmed it ever runs."
     },
     {
       "parameters": {
