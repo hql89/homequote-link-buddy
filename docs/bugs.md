@@ -258,3 +258,52 @@ account settings speculatively. If Vercel ever shows a fresh wave of `Blocked` d
 again, check Account Settings → Authentication → GitHub connection first, before assuming
 anything code-side changed — this project's Vercel account has already silently dropped that
 connection once.
+
+---
+
+## Admin cron toggle carried a legacy key that went dead mid-flight — 2026-08-08
+**Symptom**: None observed at the time — found by inspection immediately after disabling the
+legacy Supabase key pair, before anyone hit it in the UI.
+**Root Cause**: `admin_toggle_cron_job` hardcoded the legacy anon JWT as the Bearer token for
+four of its five managed jobs. The moment the legacy key pair was disabled (closing out the
+`migrate-helper` exposure above), that hardcoded token went from merely deprecated to actively
+dead. Nothing broke immediately — the only job actually *scheduled* at the time
+(`prune-internal-job-logs-daily`) calls SQL directly and carries no key — but the next admin
+to flip a switch in Settings → Background Jobs would have scheduled a job that reports "on"
+and does nothing, forever, silently. Second occurrence of this exact failure shape in this
+project (see "Enabling a job reported it running..." above) — same symptom, different dead
+credential.
+**Fix**: `20260808170000_cron_toggle_drop_dead_legacy_key.sql`. Checked each job rather than
+patching in a replacement key uniformly: three of the four (`send-nurture-emails`,
+`send-outreach-drip`, `email-canary`) are `verify_jwt = false` in `config.toml`, so the header
+was doing nothing even while the key was alive — removed entirely rather than replaced. Only
+`publish-scheduled` actually needs a credential (no `config.toml` entry, defaults to
+`verify_jwt = true`); it gets the new publishable key.
+**Prevention**: Verified post-migration that the dead key string appears nowhere in the
+function body. General lesson: disabling or rotating a credential doesn't only affect the
+places that read it from an env var at request time — grep for the literal key value across
+the whole schema (functions, RPCs, triggers), not just application code, before considering a
+key fully retired.
+
+---
+
+## Sitemap queries intermittently failed with a JWT-decode error — 2026-08-17
+**Symptom**: None reported — found while checking Supabase's request logs for an unrelated
+legacy-key verification. `sitemap.xml` never looked broken (always `200`, always valid XML)
+because the function already falls back to `?? []` on missing query data.
+**Root Cause**: `sitemap`'s three concurrent queries (`public_business_listings`, `posts`,
+`buyers`) intermittently returned PostgREST error `PGRST303` ("JWT claims decoding failed")
+— roughly 1 in 4 requests, with a sibling query in the *same* request succeeding using the
+identical client and key, milliseconds apart. Ruled out this project's code as the cause
+before accepting it as unfixable here: one `createClient` call, one synchronous key from
+`serviceRoleKey()`, no per-request auth computation that could race across the concurrent
+`Promise.all` calls. The failure is upstream, in Supabase's own gateway — plausibly related
+to the platform-wide legacy-key retirement this project's own key migration was part of,
+though that link is inference, not something Supabase confirmed.
+**Fix**: `withRetry()` wraps all three queries (up to 2 retries, 300ms apart). Existing
+`?? []` fallbacks are unchanged and remain the last resort if every retry is exhausted.
+**Prevention**: A graceful fallback prevents a crash but also fully hides the failure —
+this bug produced zero visible symptoms for as long as it existed, and was only found by
+reading log data, not by anything the UI ever showed. "Never throws" and "never fails" are
+not the same claim; worth periodically checking Supabase's logs for silent `4xx`/`5xx`
+responses on any function that degrades gracefully by design.

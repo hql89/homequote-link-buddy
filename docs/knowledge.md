@@ -4,6 +4,51 @@ Durable technical learnings. Newest first.
 
 ---
 
+## Supabase's request logs live behind a different door than the database
+**Context**: Needed to verify zero production traffic was still using a disabled legacy API
+key — a 24-hour window of real request logs, not a code-level assumption.
+
+**Learning**: Supabase splits into two separately-authenticated backends: the actual Postgres
+database (reachable via `supabase db query --linked`, used everywhere else this project talks
+to Postgres) and a separate log/analytics store behind the dashboard's Logs Explorer. The CLI
+has no subcommand for the second one, and the Management API token it uses internally lives in
+the OS keychain — not readable from a script, and not something worth extracting even if it
+were technically possible. A CSV exported from the Logs Explorer UI by hand is also not a
+reliable substitute: the default export view can omit the `headers` field entirely (confirmed
+— a real export handed over mid-investigation had `headers: {}` on all 246 rows), so it can
+look like log access without containing what's actually needed.
+
+**Pattern**: Use Supabase's hosted MCP server (`https://mcp.supabase.com/mcp`) instead of
+fighting the CLI or relying on manual exports. Its `query_logs` tool runs real SQL against the
+unified log stream (`edge_logs`, `postgres_logs`, `function_logs`, etc. — request headers like
+the API key prefix live under `log_attributes['request.sb.apikey.apikey.prefix']`). This
+project now has that connection configured — see the `homequote-supabase-mcp-access` memory
+entry before re-deriving any of this.
+
+---
+
+## MCP OAuth is one-login-at-a-time; use header auth to keep projects isolated
+**Context**: This machine has many unrelated Supabase accounts across other local projects.
+A remote MCP server's default auth (OAuth, sign in through a browser) risks one project's
+sign-in silently logging out another project's session — the whole Claude Code install shares
+one OAuth login per server type.
+
+**Learning**: Supabase also doesn't offer a project-scoped Personal Access Token — a PAT is
+always account-wide by design. So isolation can't come from the credential itself; it has to
+come from how the credential is wired up.
+
+**Pattern**: In `.mcp.json`, use `headers: { "Authorization": "Bearer ${VAR_NAME}" }` instead
+of relying on OAuth discovery, with a *project-specific* variable name (e.g.
+`SUPABASE_PAT_HOMEQUOTE`, never a generic `SUPABASE_PAT`) — that's what actually prevents a
+second project's config from colliding with this one, even though both may hold account-wide
+tokens underneath. Put the real token in `.claude/settings.local.json`'s `env` block (verify
+it's gitignored on the machine in question with `git check-ignore` — don't assume), never in
+`.mcp.json` itself, which is meant to be committed. `project_ref=` and `read_only=true` as URL
+params on the server are what bound this token's actual reach, since the token itself
+couldn't be scoped.
+
+---
+
 ## The phone boundary (load-bearing product invariant)
 **Context**: The site is a directory of *other people's* businesses. The owner's fear —
 stated directly — was "businesses will think we're trying to steal their leads."
