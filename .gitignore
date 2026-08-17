@@ -28,3 +28,12 @@ dist-ssr
 
 # Supabase CLI state (machine-specific: linked project ref, versions, pooler url)
 supabase/.temp/
+
+# Local env vars. Nothing in the current file is secret (VITE_-prefixed values
+# ship into the browser bundle by design), but this stops a future real
+# secret from landing in git by default. Vercel builds from its own
+# dashboard-configured Environment Variables (Settings -> Environments),
+# not from this file. .env.example documents what's expected.
+.env
+.env.local
+.env.*.local
