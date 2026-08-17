@@ -76,6 +76,39 @@ function renderEntry(siteUrl: string, e: Entry): string {
   </url>`;
 }
 
+/**
+ * Retries a Supabase query on failure. Exists because Supabase's log data
+ * (checked 2026-08-17, in the window right after legacy keys were disabled
+ * project-wide) shows this function's three queries intermittently fail with
+ * PGRST303 ("JWT claims decoding failed") — roughly 1 in 4 requests, with a
+ * concurrent sibling query using the identical client and key succeeding in
+ * the same request. That rules out anything in this file: one `createClient`
+ * call, one synchronous key, no per-request auth computation to race. The
+ * failure is upstream, in Supabase's own gateway — not fixable here, only
+ * survivable by retrying.
+ *
+ * `queryFn` must be a factory, not a Promise: Supabase's query builders are
+ * single-use, so awaiting the same one twice does not re-issue the request.
+ */
+async function withRetry<R extends { error: { message: string } | null }>(
+  queryFn: () => PromiseLike<R>,
+  label: string,
+  retries = 2,
+  delayMs = 300,
+): Promise<R> {
+  let result: R;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    result = await queryFn();
+    if (!result.error) return result;
+    console.warn(`[sitemap] ${label} query failed (attempt ${attempt + 1}/${retries + 1}): ${result.error.message}`);
+    if (attempt < retries) await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  // All attempts exhausted — return the last (failed) result. The caller's
+  // existing `?? []` fallback keeps this from crashing sitemap generation;
+  // it just means this one section is missing until the next successful run.
+  return result!;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -89,19 +122,31 @@ Deno.serve(async (req) => {
     const siteUrl = `https://${domain}`;
     const today = new Date().toISOString().split("T")[0];
 
+    // All three retried: the intermittent upstream auth failure withRetry
+    // guards against was observed on all three tables, not just one.
     const [listingsRes, postsRes, buyersRes] = await Promise.all([
       // Published listings only — this view filters is_published AND
       // archived_at for us, so archived businesses never reach the sitemap.
-      supabase.from("public_business_listings").select("slug, city_slug, created_at"),
+      withRetry(
+        () => supabase.from("public_business_listings").select("slug, city_slug, created_at"),
+        "public_business_listings",
+      ),
       // posts and buyers are read directly rather than through a view, so the
       // archived filter has to be explicit here — an archived row must not be
       // advertised to search engines.
-      supabase
-        .from("posts")
-        .select("slug, updated_at, published_at, tags, category")
-        .eq("status", "published")
-        .is("archived_at", null),
-      supabase.from("buyers").select("id").eq("is_active", true).is("archived_at", null),
+      withRetry(
+        () =>
+          supabase
+            .from("posts")
+            .select("slug, updated_at, published_at, tags, category")
+            .eq("status", "published")
+            .is("archived_at", null),
+        "posts",
+      ),
+      withRetry(
+        () => supabase.from("buyers").select("id").eq("is_active", true).is("archived_at", null),
+        "buyers",
+      ),
     ]);
 
     const entries: Entry[] = [...staticEntries(today)];
