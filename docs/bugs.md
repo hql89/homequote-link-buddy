@@ -160,8 +160,9 @@ minutes. The copy was a hardcoded assumption in the card's empty state.
 "nothing scheduled" from "couldn't read", pointing at Settings → Background Jobs.
 **Prevention**: Empty-state copy must not assert facts about systems the component never
 queried. The underlying cause — `system-status` calling the nonexistent `get_cron_jobs` RPC
-— is now fixed in code (see next entry) but **not yet deployed**, so production still shows
-the old always-empty behavior until it ships.
+— is fixed in code (see next entry) and **confirmed deployed**: the live function (checked
+2026-08-17 via direct source inspection, not just a version-number bump) calls
+`admin_list_cron_jobs` through `userClient`, matching the fix below.
 
 ---
 
@@ -204,12 +205,17 @@ the door key to them if the function were ever live and someone had it.
   — no access to Supabase's deploy history — but two independent misses on a private repo over
   13 days is a low-probability gap.
 - The access-key string doesn't reappear anywhere else in git history — not a reused pattern.
-**Prevention**: **Still open as of this entry — the service role key has not been rotated.**
-Recommended out of caution (the asymmetry: rotation costs minutes and Supabase auto-injects
-the new key into every edge function without a redeploy; not rotating costs everything if the
-low-probability read on deployment history is wrong). Rotating a project credential is a
-security-settings change outside what any AI session should do unprompted — it's the human
-owner's action, in the Supabase dashboard, Project Settings → API.
+**Prevention**: **Resolved 2026-08-08 — not by rotation.** Turned out Supabase had already
+removed the ability to rotate legacy `anon`/`service_role` keys by this point; rotation
+wasn't an available option, only a migration off them entirely. That migration (see
+`docs/plans/implementation_plan_api_key_migration_2026-08-01.md`) was completed instead: all
+28 edge functions and the frontend moved to the new publishable/secret key system, then the
+legacy key pair was disabled outright in the Supabase dashboard — a stronger close than
+rotation, since the possibly-exposed key isn't just changed, it's fully inert. Confirmed via
+two independent signals, not assumed: a direct request with the old key now returns `401`,
+and Supabase's own key-management API reports the legacy anon key as `disabled: true`.
+Verified **zero legacy-key requests** in a full 24-hour window of production logs (checked
+2026-08-17 via the project's Supabase MCP connection) before treating this as closed.
 
 ---
 
