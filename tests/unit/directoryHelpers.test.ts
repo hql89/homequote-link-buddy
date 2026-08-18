@@ -7,6 +7,7 @@ import {
   isActiveLicense,
   isExpired,
   findRawField,
+  formatPhoneDisplay as formatPhoneDisplayShared,
 } from "../../supabase/functions/_shared/directory";
 import {
   parseServices,
@@ -117,6 +118,26 @@ describe("formatPhoneDisplay", () => {
   it("passes through anything it can't confidently format", () => {
     expect(formatPhoneDisplay("ext. 4")).toBe("ext. 4");
     expect(formatPhoneDisplay("+448185550123")).toBe("+448185550123");
+  });
+});
+
+/**
+ * `_shared/directory.ts` (Deno, used by send-outreach-drip) carries its own
+ * copy of formatPhoneDisplay because edge functions cannot import from src/.
+ * A real business (Urban Soil Landscape Inc, 2026-08-18) received
+ * "+18182164731" in an outreach email before this twin existed — found by
+ * reading the BCC test copy of the first live send, not by any test, because
+ * nothing had previously asserted the two copies stay identical. This does.
+ */
+describe("formatPhoneDisplay — frontend/edge-function parity", () => {
+  it.each([
+    ["+18185550102", "(818) 555-0102"],
+    ["8185550102", "(818) 555-0102"],
+    ["ext. 4", "ext. 4"],
+    ["+448185550123", "+448185550123"],
+  ])("both copies render %s the same way", (input, expected) => {
+    expect(formatPhoneDisplayShared(input)).toBe(expected);
+    expect(formatPhoneDisplayShared(input)).toBe(formatPhoneDisplay(input));
   });
 });
 

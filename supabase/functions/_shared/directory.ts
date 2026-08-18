@@ -51,6 +51,26 @@ export function toE164(raw: string | null | undefined): string | null {
 }
 
 /**
+ * Human-readable phone display, mirroring
+ * src/integrations/supabase/directory.ts's `formatPhoneDisplay` exactly (same
+ * four cases: E.164, bare 10-digit, non-US length, and non-numeric input all
+ * produce the same output on both sides). Duplicated rather than imported —
+ * Deno edge functions cannot import from src/.
+ *
+ * Exists because send-outreach-drip was interpolating `businesses.phone`
+ * (stored E.164, e.g. "+18182164731") straight into outreach copy: a real
+ * business received "I want to make sure your phone number (+18182164731)
+ * is correct" instead of "(818) 216-4731" — found by reading the BCC test
+ * copy of the first live send, 2026-08-18.
+ */
+export function formatPhoneDisplay(raw: string): string {
+  const d = raw.replace(/\D/g, "");
+  const ten = d.length === 11 && d.startsWith("1") ? d.slice(1) : d;
+  if (ten.length !== 10) return raw;
+  return `(${ten.slice(0, 3)}) ${ten.slice(3, 6)}-${ten.slice(6)}`;
+}
+
+/**
  * CSLB licence status/expiry checks, mirroring src/lib/cslb.ts's
  * `isActiveLicense`/`isExpired`. Duplicated rather than imported because Deno
  * edge functions cannot import from src/ — see import-ingest-queue's

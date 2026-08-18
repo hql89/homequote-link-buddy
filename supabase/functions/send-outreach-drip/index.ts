@@ -14,6 +14,7 @@ import { serviceRoleKey as readServiceRoleKey } from "../_shared/supabaseKeys.ts
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 import {
   corsHeaders,
+  formatPhoneDisplay,
   json,
   logRun,
   pickOutreachVariant,
@@ -283,7 +284,7 @@ Deno.serve(async (req) => {
         business_name: row.business_name,
         city: row.city,
         owner_name: row.owner_name || "there",
-        phone: row.phone || "the number on your listing",
+        phone: row.phone ? formatPhoneDisplay(row.phone) : "the number on your listing",
         sender_name: senderName,
       };
       const result = await sendOutreachEmail(
@@ -385,7 +386,7 @@ Deno.serve(async (req) => {
         business_name: row.business_name,
         city: row.city,
         owner_name: row.owner_name || "there",
-        phone: row.phone || "",
+        phone: row.phone ? formatPhoneDisplay(row.phone) : "",
         claim_url: claimUrl,
         sender_name: senderName,
       };
