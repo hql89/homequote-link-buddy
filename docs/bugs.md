@@ -259,6 +259,21 @@ again, check Account Settings → Authentication → GitHub connection first, be
 anything code-side changed — this project's Vercel account has already silently dropped that
 connection once.
 
+**Recurred 2026-08-17.** Same symptom (`Deployment Blocked`, "commit author did not have
+contributing access"), same fix (reconnect GitHub under Account Settings → Authentication),
+confirmed working again within 30s via the same empty-commit diagnostic. *Why* it disconnected
+a second time is still unknown — this entry only confirms the fix keeps working, not that the
+underlying cause is understood. Two things worth knowing if it happens a third time:
+
+- **Vercel's own blocked-deployment screen offers "Upgrade to Pro" as if that were the fix.
+  It is not** — the actual cause both times was the missing GitHub connection, not a plan
+  limit. Upgrading would cost money and fix nothing.
+- **The GitHub connection lives under *personal* Account Settings, not the project/team
+  Settings gear in the left sidebar.** Those are two different settings areas that happen to
+  look similar; the team one has no Authentication section at all, which cost real time
+  navigating it before finding the right page
+  (`vercel.com/account/authentication` gets there directly).
+
 ---
 
 ## Admin cron toggle carried a legacy key that went dead mid-flight — 2026-08-08

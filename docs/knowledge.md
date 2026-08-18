@@ -4,6 +4,34 @@ Durable technical learnings. Newest first.
 
 ---
 
+## Bundle-hash comparison can't detect a rebuild that changes nothing observable
+**Context**: After untracking `.env` from git (moving its four values to Vercel's own
+dashboard-configured Environment Variables instead), verified the resulting deploy by polling
+the live site's bundle filename for 5+ minutes, expecting it to change. It never did, which
+briefly looked like the build had silently failed or never run.
+
+**Learning**: A Vite build's output hash is a function of the *bundle's content*, not of
+where its inputs came from. Moving an environment variable's source from a committed `.env`
+file to Vercel's dashboard doesn't change any source code, and if the actual values are
+identical (as they were here — the dashboard was seeded with the same four values the file
+had), the compiled output is byte-for-byte identical too. Same hash is the *correct* outcome
+of a successful rebuild in that specific case, not evidence of a stuck or failed one. The
+technique isn't wrong in general (see the Vercel-deploy-block entries above, where it
+correctly detected staleness) — it specifically can't distinguish "never rebuilt" from
+"rebuilt and produced identical output" when the change under test doesn't touch bundled
+content.
+
+**Pattern**: Hash comparison proves a deploy is *not* stale when the hash changes, but an
+unchanged hash is inconclusive on its own — it needs the platform's own deployment status
+(Vercel's Deployments list, in this project's case) as the actual source of truth for
+whether a build ran at all. Reach for hash-diffing to confirm *what* shipped; reach for the
+platform's own status to confirm *whether* something shipped. Don't substitute one for the
+other when the change being verified is exactly the kind that can legitimately produce no
+observable diff (env-var source relocation, comment-only changes, anything not compiled into
+the bundle).
+
+---
+
 ## Supabase's request logs live behind a different door than the database
 **Context**: Needed to verify zero production traffic was still using a disabled legacy API
 key — a 24-hour window of real request logs, not a code-level assumption.
