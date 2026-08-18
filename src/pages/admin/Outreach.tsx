@@ -21,7 +21,7 @@ import {
 import { HelpTip } from "@/components/admin/HelpTip";
 import { summariseRun } from "@/lib/jobRunSummary";
 import { looksLikeItContainsLink, renderPreview, OUTREACH_MERGE_FIELDS } from "@/lib/outreachCopy";
-import { Loader2, Play, Plus, Trash2, AlertTriangle, Save } from "lucide-react";
+import { Loader2, Play, Plus, Trash2, AlertTriangle, Save, Mail } from "lucide-react";
 
 const SETTING_KEY = "outreach_config";
 const DEFAULT_DAILY_LIMIT = 10;
@@ -66,6 +66,9 @@ export default function OutreachPage() {
   const [stats, setStats] = useState<OutreachVariantStats[]>([]);
   const [statsError, setStatsError] = useState<string | null>(null);
   const [dailyLimit, setDailyLimit] = useState<number>(DEFAULT_DAILY_LIMIT);
+  const [bccEmail, setBccEmail] = useState<string>("");
+  const [savedBcc, setSavedBcc] = useState<string>("");
+  const [savingBcc, setSavingBcc] = useState(false);
   const [sampleBusiness, setSampleBusiness] = useState<PreviewBusiness | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingLimit, setSavingLimit] = useState(false);
@@ -92,8 +95,10 @@ export default function OutreachPage() {
       supabase.rpc("admin_recent_job_runs", { p_limit: 25 }),
     ]);
 
-    const cfg = (cfgRes.data?.setting_value ?? {}) as { daily_limit?: number };
+    const cfg = (cfgRes.data?.setting_value ?? {}) as { daily_limit?: number; bcc_email?: string };
     setDailyLimit(Number.isFinite(cfg.daily_limit) ? Number(cfg.daily_limit) : DEFAULT_DAILY_LIMIT);
+    setBccEmail(cfg.bcc_email ?? "");
+    setSavedBcc(cfg.bcc_email ?? "");
 
     if (variantRes.error) {
       toast({
@@ -163,6 +168,79 @@ export default function OutreachPage() {
       toast({ title: `Daily limit set to ${clamped}` });
     }
     setSavingLimit(false);
+  }
+
+  /**
+   * Saves (or clears) the testing copy address.
+   *
+   * The real enforcement is server-side in `resolveBccCopy` — this check just
+   * turns the mistake into an explanation at the moment it's made, instead of
+   * copies silently never arriving. Deliberately reads only the two sending
+   * identity keys via `->>` rather than the whole smtp_config blob, so the
+   * stored SMTP password never travels to the browser for a validation.
+   */
+  async function saveBccEmail(next: string) {
+    const trimmed = next.trim();
+    setSavingBcc(true);
+
+    if (trimmed) {
+      const { data: idRow } = await supabase
+        .from("admin_settings")
+        .select("from_email:setting_value->>fromEmail, smtp_username:setting_value->>smtpUsername")
+        .eq("setting_key", "smtp_config")
+        .maybeSingle();
+
+      const identity = (idRow ?? {}) as { from_email?: string; smtp_username?: string };
+      const lowered = trimmed.toLowerCase();
+      const isOwnAddress =
+        lowered === (identity.from_email ?? "").trim().toLowerCase() ||
+        lowered === (identity.smtp_username ?? "").trim().toLowerCase();
+
+      if (isOwnAddress) {
+        toast({
+          title: "Can't copy to the sending address",
+          description:
+            "That's the mailbox the inbound bridge watches — copies would come back in as if " +
+            "businesses had replied. Use a different inbox, like your personal email.",
+          variant: "destructive",
+        });
+        setSavingBcc(false);
+        return;
+      }
+
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(trimmed)) {
+        toast({ title: "That doesn't look like an email address", variant: "destructive" });
+        setSavingBcc(false);
+        return;
+      }
+    }
+
+    // Merge, for the same reason saveDailyLimit does: this row also carries
+    // delivery_verified_at and daily_limit.
+    const { data: existing } = await supabase
+      .from("admin_settings")
+      .select("setting_value")
+      .eq("setting_key", SETTING_KEY)
+      .maybeSingle();
+
+    const merged = { ...((existing?.setting_value as Record<string, unknown>) ?? {}) };
+    if (trimmed) merged.bcc_email = trimmed;
+    else delete merged.bcc_email;
+
+    const { error } = await supabase
+      .from("admin_settings")
+      .upsert({ setting_key: SETTING_KEY, setting_value: merged }, { onConflict: "setting_key" });
+
+    if (error) {
+      toast({ title: "Couldn't save", description: error.message, variant: "destructive" });
+    } else {
+      setSavedBcc(trimmed);
+      setBccEmail(trimmed);
+      toast({
+        title: trimmed ? `Copies will go to ${trimmed}` : "Copies turned off",
+      });
+    }
+    setSavingBcc(false);
   }
 
   function draftOf(v: OutreachVariantRow): OutreachVariantRow {
@@ -326,6 +404,54 @@ export default function OutreachPage() {
                 Counts both emails together, across every run of the day.
               </p>
               {lastRun && <p className="mt-1 text-xs text-muted-foreground">Last run: {lastRun}</p>}
+
+              <div className="mt-5 border-t border-border pt-4">
+                <Label htmlFor="bcc-email" className="flex items-center gap-1.5">
+                  Send me a copy (testing)
+                  <HelpTip>
+                    Blind-copies every outreach email to this address, so you see exactly what each
+                    business receives — the real message, not a preview. Leave it empty to turn
+                    copies off. It can't be your own sending address: that's the mailbox the
+                    inbound bridge watches, so copies would come back in looking like replies.
+                  </HelpTip>
+                </Label>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <Input
+                    id="bcc-email"
+                    type="email"
+                    placeholder="you@example.com — empty to turn off"
+                    className="w-72"
+                    value={bccEmail}
+                    onChange={(e) => setBccEmail(e.target.value)}
+                    onBlur={(e) => {
+                      if (e.target.value.trim() !== savedBcc) saveBccEmail(e.target.value);
+                    }}
+                    disabled={savingBcc}
+                  />
+                  {savedBcc && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={savingBcc}
+                      onClick={() => saveBccEmail("")}
+                    >
+                      Turn off
+                    </Button>
+                  )}
+                </div>
+
+                {savedBcc && (
+                  <div className="mt-3 flex items-start gap-2 rounded-md border border-accent/40 bg-accent/10 p-3">
+                    <Mail className="mt-0.5 h-4 w-4 shrink-0 text-accent" aria-hidden="true" />
+                    <p className="text-sm">
+                      <span className="font-medium">Copies are on.</span> Every outreach email is
+                      also going to{" "}
+                      <span className="font-mono">{savedBcc}</span>. Turn this off before a full
+                      send — it's for testing.
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* ── Copy ─────────────────────────────────────────────────── */}

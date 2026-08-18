@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { isSelfAddressed, checkVolumeCircuitBreaker } from "../../supabase/functions/_shared/emailSafety";
+import {
+  isSelfAddressed,
+  checkVolumeCircuitBreaker,
+  resolveBccCopy,
+} from "../../supabase/functions/_shared/emailSafety";
 
 /**
  * Both guards here were ported after a real incident in a sibling project
@@ -36,6 +40,54 @@ describe("isSelfAddressed", () => {
     // is specifically the self-addressing check, not general validation.
     expect(isSelfAddressed("", identity)).toBe(false);
     expect(isSelfAddressed("   ", identity)).toBe(false);
+  });
+});
+
+describe("resolveBccCopy", () => {
+  const identity = { fromEmail: "admin@homequotelink.com", smtpUsername: "admin@homequotelink.com" };
+
+  it("allows a copy to a mailbox nothing polls", () => {
+    expect(resolveBccCopy("dgarcia89@gmail.com", identity)).toEqual({ bcc: "dgarcia89@gmail.com" });
+  });
+
+  it("treats an empty or absent setting as off", () => {
+    expect(resolveBccCopy("", identity).bcc).toBeNull();
+    expect(resolveBccCopy(null, identity).bcc).toBeNull();
+    expect(resolveBccCopy(undefined, identity).bcc).toBeNull();
+  });
+
+  it("blank-but-not-empty (whitespace) is off, not a send to nowhere", () => {
+    expect(resolveBccCopy("   ", identity).bcc).toBeNull();
+  });
+
+  it("REFUSES a copy to the sending identity — the loop this guard exists for", () => {
+    // BCC'ing the sending mailbox would feed every outreach email back through
+    // the n8n IMAP bridge into receive-inbound-email, where the outreach copy's
+    // own "reply YES" / STOP wording would be classified as a business reply.
+    const decision = resolveBccCopy("admin@homequotelink.com", identity);
+    expect(decision.bcc).toBeNull();
+    expect(decision.refused).toMatch(/re-ingested as business replies/);
+  });
+
+  it("refuses the sending identity regardless of case or padding", () => {
+    expect(resolveBccCopy("  Admin@HomeQuoteLink.com ", identity).bcc).toBeNull();
+  });
+
+  it("refuses the smtpUsername even when it differs from fromEmail", () => {
+    const split = { fromEmail: "outreach@homequotelink.com", smtpUsername: "smtp-login@homequotelink.com" };
+    expect(resolveBccCopy("smtp-login@homequotelink.com", split).bcc).toBeNull();
+  });
+
+  it("drops a malformed address rather than letting SMTP reject the whole message", () => {
+    const decision = resolveBccCopy("not-an-email", identity);
+    expect(decision.bcc).toBeNull();
+    expect(decision.refused).toMatch(/not a valid email address/);
+  });
+
+  it("always explains a refusal, so copies never stop for an invisible reason", () => {
+    for (const bad of ["admin@homequotelink.com", "nope", "a@b"]) {
+      expect(resolveBccCopy(bad, identity).refused).toBeTruthy();
+    }
   });
 });
 

@@ -113,7 +113,14 @@ Deno.serve(async (req) => {
     const outreachCfg = (outreachCfgRow?.setting_value ?? {}) as {
       delivery_verified_at?: string;
       daily_limit?: number;
+      /**
+       * Optional testing copy. Empty/absent = off, which is why turning this
+       * feature off is a config edit rather than a redeploy. Validated at the
+       * send boundary by resolveBccCopy, not here.
+       */
+      bcc_email?: string;
     };
+    const bccCopy = outreachCfg.bcc_email?.trim() || undefined;
     const verifiedAt = outreachCfg.delivery_verified_at
       ? Date.parse(outreachCfg.delivery_verified_at)
       : NaN;
@@ -285,6 +292,7 @@ Deno.serve(async (req) => {
           to: row.email,
           subject: renderTemplate(verifyVariant.subject, vars),
           text: renderTemplate(verifyVariant.body, vars),
+          bcc: bccCopy,
         },
         {
           supabase,
@@ -387,6 +395,7 @@ Deno.serve(async (req) => {
           to: row.email,
           subject: renderTemplate(previewVariant.subject, vars),
           text: renderTemplate(previewVariant.body, vars),
+          bcc: bccCopy,
         },
         {
           supabase,
@@ -445,6 +454,9 @@ Deno.serve(async (req) => {
       budget_remaining: budget,
       variant_verify: verifyVariant?.variantKey ?? null,
       variant_preview: previewVariant?.variantKey ?? null,
+      // Recorded so "why did I get a copy of that?" — and, more importantly,
+      // "is this still on?" — are answerable from the run history alone.
+      bcc_copy_to: bccCopy ?? null,
     };
     await logRun(
       supabase,

@@ -50,6 +50,57 @@ export function isSelfAddressed(to: string, identity: SendingIdentity): boolean 
   );
 }
 
+export interface BccDecision {
+  /** The address to BCC, or null to send with no BCC at all. */
+  bcc: string | null;
+  /** Set when a configured address was deliberately dropped. Never silent. */
+  refused?: string;
+}
+
+/**
+ * Decides whether a configured "send me a copy" BCC is safe to attach.
+ *
+ * This exists because a BCC is the one place a testing convenience can
+ * reconstruct the exact Mivos loop `isSelfAddressed` was ported to prevent.
+ * `admin@homequotelink.com` is both this project's sending identity AND the
+ * mailbox the n8n IMAP bridge polls into `receive-inbound-email`. BCC outreach
+ * there and every message we send is re-ingested as if it were a reply *from a
+ * business* — and the outreach copy literally instructs "reply YES" and
+ * mentions STOP, so the classifier would be reading our own words back as
+ * customer intent. A copy to a mailbox nothing polls (a personal Gmail) is
+ * fine; a copy to the sending identity is not.
+ *
+ * Drops the BCC rather than failing the send: the outreach reaching the
+ * business is the thing that matters, and a misconfigured testing copy must
+ * never block real mail. The `refused` reason is returned so the caller can
+ * surface it loudly instead of leaving the admin wondering where copies went.
+ */
+export function resolveBccCopy(
+  configured: string | null | undefined,
+  identity: SendingIdentity,
+): BccDecision {
+  const candidate = (configured ?? "").trim();
+  if (!candidate) return { bcc: null };
+
+  if (isSelfAddressed(candidate, identity)) {
+    return {
+      bcc: null,
+      refused:
+        `BCC copy to ${candidate} was dropped: it is one of this project's own sending ` +
+        `addresses, and the inbound bridge polls that mailbox — copies would be re-ingested ` +
+        `as business replies. Use an address nothing polls (e.g. a personal inbox).`,
+    };
+  }
+
+  // Not a validator — just enough shape checking that an obvious typo becomes a
+  // visible refusal here rather than an opaque SMTP rejection of the whole message.
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(candidate)) {
+    return { bcc: null, refused: `BCC copy to "${candidate}" was dropped: not a valid email address.` };
+  }
+
+  return { bcc: candidate };
+}
+
 export interface CircuitBreakerResult {
   tripped: boolean;
   reason?: string;

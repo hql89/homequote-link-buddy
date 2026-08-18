@@ -36,8 +36,8 @@ export interface SendResult {
 // because SMTPClient below is a real network import. Re-exported here so
 // existing call sites (`import { isSelfAddressed } from "../_shared/mailer.ts"`)
 // don't need to know about the split.
-export { isSelfAddressed, checkVolumeCircuitBreaker } from "./emailSafety.ts";
-import { isSelfAddressed, checkVolumeCircuitBreaker } from "./emailSafety.ts";
+export { isSelfAddressed, checkVolumeCircuitBreaker, resolveBccCopy } from "./emailSafety.ts";
+import { isSelfAddressed, checkVolumeCircuitBreaker, resolveBccCopy } from "./emailSafety.ts";
 
 export interface OutreachEmail {
   to: string;
@@ -46,6 +46,14 @@ export interface OutreachEmail {
   text: string;
   /** Optional HTML body. When omitted the message is sent as plain text. */
   html?: string;
+  /**
+   * Optional "send me a copy" address, for watching real outreach during
+   * testing. Always passed through `resolveBccCopy` before use — see that
+   * function for why a BCC to the sending identity would rebuild the inbound
+   * feedback loop. A true BCC (not a second send) so the copy IS the message
+   * the recipient got, rather than a re-render that could drift from it.
+   */
+  bcc?: string;
 }
 
 export async function loadSmtpConfig(
@@ -84,6 +92,7 @@ async function sendViaSmtp(config: SmtpConfig, email: OutreachEmail): Promise<vo
     await client.send({
       from: `${config.fromName} <${config.fromEmail}>`,
       to: email.to,
+      ...(email.bcc ? { bcc: email.bcc } : {}),
       subject: email.subject,
       content: email.text,
       ...(email.html ? { html: email.html } : {}),
@@ -116,6 +125,7 @@ async function sendViaResend(email: OutreachEmail, fallbackFrom: string): Promis
     body: JSON.stringify({
       from,
       to: [email.to],
+      ...(email.bcc ? { bcc: [email.bcc] } : {}),
       subject: email.subject,
       text: email.text,
       ...(email.html ? { html: email.html } : {}),
@@ -162,6 +172,16 @@ export async function sendOutreachEmail(
 ): Promise<SendResult> {
   const breaker = await checkVolumeCircuitBreaker(audit.supabase);
 
+  // A configured BCC is re-checked here, at the send boundary, rather than
+  // trusted from config — same placement rule as the `to` guard above: the
+  // last moment before the message leaves is the only point where what's
+  // checked is guaranteed to be what's sent.
+  const bccDecision = resolveBccCopy(email.bcc, config ?? { fromEmail: "", smtpUsername: "" });
+  if (bccDecision.refused) {
+    console.error(`[mailer] ${bccDecision.refused}`);
+  }
+  const outgoing: OutreachEmail = { ...email, bcc: bccDecision.bcc ?? undefined };
+
   const result = breaker.tripped
     ? { success: false as const, method: "none" as const, error: breaker.reason! }
     : config && isSelfAddressed(email.to, config)
@@ -170,7 +190,7 @@ export async function sendOutreachEmail(
           method: "none" as const,
           error: `Refused: recipient (${email.to}) is one of this project's own sending addresses — sending would risk a self-feedback loop.`,
         }
-      : await attemptSend(config, email);
+      : await attemptSend(config, outgoing);
 
   await logEmailSend(audit.supabase, {
     jobName: audit.jobName,
