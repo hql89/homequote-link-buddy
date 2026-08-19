@@ -370,6 +370,35 @@ export async function setBusinessOutreachPaused(
   return error;
 }
 
+/**
+ * Bulk form of {@link setBusinessOutreachPaused}, same chunking as
+ * {@link setBusinessesPublished} and for the same reason: the id list travels
+ * in the query string, so it has to be split.
+ *
+ * Exists because the per-business switch was doing double duty as both "is
+ * this business OK to contact" (a real judgment call) and "how fast do we
+ * send" (already handled, better, by the daily limit in outreach_config) —
+ * so a verified batch was 100+ identical clicks that added no protection the
+ * daily cap didn't already provide. This lets that be one deliberate action
+ * instead. The per-business switch stays for the actual exceptions.
+ */
+export async function setBusinessesOutreachPaused(
+  ids: string[],
+  paused: boolean,
+): Promise<{ updated: number; error: { message: string } | null }> {
+  const table = directoryDb.from("businesses") as unknown as WritableTable;
+  let updated = 0;
+
+  for (let i = 0; i < ids.length; i += PUBLISH_CHUNK) {
+    const chunk = ids.slice(i, i + PUBLISH_CHUNK);
+    const { error } = await table.update({ outreach_paused: paused }).in("id", chunk);
+    if (error) return { updated, error };
+    updated += chunk.length;
+  }
+
+  return { updated, error: null };
+}
+
 /** Loads every outreach template variant, both stages, for the editor. */
 export async function loadOutreachVariants(): Promise<{
   variants: OutreachVariantRow[];

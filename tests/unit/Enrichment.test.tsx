@@ -34,6 +34,15 @@ const outreachRows = [
     outreach_email_1_sent_at: null,
   },
   {
+    id: "biz-paused-2",
+    business_name: "Ficus Landscaping",
+    city: "Tarzana",
+    phone: "555-3333",
+    email: "hi@ficuslandscaping.test",
+    outreach_paused: true,
+    outreach_email_1_sent_at: null,
+  },
+  {
     id: "biz-enabled",
     business_name: "Sunset Electric",
     city: "Sherman Oaks",
@@ -45,6 +54,7 @@ const outreachRows = [
 ];
 
 const outreachToggleCalls: { id: string; paused: boolean }[] = [];
+const bulkToggleCalls: { ids: string[]; paused: boolean }[] = [];
 
 function makeBusinessChain() {
   const filters: Record<string, unknown> = {};
@@ -99,6 +109,10 @@ vi.mock("../../src/integrations/supabase/directory", () => ({
     outreachToggleCalls.push({ id, paused });
     return Promise.resolve(null);
   },
+  setBusinessesOutreachPaused: (ids: string[], paused: boolean) => {
+    bulkToggleCalls.push({ ids, paused });
+    return Promise.resolve({ updated: ids.length, error: null });
+  },
 }));
 
 const { default: EnrichmentPage } = await import("../../src/pages/admin/Enrichment");
@@ -114,6 +128,7 @@ function renderPage() {
 
 beforeEach(() => {
   outreachToggleCalls.length = 0;
+  bulkToggleCalls.length = 0;
 });
 
 describe("EnrichmentPage — Ready for outreach", () => {
@@ -174,5 +189,89 @@ describe("EnrichmentPage — Ready for outreach", () => {
 
     await waitFor(() => expect(screen.getByText("Maybe Plumbing")).toBeInTheDocument());
     expect(screen.getByText("Valley Roofing Co")).toBeInTheDocument();
+  });
+
+  it("labels the bulk buttons with the count they'll actually affect", async () => {
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText("Valley Roofing Co")).toBeInTheDocument());
+    // 2 paused (Valley Roofing, Ficus), 1 already enabled (Sunset Electric).
+    expect(screen.getByRole("button", { name: "Enable all (2)" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pause all (1)" })).toBeInTheDocument();
+  });
+
+  it("requires confirmation before enabling all, and does not call the bulk setter until confirmed", async () => {
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText("Valley Roofing Co")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Enable all (2)" }));
+
+    // The dialog is up; nothing has been sent yet.
+    await waitFor(() => expect(screen.getByText(/Enable outreach for 2 businesses\?/)).toBeInTheDocument());
+    expect(bulkToggleCalls).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Enable 2" }));
+
+    await waitFor(() => expect(bulkToggleCalls).toHaveLength(1));
+    expect(bulkToggleCalls[0].paused).toBe(false);
+    expect(new Set(bulkToggleCalls[0].ids)).toEqual(new Set(["biz-paused", "biz-paused-2"]));
+    // The business that was already enabled is not included — bulk-enable
+    // only ever touches rows that were actually paused.
+    expect(bulkToggleCalls[0].ids).not.toContain("biz-enabled");
+  });
+
+  it("canceling the enable-all dialog sends nothing", async () => {
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText("Valley Roofing Co")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Enable all (2)" }));
+    await waitFor(() => expect(screen.getByText(/Enable outreach for 2 businesses\?/)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() =>
+      expect(screen.queryByText(/Enable outreach for 2 businesses\?/)).not.toBeInTheDocument(),
+    );
+    expect(bulkToggleCalls).toHaveLength(0);
+  });
+
+  it("pauses all enabled businesses immediately, with no confirmation dialog", async () => {
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText("Sunset Electric")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Pause all (1)" }));
+
+    // No dialog to wait for — pausing, like turning a job off elsewhere in
+    // this admin, is always immediate.
+    await waitFor(() => expect(bulkToggleCalls).toHaveLength(1));
+    expect(bulkToggleCalls[0]).toEqual({ ids: ["biz-enabled"], paused: true });
+  });
+
+  it("reflects the bulk result in the switches without a full reload", async () => {
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText("Valley Roofing Co")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Enable all (2)" }));
+    await waitFor(() => expect(screen.getByText(/Enable outreach for 2 businesses\?/)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Enable 2" }));
+
+    await waitFor(() => {
+      const card = screen.getByText("Valley Roofing Co").closest("li")!;
+      expect(within(card).getByText("Enabled")).toBeInTheDocument();
+    });
+    const otherCard = screen.getByText("Ficus Landscaping").closest("li")!;
+    expect(within(otherCard).getByText("Enabled")).toBeInTheDocument();
+  });
+
+  it("disables the buttons instead of showing a zero-count action", async () => {
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText("Valley Roofing Co")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Enable all (2)" }));
+    await waitFor(() => expect(screen.getByText(/Enable outreach for 2 businesses\?/)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Enable 2" }));
+
+    // Everything is now enabled, so "Enable all" has nothing left to do.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Enable all (0)" })).toBeDisabled());
   });
 });

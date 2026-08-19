@@ -6,12 +6,23 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import {
   directoryDb,
   reviewEnrichedEmail,
   setBusinessOutreachPaused,
+  setBusinessesOutreachPaused,
   type AdminBusinessRow,
 } from "@/integrations/supabase/directory";
 import { HelpTip } from "@/components/admin/HelpTip";
@@ -52,6 +63,9 @@ export default function EnrichmentPage() {
   const [lastRun, setLastRun] = useState<string | null>(null);
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [bulkRunning, setBulkRunning] = useState(false);
+  /** Set only while the "Enable all" confirmation is open. */
+  const [confirmingBulkEnable, setConfirmingBulkEnable] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -166,6 +180,42 @@ export default function EnrichmentPage() {
     }
     setTogglingId(null);
   }
+
+  /**
+   * Flips every currently-paused row in the list at once. Enabling is gated
+   * by a confirmation naming the count — pausing isn't, matching how the
+   * cron toggle elsewhere in this admin treats "turn it off" as always
+   * safe to do immediately. Only touches rows that are actually paused, so
+   * a business someone deliberately re-paused after this list last loaded
+   * is left alone rather than being silently re-enabled.
+   */
+  async function bulkSetOutreachPaused(paused: boolean) {
+    const targets = outreachReady.filter((r) => r.outreach_paused === !paused);
+    if (targets.length === 0) return;
+
+    setBulkRunning(true);
+    const { updated, error } = await setBusinessesOutreachPaused(
+      targets.map((r) => r.id),
+      paused,
+    );
+    if (error) {
+      toast({
+        title: "Couldn't finish",
+        description: `${updated} of ${targets.length} updated before this failed: ${error.message}`,
+        variant: "destructive",
+      });
+    } else {
+      const updatedIds = new Set(targets.map((r) => r.id));
+      setOutreachReady((prev) =>
+        prev.map((r) => (updatedIds.has(r.id) ? { ...r, outreach_paused: paused } : r)),
+      );
+      toast({ title: paused ? `${updated} paused` : `${updated} enabled for outreach` });
+    }
+    setBulkRunning(false);
+  }
+
+  const pausedCount = outreachReady.filter((r) => r.outreach_paused).length;
+  const enabledCount = outreachReady.length - pausedCount;
 
   return (
     <AdminLayout>
@@ -313,19 +363,42 @@ export default function EnrichmentPage() {
             </div>
 
             <div className="mt-8">
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-semibold font-sans">Ready for outreach</h2>
-                {outreachReady.filter((r) => r.outreach_paused).length > 0 && (
-                  <Badge variant="secondary">
-                    {outreachReady.filter((r) => r.outreach_paused).length} paused
-                  </Badge>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-semibold font-sans">Ready for outreach</h2>
+                  {pausedCount > 0 && <Badge variant="secondary">{pausedCount} paused</Badge>}
+                </div>
+                {outreachReady.length > 0 && (
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={bulkRunning || pausedCount === 0}
+                      onClick={() => setConfirmingBulkEnable(true)}
+                    >
+                      {bulkRunning ? (
+                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                      ) : null}
+                      Enable all ({pausedCount})
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={bulkRunning || enabledCount === 0}
+                      onClick={() => bulkSetOutreachPaused(true)}
+                    >
+                      Pause all ({enabledCount})
+                    </Button>
+                  </div>
                 )}
               </div>
               <p className="mt-1 text-sm text-muted-foreground">
                 Every business starts paused when it's imported, on purpose — nothing gets
                 emailed until you turn it on here. This never touches whether the listing page
                 itself is published, and turning one on doesn't send anything by itself; the
-                outreach job still has to run.
+                outreach job still has to run. Everything in this list already passed the
+                phone-match check above, so enabling all of it adds no risk beyond what the daily
+                send limit on the Outreach page already controls.
               </p>
 
               {outreachReady.length === 0 ? (
@@ -369,6 +442,32 @@ export default function EnrichmentPage() {
                 </ul>
               )}
             </div>
+
+            <AlertDialog open={confirmingBulkEnable} onOpenChange={setConfirmingBulkEnable}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Enable outreach for {pausedCount} businesses?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Every one of these already passed the phone-match check — the phone found on
+                    their site matches CSLB's record — so this isn't approving anyone new, just
+                    switching all of them on at once instead of one at a time. It does not send
+                    anything by itself: the outreach job still has to run, and it still stops at
+                    the daily send limit set on the Outreach page.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => {
+                      setConfirmingBulkEnable(false);
+                      bulkSetOutreachPaused(false);
+                    }}
+                  >
+                    Enable {pausedCount}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </>
         )}
       </div>
