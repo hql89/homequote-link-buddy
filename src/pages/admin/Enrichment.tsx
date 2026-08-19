@@ -20,6 +20,7 @@ import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import {
   directoryDb,
+  formatPhoneDisplay,
   reviewEnrichedEmail,
   setBusinessOutreachPaused,
   setBusinessesOutreachPaused,
@@ -315,9 +316,25 @@ export default function EnrichmentPage() {
                             Found: <span className="font-mono">{row.email}</span>
                           </p>
                           <p className="text-sm text-muted-foreground">CSLB city on file: {row.city}</p>
-                          <p className="text-sm text-muted-foreground">CSLB phone on file: {row.phone ?? "none"}</p>
+                          {/* The deciding evidence: these two not matching is
+                              why this row is here, so they sit together and are
+                              formatted the way a person reads a phone number.
+                              Raw E.164 (+13236535085 vs +19226367039) is close
+                              to unreadable at a glance, which is the whole task
+                              on this card. */}
                           <p className="text-sm text-muted-foreground">
-                            Phone on site: {row.email_source_phone ?? "none found"}
+                            CSLB phone on file:{" "}
+                            <span className="font-mono text-foreground">
+                              {row.phone ? formatPhoneDisplay(row.phone) : "none"}
+                            </span>
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            Phone on site:{" "}
+                            <span className="font-mono text-foreground">
+                              {row.email_source_phone
+                                ? formatPhoneDisplay(row.email_source_phone)
+                                : "none found"}
+                            </span>
                           </p>
                           <p className="text-sm text-muted-foreground">
                             Address on site:{" "}
@@ -417,7 +434,9 @@ export default function EnrichmentPage() {
                           <p className="mt-2 text-sm">
                             <span className="font-mono">{row.email}</span>
                           </p>
-                          <p className="text-sm text-muted-foreground">Phone: {row.phone ?? "none"}</p>
+                          <p className="text-sm text-muted-foreground">
+                            Phone: {row.phone ? formatPhoneDisplay(row.phone) : "none"}
+                          </p>
                           {row.outreach_email_1_sent_at && (
                             <p className="mt-1 text-xs text-muted-foreground">
                               Already emailed {new Date(row.outreach_email_1_sent_at).toLocaleDateString()}

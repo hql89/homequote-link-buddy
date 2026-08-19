@@ -15,10 +15,12 @@ const needsReviewRows = [
     id: "review-1",
     business_name: "Maybe Plumbing",
     city: "Encino",
-    phone: "555-0001",
+    // Stored E.164, the way businesses.phone actually holds it — the review
+    // card's whole job is making these two comparable by eye.
+    phone: "+13236535085",
     email: "info@maybeplumbing.test",
     email_source_url: "https://maybeplumbing.test",
-    email_source_phone: "555-9999",
+    email_source_phone: "+19226367039",
     email_source_address: null,
   },
 ];
@@ -28,7 +30,7 @@ const outreachRows = [
     id: "biz-paused",
     business_name: "Valley Roofing Co",
     city: "Van Nuys",
-    phone: "555-1111",
+    phone: "+18182164731",
     email: "hello@valleyroofing.test",
     outreach_paused: true,
     outreach_email_1_sent_at: null,
@@ -97,7 +99,12 @@ vi.mock("../../src/components/admin/AdminLayout", () => ({
   AdminLayout: ({ children }: { children: unknown }) => children,
 }));
 
-vi.mock("../../src/integrations/supabase/directory", () => ({
+vi.mock("../../src/integrations/supabase/directory", async (importOriginal) => ({
+  // Only the data-access surface is stubbed. formatPhoneDisplay is passed
+  // through from the real module deliberately: a hand-copied version here
+  // could drift from the one the page actually renders with, which is the
+  // exact class of bug this test exists to catch.
+  ...(await importOriginal<typeof import("../../src/integrations/supabase/directory")>()),
   directoryDb: {
     from: (table: string) => {
       if (table === "businesses") return makeBusinessChain();
@@ -189,6 +196,30 @@ describe("EnrichmentPage — Ready for outreach", () => {
 
     await waitFor(() => expect(screen.getByText("Maybe Plumbing")).toBeInTheDocument());
     expect(screen.getByText("Valley Roofing Co")).toBeInTheDocument();
+  });
+
+  it("renders the two compared phone numbers readably, not as raw E.164", async () => {
+    // The card's entire purpose is a human deciding whether these two numbers
+    // belong to the same business. "+13236535085" vs "+19226367039" is close
+    // to unreadable at a glance; the same bug shipped in the outreach email
+    // template and was only caught by someone reading a live send.
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText("Maybe Plumbing")).toBeInTheDocument());
+    const card = screen.getByText("Maybe Plumbing").closest("li")!;
+
+    expect(within(card).getByText("(323) 653-5085")).toBeInTheDocument();
+    expect(within(card).getByText("(922) 636-7039")).toBeInTheDocument();
+    expect(within(card).queryByText("+13236535085")).not.toBeInTheDocument();
+    expect(within(card).queryByText("+19226367039")).not.toBeInTheDocument();
+  });
+
+  it("formats the phone in the outreach list too", async () => {
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText("Valley Roofing Co")).toBeInTheDocument());
+    const card = screen.getByText("Valley Roofing Co").closest("li")!;
+    expect(within(card).getByText(/\(818\) 216-4731/)).toBeInTheDocument();
   });
 
   it("labels the bulk buttons with the count they'll actually affect", async () => {
