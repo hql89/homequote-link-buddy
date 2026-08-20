@@ -157,9 +157,24 @@ async function tryFetchDomain(candidateUrl: string): Promise<string | null> {
     // No robots.txt, or it timed out — proceed. Absence is not a disallow.
   }
 
-  const pageRes = await fetchWithTimeout(candidateUrl, FETCH_TIMEOUT_MS);
-  if (!pageRes.ok) return null;
-  return await pageRes.text();
+  // Network-level failures are an ORDINARY outcome here, not an error: the
+  // URL came from a model's guess, so a domain that does not resolve, refuses
+  // the connection, or times out is routine. Left unguarded this throws, and
+  // enrichOne's catch classifies the row `failed` — which, unlike
+  // `fetch_failed`, never stamps enriched_at. The candidate query takes the
+  // oldest un-enriched rows every run, so those same rows come back forever
+  // and the batch can never advance past them. That is exactly what happened:
+  // two rows (a dead domain and a timeout) consumed the entire daily limit on
+  // 2026-08-20's runs, twice, while 476 untouched businesses waited behind
+  // them. Returning null routes them to `fetch_failed`, which stamps and
+  // moves on.
+  try {
+    const pageRes = await fetchWithTimeout(candidateUrl, FETCH_TIMEOUT_MS);
+    if (!pageRes.ok) return null;
+    return await pageRes.text();
+  } catch {
+    return null;
+  }
 }
 
 /** One business, start to finish. Never throws — a bad row must not stall the batch. */
