@@ -53,49 +53,74 @@ const upsertCalls: Record<string, unknown>[] = [];
 const invokeCalls: string[] = [];
 let invokeResult: { data: unknown; error: unknown } = { data: { success: true }, error: null };
 
-vi.mock("../../src/integrations/supabase/client", () => ({
-  supabase: {
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          // admin_settings.outreach_config
-          maybeSingle: () => Promise.resolve({ data: { setting_value: { daily_limit: 10 } }, error: null }),
-          // the sample-business lookup chains one more eq() then limit()
-          eq: () => ({
-            limit: () => ({
-              maybeSingle: () =>
-                Promise.resolve({
-                  data: {
-                    business_name: "Valley Roofing Co",
-                    city: "Van Nuys",
-                    owner_name: "Dana",
-                    phone: "(818) 555-0142",
-                  },
-                  error: null,
-                }),
-            }),
-          }),
-        }),
-      }),
-      upsert: (v: Record<string, unknown>) => {
-        upsertCalls.push(v);
-        return Promise.resolve({ error: null });
-      },
-    }),
-    rpc: (name: string) => {
-      if (name === "admin_outreach_variant_stats") {
-        return Promise.resolve({ data: statsError ? null : statsRows, error: statsError });
+vi.mock("../../src/integrations/supabase/client", () => {
+  // A permissive chain builder rather than a fixed nesting of objects. The
+  // page issues several differently-shaped queries against `businesses`
+  // alone — a single-row sample ending in .maybeSingle(), and head/count
+  // queries ending in an await — and a rigid mock silently fails to resolve
+  // one of them, leaving the page stuck loading and every assertion reporting
+  // a missing element instead of the real cause.
+  function builder(table: string) {
+    let single = false;
+    const b: Record<string, unknown> = {};
+    for (const m of ["select", "eq", "is", "not", "gte", "lte", "order", "in"]) {
+      b[m] = () => b;
+    }
+    b.limit = () => {
+      single = true;
+      return b;
+    };
+    b.maybeSingle = () => {
+      if (table === "admin_settings") {
+        return Promise.resolve({
+          data: { setting_value: { daily_limit: 10, delivery_verified_at: "2026-08-19T12:00:00Z" } },
+          error: null,
+        });
       }
-      return Promise.resolve({ data: [], error: null });
-    },
-    functions: {
-      invoke: (name: string) => {
-        invokeCalls.push(name);
-        return Promise.resolve(invokeResult);
+      return Promise.resolve({
+        data: {
+          business_name: "Valley Roofing Co",
+          city: "Van Nuys",
+          owner_name: "Dana",
+          phone: "(818) 555-0142",
+        },
+        error: null,
+      });
+    };
+    // Terminal await for the head/count queries behind the readiness panel.
+    b.then = (resolve: (v: { data: unknown[]; count: number; error: null }) => unknown) =>
+      resolve({ data: [], count: single ? 1 : 5, error: null });
+    b.upsert = (v: Record<string, unknown>) => {
+      upsertCalls.push(v);
+      return Promise.resolve({ error: null });
+    };
+    return b;
+  }
+
+  return {
+    supabase: {
+      from: (table: string) => builder(table),
+      rpc: (name: string) => {
+        if (name === "admin_outreach_variant_stats") {
+          return Promise.resolve({ data: statsError ? null : statsRows, error: statsError });
+        }
+        if (name === "admin_list_cron_jobs") {
+          return Promise.resolve({
+            data: [{ jobname: "send-outreach-drip-daily", active: false }],
+            error: null,
+          });
+        }
+        return Promise.resolve({ data: [], error: null });
+      },
+      functions: {
+        invoke: (name: string) => {
+          invokeCalls.push(name);
+          return Promise.resolve(invokeResult);
+        },
       },
     },
-  },
-}));
+  };
+});
 
 vi.mock("../../src/hooks/use-toast", () => ({ toast: vi.fn() }));
 
@@ -115,12 +140,17 @@ vi.mock("../../src/integrations/supabase/directory", () => ({
 
 const { default: OutreachPage } = await import("../../src/pages/admin/Outreach");
 const { TooltipProvider } = await import("../../src/components/ui/tooltip");
+// The readiness panel links to the screens that fix each blocker, so the page
+// now needs router context to render at all.
+const { MemoryRouter } = await import("react-router-dom");
 
 function renderPage() {
   return render(
-    <TooltipProvider delayDuration={0}>
-      <OutreachPage />
-    </TooltipProvider>,
+    <MemoryRouter>
+      <TooltipProvider delayDuration={0}>
+        <OutreachPage />
+      </TooltipProvider>
+    </MemoryRouter>,
   );
 }
 

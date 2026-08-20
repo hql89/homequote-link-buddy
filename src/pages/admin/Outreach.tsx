@@ -20,6 +20,8 @@ import {
 } from "@/integrations/supabase/directory";
 import { HelpTip } from "@/components/admin/HelpTip";
 import { summariseRun } from "@/lib/jobRunSummary";
+import { computeOutreachReadiness } from "@/lib/outreachReadiness";
+import { OutreachReadiness } from "@/components/admin/OutreachReadiness";
 import { looksLikeItContainsLink, renderPreview, OUTREACH_MERGE_FIELDS } from "@/lib/outreachCopy";
 import { Loader2, Play, Plus, Trash2, AlertTriangle, Save, Mail } from "lucide-react";
 
@@ -75,13 +77,22 @@ export default function OutreachPage() {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [lastRun, setLastRun] = useState<string | null>(null);
+  /** Counts behind the readiness panel. Null while unknown, so the panel can
+   *  say "couldn't read this" rather than rendering a confident zero. */
+  const [eligibleCount, setEligibleCount] = useState(0);
+  const [pausedWithEmail, setPausedWithEmail] = useState(0);
+  const [needsReviewCount, setNeedsReviewCount] = useState(0);
+  const [sentToday, setSentToday] = useState(0);
+  const [cronActive, setCronActive] = useState<boolean | null>(null);
+  const [deliveryVerifiedAt, setDeliveryVerifiedAt] = useState<string | null>(null);
   /** Unsaved edits, keyed by variant id. */
   const [drafts, setDrafts] = useState<Record<string, Partial<OutreachVariantRow>>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
 
-    const [cfgRes, variantRes, statsRes, sampleRes, runsRes] = await Promise.all([
+    const [cfgRes, variantRes, statsRes, sampleRes, runsRes, eligibleRes, pausedRes, reviewRes, sentTodayRes, cronRes] =
+      await Promise.all([
       supabase.from("admin_settings").select("setting_value").eq("setting_key", SETTING_KEY).maybeSingle(),
       loadOutreachVariants(),
       supabase.rpc("admin_outreach_variant_stats"),
@@ -93,9 +104,42 @@ export default function OutreachPage() {
         .limit(1)
         .maybeSingle(),
       supabase.rpc("admin_recent_job_runs", { p_limit: 25 }),
+      // Eligible = exactly what send-outreach-drip's Email 1 query selects, so
+      // the panel's count is the job's count and cannot drift into optimism.
+      supabase
+        .from("businesses")
+        .select("id", { count: "exact", head: true })
+        .eq("email_confidence", "verified")
+        .eq("outreach_paused", false)
+        .is("outreach_suppressed_at", null)
+        .is("email_undeliverable_at", null)
+        .is("outreach_email_1_sent_at", null)
+        .not("email", "is", null),
+      supabase
+        .from("businesses")
+        .select("id", { count: "exact", head: true })
+        .eq("email_confidence", "verified")
+        .eq("outreach_paused", true)
+        .not("email", "is", null),
+      supabase
+        .from("businesses")
+        .select("id", { count: "exact", head: true })
+        .eq("email_confidence", "needs_review"),
+      supabase
+        .from("outreach_sends")
+        .select("id", { count: "exact", head: true })
+        .gte("sent_at", new Date(Date.UTC(
+          new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate(),
+        )).toISOString()),
+      supabase.rpc("admin_list_cron_jobs"),
     ]);
 
-    const cfg = (cfgRes.data?.setting_value ?? {}) as { daily_limit?: number; bcc_email?: string };
+    const cfg = (cfgRes.data?.setting_value ?? {}) as {
+      daily_limit?: number;
+      bcc_email?: string;
+      delivery_verified_at?: string;
+    };
+    setDeliveryVerifiedAt(cfg.delivery_verified_at ?? null);
     setDailyLimit(Number.isFinite(cfg.daily_limit) ? Number(cfg.daily_limit) : DEFAULT_DAILY_LIMIT);
     setBccEmail(cfg.bcc_email ?? "");
     setSavedBcc(cfg.bcc_email ?? "");
@@ -126,6 +170,20 @@ export default function OutreachPage() {
     const runs = (runsRes.data ?? []) as { job_name: string; metadata: Record<string, unknown> }[];
     const latest = runs.find((r) => r.job_name === "send-outreach-drip");
     setLastRun(latest ? summariseRun(latest.job_name, latest.metadata).text : null);
+
+    setEligibleCount(eligibleRes.count ?? 0);
+    setPausedWithEmail(pausedRes.count ?? 0);
+    setNeedsReviewCount(reviewRes.count ?? 0);
+    setSentToday(sentTodayRes.count ?? 0);
+
+    // null, not false, when the schedule is unreadable — pg_cron may not even
+    // be installed, and "off" would assert something nobody checked.
+    const cronJobs = (cronRes.data ?? null) as { jobname: string; active: boolean }[] | null;
+    setCronActive(
+      cronRes.error || !cronJobs
+        ? null
+        : (cronJobs.find((j) => j.jobname === "send-outreach-drip-daily")?.active ?? false),
+    );
 
     setLoading(false);
   }, []);
@@ -368,6 +426,26 @@ export default function OutreachPage() {
           </div>
         ) : (
           <>
+            <OutreachReadiness
+              result={computeOutreachReadiness({
+                deliveryVerifiedAt: deliveryVerifiedAt,
+                now: new Date(),
+                activeVerifyVariants: variants.filter(
+                  (v) => v.email_type === "outreach_verify" && v.is_active,
+                ).length,
+                activePreviewVariants: variants.filter(
+                  (v) => v.email_type === "outreach_preview" && v.is_active,
+                ).length,
+                eligibleBusinesses: eligibleCount,
+                pausedWithEmail,
+                needsReview: needsReviewCount,
+                cronActive,
+                dailyLimit,
+                sentToday,
+                bccEmail: savedBcc || null,
+              })}
+            />
+
             {/* ── Rate ─────────────────────────────────────────────────── */}
             <div className="mt-6 rounded-lg border border-border bg-card p-5">
               <div className="flex items-end gap-3">

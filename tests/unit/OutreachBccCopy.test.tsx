@@ -40,12 +40,18 @@ vi.mock("../../src/integrations/supabase/client", () => {
         return b;
       },
       limit: () => b,
+      // The readiness panel adds head/count queries against `businesses` and
+      // `outreach_sends`; without these the chain breaks and the page never
+      // finishes loading, hiding the real failure behind "element not found".
+      is: () => b,
+      not: () => b,
+      gte: () => b,
       // loadOutreachVariants (real, not mocked — it runs against this same
       // client) awaits the builder directly after .order(), with no
       // .maybeSingle() to terminate the chain.
       order: () => b,
-      then: (resolve: (v: { data: unknown[]; error: null }) => unknown) =>
-        resolve({ data: [], error: null }),
+      then: (resolve: (v: { data: unknown[]; count: number; error: null }) => unknown) =>
+        resolve({ data: [], count: 0, error: null }),
       maybeSingle: () => {
         if (table === "admin_settings" && settingKey === "smtp_config") {
           // Mirrors the `alias:setting_value->>key` projection the page uses so
