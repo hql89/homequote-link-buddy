@@ -94,8 +94,15 @@ function summariseEnrichment(meta: Record<string, unknown>): RunSummary {
 
   const parts = [`${verified} verified`];
   if (needsReview > 0) parts.push(`${needsReview} needs review`);
-  const noResult = noEmail + noUrl;
-  if (noResult > 0) parts.push(`${noResult} no email found`);
+  // Two different outcomes, previously folded into one misleading "no email
+  // found" label: no_url means Perplexity's search returned no candidate site
+  // at all (nothing to fetch), while no_email means a page WAS fetched but
+  // had no address on it. Conflated, an admin reading "12 no email found"
+  // would assume 12 real sites were checked and came up empty, when most of
+  // them were never found in the first place — a different, more useful
+  // signal (e.g. a solo contractor with no web presence) to see separately.
+  if (noUrl > 0) parts.push(`${noUrl} no website found`);
+  if (noEmail > 0) parts.push(`${noEmail} site had no email`);
   if (failed > 0) parts.push(`${failed} failed`);
 
   return { text: parts.join(" · "), noChange: verified === 0 && needsReview === 0 };

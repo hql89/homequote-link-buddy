@@ -60,7 +60,28 @@ describe("summariseRun — enrich-business-email", () => {
     const { text } = summariseRun("enrich-business-email", {
       considered: 15, verified: 3, needs_review: 2, no_url: 4, no_email: 5, fetch_failed: 1, failed: 0,
     });
-    expect(text).toBe("3 verified · 2 needs review · 9 no email found · 1 failed");
+    expect(text).toBe("3 verified · 2 needs review · 4 no website found · 5 site had no email · 1 failed");
+  });
+
+  it("keeps no_url and no_email as separate, distinctly-worded counts", () => {
+    // Folded into one "9 no email found" line (the pre-2026-08-20 behaviour),
+    // an admin reading it would assume 9 real sites were checked and had no
+    // contact address — when the real 2026-08-20 numbers (24 of 90 runs
+    // no_url vs. 4 no_email) show most of that bucket is Perplexity finding no
+    // candidate site at all, a different and more useful signal.
+    const { text } = summariseRun("enrich-business-email", {
+      considered: 6, verified: 0, needs_review: 0, no_url: 4, no_email: 0, fetch_failed: 0, failed: 0,
+    });
+    expect(text).toBe("0 verified · 4 no website found");
+    expect(text).not.toContain("no email found");
+  });
+
+  it("omits either count when it is zero, rather than printing '0 no website found'", () => {
+    const text = summariseRun("enrich-business-email", {
+      considered: 3, verified: 0, needs_review: 0, no_url: 0, no_email: 3, fetch_failed: 0, failed: 0,
+    }).text;
+    expect(text).toBe("0 verified · 3 site had no email");
+    expect(text).not.toContain("no website found");
   });
 
   it("distinguishes an empty candidate pool from a run that did work", () => {
