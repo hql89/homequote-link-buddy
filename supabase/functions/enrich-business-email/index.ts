@@ -57,9 +57,11 @@ interface CandidateRow {
   business_name: string;
   city: string;
   phone: string | null;
-  /** The licensed trade. Context for the identity assessment — a florist's
-   *  site under a landscaping licence is exactly the mismatch it should catch. */
+  /** The one class chosen for display. Context for the identity assessment. */
   vertical_slug: string | null;
+  /** Full CSLB class list — what trade-fit is actually judged against, since
+   *  221 of 536 businesses hold more than the one class vertical_slug shows. */
+  classification: string | null;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -225,6 +227,7 @@ async function enrichOne(
               city: row.city,
               cslbPhone: row.phone,
               trade: row.vertical_slug,
+              classification: row.classification,
               sourceUrl: candidateUrl,
             },
             html,
@@ -290,7 +293,7 @@ Deno.serve(async (req) => {
 
     const { data: candidates, error: queryError } = await supabase
       .from("businesses")
-      .select("id, business_name, city, phone, vertical_slug")
+      .select("id, business_name, city, phone, vertical_slug, classification")
       .is("enriched_at", null)
       .eq("is_published", true)
       .order("created_at", { ascending: true })

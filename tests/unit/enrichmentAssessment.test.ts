@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildAssessmentPrompt,
   extractReadableText,
+  formatClasses,
   parseAssessment,
 } from "../../supabase/functions/_shared/enrichmentAssessment";
 
@@ -18,6 +19,7 @@ const FACTS = {
   city: "Studio City",
   cslbPhone: "+18185227150",
   trade: "landscaping",
+  classification: "B| C27",
   sourceUrl: "https://wildfloradesign.com/",
 };
 
@@ -143,5 +145,52 @@ describe("parseAssessment", () => {
   it("caps runaway reasoning so the card stays scannable", () => {
     const result = parseAssessment(`VERDICT: unclear\nREASON: ${"word ".repeat(400)}`);
     expect(result!.notes.length).toBeLessThanOrEqual(500);
+  });
+});
+
+describe("formatClasses", () => {
+  it("expands the codes, because C22 means nothing to a reader that has not been told", () => {
+    expect(formatClasses("B| C10| C22")).toBe(
+      "B (general building), C10 (electrical), C22 (asbestos abatement)",
+    );
+  });
+
+  it("passes through a code it does not recognise rather than dropping it", () => {
+    // Silently swallowing an unknown class would understate the licence and
+    // reintroduce the false mismatch this field exists to prevent.
+    expect(formatClasses("C10| C99")).toBe("C10 (electrical), C99");
+  });
+
+  it("returns null for nothing, so the caller can fall back", () => {
+    expect(formatClasses(null)).toBeNull();
+    expect(formatClasses("   ")).toBeNull();
+  });
+});
+
+describe("buildAssessmentPrompt — multi-class licences", () => {
+  it("shows every class held, not just the display vertical", () => {
+    // The real 2026-08-20 false negative: filed under "electrical", flagged as
+    // a mismatch for doing asbestos work its C22 class plainly covers.
+    const prompt = buildAssessmentPrompt(
+      {
+        businessName: "Lucy Asbestos Abatement",
+        city: "Encino",
+        cslbPhone: null,
+        trade: "electrical",
+        classification: "B| C10| C20| C22| C27| C36",
+        sourceUrl: "https://www.lucyenv.com/",
+      },
+      "asbestos and environmental services",
+    );
+
+    expect(prompt).toContain("C22 (asbestos abatement)");
+    expect(prompt).toContain("C10 (electrical)");
+    expect(prompt).toMatch(/services matching just one are\s*\n?a fit, not a mismatch/i);
+  });
+
+  it("falls back to the single trade when no classification is stored", () => {
+    const prompt = buildAssessmentPrompt({ ...FACTS, classification: null }, "text");
+    expect(prompt).toContain("landscaping");
+    expect(prompt).not.toContain("null");
   });
 });

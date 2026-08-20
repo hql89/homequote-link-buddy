@@ -38,6 +38,10 @@ interface QueueRow {
   city: string | null;
   phone: string | null;
   vertical_slug: string | null;
+  /** Full CSLB licence class list, e.g. "B| C10| C36". Carried through so the
+   *  enrichment identity check sees the whole licence, not just the one class
+   *  vertical_slug picked for display. */
+  classification: string | null;
   /** The original CSLB columns. Carries BusinessType and FullBusinessName,
    *  which together decide the name a homeowner actually sees. */
   raw: Record<string, unknown> | null;
@@ -88,7 +92,7 @@ Deno.serve(async (req) => {
 
     const { data: queue, error: queueError } = await supabase
       .from("ingest_queue")
-      .select("id, license_number, business_name, city, phone, vertical_slug, raw")
+      .select("id, license_number, business_name, city, phone, vertical_slug, classification, raw")
       .eq("status", "pending")
       .order("created_at", { ascending: true })
       .limit(limit);
@@ -154,6 +158,7 @@ Deno.serve(async (req) => {
             license_status: "ACTIVE",
             source: "cslb",
             vertical_slug: row.vertical_slug,
+            classification: row.classification,
             services: [],
             // The two flags that make this ingestion silent.
             is_published: false,

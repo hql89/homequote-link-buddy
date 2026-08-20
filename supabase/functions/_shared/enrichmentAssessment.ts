@@ -37,8 +37,18 @@ export interface AssessmentFacts {
   city: string;
   /** CSLB's phone, E.164. Context only — a mismatch is explicitly NOT decisive. */
   cslbPhone: string | null;
-  /** e.g. "electrical", "landscaping" — the licensed trade. */
+  /** e.g. "electrical", "landscaping" — the ONE class chosen for display. */
   trade: string | null;
+  /**
+   * The full CSLB class list, e.g. "B| C10| C20| C22| C27| C36".
+   *
+   * 221 of 536 businesses hold more than one class, and `trade` is only
+   * whichever single one the directory files them under. Judging trade-fit
+   * from that alone misreads a multi-class holder: an asbestos-abatement firm
+   * filed under "electrical" got flagged as a mismatch on 2026-08-20 for
+   * doing asbestos work, which its C22 class covers.
+   */
+  classification: string | null;
   sourceUrl: string;
 }
 
@@ -75,6 +85,44 @@ export function extractReadableText(html: string, maxChars = 6000): string {
 }
 
 /**
+ * Renders CSLB's pipe-delimited class list readably, and expands the codes a
+ * model cannot be assumed to know. Without the expansion "C22" is an opaque
+ * token and trade-fit reasoning silently falls back to the display vertical —
+ * the exact failure this field was added to fix.
+ */
+const CLASS_NAMES: Record<string, string> = {
+  A: "general engineering",
+  B: "general building",
+  "C-7": "low voltage systems",
+  C7: "low voltage systems",
+  C10: "electrical",
+  C16: "fire protection",
+  C20: "HVAC",
+  C22: "asbestos abatement",
+  C27: "landscaping",
+  C33: "painting",
+  C36: "plumbing",
+  C38: "refrigeration",
+  C39: "roofing",
+  C42: "sanitation",
+  C53: "swimming pools",
+  D49: "tree service",
+};
+
+export function formatClasses(classification: string | null): string | null {
+  if (!classification?.trim()) return null;
+  return classification
+    .split("|")
+    .map((c) => c.trim())
+    .filter(Boolean)
+    .map((c) => {
+      const name = CLASS_NAMES[c.toUpperCase().replace(/\s+/g, "")];
+      return name ? `${c} (${name})` : c;
+    })
+    .join(", ");
+}
+
+/**
  * Builds the judging prompt.
  *
  * Two instructions carry the weight. First, that a differing phone number is
@@ -86,19 +134,22 @@ export function extractReadableText(html: string, maxChars = 6000): string {
  * model's own recall of a similarly-named business is exactly the failure
  * this queue exists to catch.
  */
+
 export function buildAssessmentPrompt(facts: AssessmentFacts, pageText: string): string {
   return [
     `A California contractor directory holds this licence record:`,
     `- Business name: ${facts.businessName}`,
     `- City: ${facts.city}`,
-    `- Licensed trade: ${facts.trade ?? "unknown"}`,
+    `- Licence classes held: ${formatClasses(facts.classification) ?? facts.trade ?? "unknown"}`,
     `- Phone on file: ${facts.cslbPhone ?? "unknown"}`,
     ``,
     `Below is the visible text of ${facts.sourceUrl}, which was found by searching for that business.`,
     `Decide whether this website belongs to that same business.`,
     ``,
     `Weigh: does the business name match; is the location consistent with ${facts.city}, California;`,
-    `do the services offered fit a "${facts.trade ?? "contractor"}" licence?`,
+    `do the services offered fit ANY of the licence classes held? A contractor holding several`,
+    `classes may legitimately advertise work under any of them, so services matching just one are`,
+    `a fit, not a mismatch.`,
     ``,
     `IMPORTANT: a phone number on the site that differs from the phone on file is NOT evidence of a`,
     `mismatch — businesses commonly list toll-free, tracking, or secondary numbers. Do not treat a`,

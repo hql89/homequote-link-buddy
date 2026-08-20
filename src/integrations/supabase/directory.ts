@@ -80,6 +80,9 @@ export interface AdminBusinessRow {
   slug: string;
   phone: string | null;
   license_number: string | null;
+  /** Full CSLB licence class list, e.g. "B| C10| C36". `vertical_slug` is only
+   *  the single class the listing is filed under for display. */
+  classification: string | null;
   is_published: boolean;
   created_at: string;
   email: string | null;
