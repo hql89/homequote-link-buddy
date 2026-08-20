@@ -47,7 +47,29 @@ type NeedsReviewRow = Pick<
   | "email_source_url"
   | "email_source_phone"
   | "email_source_address"
+  | "email_review_verdict"
+  | "email_review_notes"
 >;
+
+/** How each advisory verdict is presented. Wording is deliberately hedged —
+ *  this is a hint to speed a decision up, never a ruling. */
+const VERDICT_DISPLAY: Record<
+  NonNullable<AdminBusinessRow["email_review_verdict"]>,
+  { label: string; className: string }
+> = {
+  likely_match: {
+    label: "Looks like the right business",
+    className: "border-emerald-600/30 bg-emerald-500/5",
+  },
+  likely_mismatch: {
+    label: "Looks like a different business",
+    className: "border-destructive/30 bg-destructive/5",
+  },
+  unclear: {
+    label: "Not enough on the page to tell",
+    className: "border-border bg-muted/40",
+  },
+};
 
 type OutreachReadyRow = Pick<
   AdminBusinessRow,
@@ -75,7 +97,7 @@ export default function EnrichmentPage() {
       directoryDb
         .from("businesses")
         .select(
-          "id, business_name, city, phone, email, email_source_url, email_source_phone, email_source_address",
+          "id, business_name, city, phone, email, email_source_url, email_source_phone, email_source_address, email_review_verdict, email_review_notes",
         )
         .eq("email_confidence", "needs_review")
         .order("business_name", { ascending: true }),
@@ -295,8 +317,10 @@ export default function EnrichmentPage() {
                 {needsReview.length > 0 && <Badge variant="secondary">{needsReview.length}</Badge>}
               </div>
               <p className="mt-1 text-sm text-muted-foreground">
-                An email was found, but the phone number on the page didn't match CSLB's — confirm
-                this is really the right business before it becomes eligible for outreach.
+                An email was found, but the phone on the page didn't match CSLB's — so nobody has
+                confirmed this is the right business yet. A different phone is normal on its own
+                (toll-free and tracking numbers are common); what actually settles it is whether
+                the name, location and the kind of work on the site match the licence.
               </p>
 
               {needsReview.length === 0 ? (
@@ -349,6 +373,27 @@ export default function EnrichmentPage() {
                             >
                               View source page <ExternalLink className="h-3 w-3" aria-hidden="true" />
                             </a>
+                          )}
+
+                          {row.email_review_verdict && row.email_review_notes && (
+                            <div
+                              className={`mt-3 rounded-md border p-3 ${
+                                VERDICT_DISPLAY[row.email_review_verdict].className
+                              }`}
+                            >
+                              <p className="text-xs font-medium text-foreground">
+                                {VERDICT_DISPLAY[row.email_review_verdict].label}
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {row.email_review_notes}
+                              </p>
+                              {/* Named as a machine opinion on purpose. It reads
+                                  the page this scan already fetched and can be
+                                  wrong; the decision below is still the admin's. */}
+                              <p className="mt-1.5 text-[11px] text-muted-foreground/70">
+                                Automated read of the page — check it yourself before deciding.
+                              </p>
+                            </div>
                           )}
                         </div>
                         <div className="flex gap-2">

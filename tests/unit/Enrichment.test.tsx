@@ -22,6 +22,22 @@ const needsReviewRows = [
     email_source_url: "https://maybeplumbing.test",
     email_source_phone: "+19226367039",
     email_source_address: null,
+    email_review_verdict: "likely_mismatch",
+    email_review_notes: "The site is a Utah homebuilder; nothing ties it to Encino, California.",
+  },
+  {
+    // No assessment — the model call failed or was never made. The card must
+    // render normally rather than showing an empty verdict box.
+    id: "review-2",
+    business_name: "Unassessed Electric",
+    city: "Tarzana",
+    phone: "+18184545747",
+    email: "info@unassessed.test",
+    email_source_url: "https://unassessed.test",
+    email_source_phone: null,
+    email_source_address: null,
+    email_review_verdict: null,
+    email_review_notes: null,
   },
 ];
 
@@ -196,6 +212,34 @@ describe("EnrichmentPage — Ready for outreach", () => {
 
     await waitFor(() => expect(screen.getByText("Maybe Plumbing")).toBeInTheDocument());
     expect(screen.getByText("Valley Roofing Co")).toBeInTheDocument();
+  });
+
+  it("shows the automated read, labelled as automated", async () => {
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText("Maybe Plumbing")).toBeInTheDocument());
+    const card = screen.getByText("Maybe Plumbing").closest("li")!;
+
+    expect(within(card).getByText("Looks like a different business")).toBeInTheDocument();
+    expect(
+      within(card).getByText(/Utah homebuilder; nothing ties it to Encino/),
+    ).toBeInTheDocument();
+    // It must never read as a ruling — the admin still decides, and the
+    // buttons stay live regardless of what the verdict says.
+    expect(within(card).getByText(/check it yourself before deciding/i)).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: /confirm/i })).not.toBeDisabled();
+  });
+
+  it("renders a card with no assessment cleanly, with no empty verdict box", async () => {
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText("Unassessed Electric")).toBeInTheDocument());
+    const card = screen.getByText("Unassessed Electric").closest("li")!;
+
+    expect(within(card).queryByText(/check it yourself before deciding/i)).not.toBeInTheDocument();
+    expect(within(card).queryByText(/Looks like/)).not.toBeInTheDocument();
+    // Still fully reviewable by hand — an absent assessment blocks nothing.
+    expect(within(card).getByRole("button", { name: /confirm/i })).toBeInTheDocument();
   });
 
   it("renders the two compared phone numbers readably, not as raw E.164", async () => {

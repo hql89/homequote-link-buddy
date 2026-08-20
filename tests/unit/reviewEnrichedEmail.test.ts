@@ -12,6 +12,13 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
  * Adding a field to either payload breaks these assertions, which point at
  * 20260731130000_admin_enrichment_review_grants.sql: the grant has to grow
  * with the payload or the button dies in production and nowhere else.
+ *
+ * It has since done its job once: the email_review_* columns below were added
+ * to the dismiss payload on 2026-08-20 and these assertions failed until
+ * 20260820030000_enrichment_review_assessment.sql granted them. Verified
+ * against production with has_column_privilege before this list was widened —
+ * widen it only after confirming the grant exists, never to make a red test
+ * green.
  */
 const GRANTED_UPDATE_COLUMNS = [
   "email",
@@ -19,6 +26,10 @@ const GRANTED_UPDATE_COLUMNS = [
   "email_source_phone",
   "email_source_address",
   "email_confidence",
+  // Granted by 20260820030000_enrichment_review_assessment.sql.
+  "email_review_verdict",
+  "email_review_notes",
+  "email_review_assessed_at",
 ] as const;
 
 const calls: { values: Record<string, unknown>; id: string }[] = [];
@@ -63,6 +74,12 @@ describe("reviewEnrichedEmail", () => {
       email_source_phone: null,
       email_source_address: null,
       email_confidence: "rejected",
+      // The automated assessment is reasoning about the evidence being cleared
+      // above it. Kept, it would be a verdict about nothing — and would
+      // resurface stale if this row were re-enriched and re-queued later.
+      email_review_verdict: null,
+      email_review_notes: null,
+      email_review_assessed_at: null,
     });
   });
 

@@ -87,6 +87,14 @@ export interface AdminBusinessRow {
   email_source_phone: string | null;
   email_source_address: string | null;
   email_confidence: "verified" | "needs_review" | "rejected" | null;
+  /**
+   * Advisory only — a model's read on whether the found site is really this
+   * business, shown on the review queue. Never decides anything: a row leaves
+   * the queue only when a human clicks Confirm or Dismiss.
+   */
+  email_review_verdict: "likely_match" | "likely_mismatch" | "unclear" | null;
+  email_review_notes: string | null;
+  email_review_assessed_at: string | null;
   outreach_paused: boolean;
   outreach_email_1_sent_at: string | null;
 }
@@ -329,6 +337,13 @@ export async function reviewEnrichedEmail(
           email_source_phone: null,
           email_source_address: null,
           email_confidence: "rejected",
+          // The assessment is reasoning ABOUT the evidence being cleared on
+          // the line above. Left behind it would be a verdict with nothing to
+          // verdict on — and would resurface, stale, if this row were ever
+          // re-enriched and re-queued.
+          email_review_verdict: null,
+          email_review_notes: null,
+          email_review_assessed_at: null,
         };
   const { error } = await table.update(values).eq("id", id);
   return error;

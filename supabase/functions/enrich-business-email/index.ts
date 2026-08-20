@@ -35,11 +35,19 @@ import {
   isDisallowedByRobots,
   resolveConfidence,
 } from "../_shared/emailEnrichment.ts";
+import {
+  buildAssessmentPrompt,
+  extractReadableText,
+  parseAssessment,
+  type Assessment,
+} from "../_shared/enrichmentAssessment.ts";
 
 const JOB_NAME = "enrich-business-email";
 const MAX_DAILY_LIMIT = 100;
 const USER_AGENT = "ValleyHomeProsBot/1.0 (+https://homequotelink.com)";
 const FETCH_TIMEOUT_MS = 8_000;
+/** Generous vs. the page fetch — this is a model call, and it is optional. */
+const ASSESSMENT_TIMEOUT_MS = 20_000;
 /** Pause between fetching each business's own site — the "hard rate limit"
  *  the root plan calls for on the crawl step, distinct from the daily cap. */
 const BETWEEN_FETCHES_MS = 500;
@@ -49,6 +57,9 @@ interface CandidateRow {
   business_name: string;
   city: string;
   phone: string | null;
+  /** The licensed trade. Context for the identity assessment — a florist's
+   *  site under a landscaping licence is exactly the mismatch it should catch. */
+  vertical_slug: string | null;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -91,6 +102,46 @@ async function discoverUrl(apiKey: string, businessName: string, city: string): 
   const data = await res.json();
   const content = data?.choices?.[0]?.message?.content ?? "";
   return extractUrlFromModelText(content);
+}
+
+/**
+ * Asks the model whether the fetched page is really this business.
+ *
+ * Only ever called for rows headed to the review queue — a phone match has
+ * already settled the verified ones, and spending a call to second-guess it
+ * would be both wasteful and an invitation to override a deterministic check
+ * with a probabilistic one.
+ *
+ * Returns null on any failure, and the caller stores nothing in that case.
+ * This is a nicety on a screen a human is going to read anyway: it must never
+ * cost a row its enrichment. Note the model is handed page text THIS FUNCTION
+ * fetched, and its output is confined to advisory columns — it cannot reach
+ * email, phone, or email_confidence.
+ */
+async function assessIdentity(
+  apiKey: string,
+  facts: Parameters<typeof buildAssessmentPrompt>[0],
+  html: string,
+): Promise<Assessment | null> {
+  try {
+    const res = await fetch("https://api.perplexity.ai/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "sonar",
+        messages: [
+          { role: "user", content: buildAssessmentPrompt(facts, extractReadableText(html)) },
+        ],
+      }),
+      signal: AbortSignal.timeout(ASSESSMENT_TIMEOUT_MS),
+    });
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    return parseAssessment(data?.choices?.[0]?.message?.content ?? "");
+  } catch {
+    return null;
+  }
 }
 
 async function tryFetchDomain(candidateUrl: string): Promise<string | null> {
@@ -147,6 +198,24 @@ async function enrichOne(
     const confidence = resolveConfidence(matched);
     const address = extractAddressFromHtml(html);
 
+    // Only for rows a human will have to judge. A phone match has already
+    // settled the verified ones deterministically; asking a model to weigh in
+    // there would spend a call to invite second-guessing a stronger signal.
+    const assessment =
+      confidence === "needs_review"
+        ? await assessIdentity(
+            apiKey,
+            {
+              businessName: row.business_name,
+              city: row.city,
+              cslbPhone: row.phone,
+              trade: row.vertical_slug,
+              sourceUrl: candidateUrl,
+            },
+            html,
+          )
+        : null;
+
     await supabase
       .from("businesses")
       .update({
@@ -155,6 +224,12 @@ async function enrichOne(
         email_source_phone: phones[0] ?? null,
         email_source_address: address,
         email_confidence: confidence,
+        // Written together with the evidence they describe, and null for a
+        // verified row so a stale verdict from an earlier pass can never
+        // outlive the finding it was about.
+        email_review_verdict: assessment?.verdict ?? null,
+        email_review_notes: assessment?.notes ?? null,
+        email_review_assessed_at: assessment ? new Date().toISOString() : null,
         enriched_at: new Date().toISOString(),
       })
       .eq("id", row.id);
@@ -200,7 +275,7 @@ Deno.serve(async (req) => {
 
     const { data: candidates, error: queryError } = await supabase
       .from("businesses")
-      .select("id, business_name, city, phone")
+      .select("id, business_name, city, phone, vertical_slug")
       .is("enriched_at", null)
       .eq("is_published", true)
       .order("created_at", { ascending: true })
