@@ -56,6 +56,13 @@ function CheckRow({ check }: { check: ReadinessCheck }) {
 export function OutreachReadiness({ result }: { result: ReadinessResult }) {
   const { banner, icon: Icon, iconClass } = LEVEL_STYLES[result.level];
 
+  // A check that passed is done, not ongoing news — it stays reachable, not
+  // gone, because "6 checks passing" is still a real claim someone might
+  // want to verify. It just isn't worth six rows of permanent screen space
+  // once there's nothing left to act on.
+  const needsAttention = result.checks.filter((c) => c.level !== "ok");
+  const passing = result.checks.filter((c) => c.level === "ok");
+
   return (
     <section className={`mt-6 rounded-lg border p-5 ${banner}`} aria-label="Outreach status">
       <div className="flex items-start gap-3">
@@ -66,11 +73,26 @@ export function OutreachReadiness({ result }: { result: ReadinessResult }) {
         </div>
       </div>
 
-      <ul className="mt-3 divide-y divide-border/60 border-t border-border/60">
-        {result.checks.map((check) => (
-          <CheckRow key={check.id} check={check} />
-        ))}
-      </ul>
+      {needsAttention.length > 0 && (
+        <ul className="mt-3 divide-y divide-border/60 border-t border-border/60">
+          {needsAttention.map((check) => (
+            <CheckRow key={check.id} check={check} />
+          ))}
+        </ul>
+      )}
+
+      {passing.length > 0 && (
+        <details className={needsAttention.length > 0 ? "mt-1" : "mt-3 border-t border-border/60 pt-1"}>
+          <summary className="cursor-pointer py-2 text-sm text-muted-foreground hover:text-foreground">
+            {passing.length} check{passing.length === 1 ? "" : "s"} passing
+          </summary>
+          <ul className="divide-y divide-border/60 border-t border-border/60">
+            {passing.map((check) => (
+              <CheckRow key={check.id} check={check} />
+            ))}
+          </ul>
+        </details>
+      )}
     </section>
   );
 }
