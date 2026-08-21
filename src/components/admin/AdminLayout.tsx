@@ -7,28 +7,70 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Users, FileText, Settings, LogOut, Menu, X, Wrench, ExternalLink, BookOpen, Image as ImageIcon, BarChart3, Activity, TrendingUp, UserCheck, Star, Building, Layers, DownloadCloud, ClipboardList, ShieldAlert, Camera, MailOpen, Search, Archive, Send } from "lucide-react";
 
-const navItems = [
-  { to: "/admin", label: "Leads", icon: FileText },
-  { to: "/admin/buyers", label: "Buyers", icon: Users },
-  { to: "/admin/routing", label: "Routing", icon: Settings },
-  { to: "/admin/blog", label: "Blog", icon: BookOpen },
-  { to: "/admin/media", label: "Media", icon: ImageIcon },
-  { to: "/admin/analytics", label: "Analytics", icon: BarChart3 },
-  { to: "/admin/homeowners", label: "Homeowners", icon: UserCheck },
-  { to: "/admin/reviews", label: "Reviews", icon: Star },
-  { to: "/admin/buyer-profiles", label: "Profiles", icon: Building },
-  { to: "/admin/applications", label: "Applications", icon: ClipboardList },
-  { to: "/admin/verticals", label: "Verticals", icon: Layers },
-  { to: "/admin/ingest", label: "Ingestion", icon: DownloadCloud },
-  { to: "/admin/enrichment", label: "Email Finder", icon: Search },
-  { to: "/admin/outreach", label: "Outreach", icon: Send },
-  { to: "/admin/photos", label: "Photos", icon: Camera },
-  { to: "/admin/replies", label: "Replies", icon: MailOpen },
-  { to: "/admin/spam", label: "Spam", icon: ShieldAlert },
-  { to: "/admin/archive", label: "Archive", icon: Archive },
-  { to: "/admin/system", label: "System", icon: Activity },
-  { to: "/admin/settings", label: "Settings", icon: Wrench },
+/**
+ * Grouped by where each screen sits in the business's lifecycle, not by when
+ * it was built. Previously a flat list in build order — Leads/Buyers first
+ * (the original product), then whatever shipped next appended to the end —
+ * so the five screens that form one continuous pipeline (import a business →
+ * find its email → review it → decide to contact it → send, then watch for
+ * replies) were scattered among unrelated ones with no visual relationship.
+ *
+ * Order within "Directory pipeline" matches the actual left-to-right flow:
+ * a business enters via Verticals/Ingestion, gets an email via Email Finder,
+ * gets contacted via Outreach, and replies land in Replies. Provider
+ * Applications is a second, parallel entry point (a business asking to join
+ * directly rather than being imported), so it opens the next group instead.
+ */
+const navGroups: { label: string; items: { to: string; label: string; icon: typeof FileText }[] }[] = [
+  {
+    label: "Directory pipeline",
+    items: [
+      { to: "/admin/verticals", label: "Verticals", icon: Layers },
+      { to: "/admin/ingest", label: "Ingestion", icon: DownloadCloud },
+      { to: "/admin/enrichment", label: "Email Finder", icon: Search },
+      { to: "/admin/outreach", label: "Outreach", icon: Send },
+      { to: "/admin/replies", label: "Replies", icon: MailOpen },
+    ],
+  },
+  {
+    label: "Provider content",
+    items: [
+      { to: "/admin/applications", label: "Applications", icon: ClipboardList },
+      { to: "/admin/photos", label: "Photos", icon: Camera },
+      { to: "/admin/reviews", label: "Reviews", icon: Star },
+      { to: "/admin/spam", label: "Spam", icon: ShieldAlert },
+    ],
+  },
+  {
+    label: "Leads & buyers",
+    items: [
+      { to: "/admin", label: "Leads", icon: FileText },
+      { to: "/admin/buyers", label: "Buyers", icon: Users },
+      { to: "/admin/routing", label: "Routing", icon: Settings },
+      { to: "/admin/homeowners", label: "Homeowners", icon: UserCheck },
+      { to: "/admin/buyer-profiles", label: "Profiles", icon: Building },
+    ],
+  },
+  {
+    label: "Site content",
+    items: [
+      { to: "/admin/blog", label: "Blog", icon: BookOpen },
+      { to: "/admin/media", label: "Media", icon: ImageIcon },
+    ],
+  },
+  {
+    label: "Admin & ops",
+    items: [
+      { to: "/admin/analytics", label: "Analytics", icon: BarChart3 },
+      { to: "/admin/archive", label: "Archive", icon: Archive },
+      { to: "/admin/system", label: "System", icon: Activity },
+      { to: "/admin/settings", label: "Settings", icon: Wrench },
+    ],
+  },
 ];
+
+/** Flattened once for anything (like useAdminCounts lookups) that still just needs "all items". */
+const navItems = navGroups.flatMap((g) => g.items);
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -55,39 +97,49 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           </Button>
         </div>
 
-        <nav className="flex-1 py-4 space-y-1 px-2">
-          {navItems.map((item) => {
-            const isActive = location.pathname === item.to || (item.to !== "/admin" && location.pathname.startsWith(item.to));
-            return (
-              <Link
-                key={item.to}
-                to={item.to}
-                className={cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors relative",
-                  isActive
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                )}
-              >
-                <span className="relative flex-shrink-0">
-                  <item.icon className="h-4 w-4" />
-                  {collapsed && (counts?.[item.to] ?? 0) > 0 && (
-                    <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-destructive" />
-                  )}
-                </span>
-                {!collapsed && (
-                  <>
-                    <span className="flex-1">{item.label}</span>
-                    {(counts?.[item.to] ?? 0) > 0 && (
-                      <Badge variant="destructive" className="ml-auto h-5 min-w-5 px-1.5 text-[10px] justify-center">
-                        {counts![item.to]}
-                      </Badge>
+        <nav className="flex-1 overflow-y-auto py-4 px-2">
+          {navGroups.map((group, i) => (
+            <div key={group.label} className={cn("space-y-1", i > 0 && "mt-4 pt-4 border-t border-sidebar-border")}>
+              {!collapsed && (
+                <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/40">
+                  {group.label}
+                </p>
+              )}
+              {group.items.map((item) => {
+                const isActive =
+                  location.pathname === item.to || (item.to !== "/admin" && location.pathname.startsWith(item.to));
+                return (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    className={cn(
+                      "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors relative",
+                      isActive
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                     )}
-                  </>
-                )}
-              </Link>
-            );
-          })}
+                  >
+                    <span className="relative flex-shrink-0">
+                      <item.icon className="h-4 w-4" />
+                      {collapsed && (counts?.[item.to] ?? 0) > 0 && (
+                        <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-destructive" />
+                      )}
+                    </span>
+                    {!collapsed && (
+                      <>
+                        <span className="flex-1">{item.label}</span>
+                        {(counts?.[item.to] ?? 0) > 0 && (
+                          <Badge variant="destructive" className="ml-auto h-5 min-w-5 px-1.5 text-[10px] justify-center">
+                            {counts![item.to]}
+                          </Badge>
+                        )}
+                      </>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
         <div className="border-t border-sidebar-border p-2 space-y-1">
