@@ -31,24 +31,36 @@ const CLASSIFICATION_LABEL: Record<InboundEmailRow["classification"], string> = 
   unclassified: "Other",
 };
 
+/** Rows per page when viewing "All" — this table has no cap otherwise. */
+const REPLIES_PAGE_SIZE = 100;
+
 export default function RepliesPage() {
   const [replies, setReplies] = useState<ReplyRow[]>([]);
   const [suppressed, setSuppressed] = useState<(BusinessInfo & { id: string })[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  /** "unhandled" is the default work queue; "all" is the archive — replies
+   *  you've already dealt with stop being reachable once "Mark handled" is
+   *  clicked, otherwise, which breaks any link (like Overview's Recent
+   *  Activity "Open") pointing at a reply that's since been handled. */
+  const [view, setView] = useState<"unhandled" | "all">("unhandled");
 
   const load = useCallback(async () => {
     setLoading(true);
 
+    let repliesQuery = directoryDb.from("inbound_emails").select("*");
+    if (view === "unhandled") {
+      repliesQuery = repliesQuery.is("handled_at", null);
+    }
+    repliesQuery =
+      view === "unhandled"
+        ? // Priority first (a real question), then oldest-first within each
+          // group — a sort hint for attention, never an automated action.
+          repliesQuery.order("is_priority", { ascending: false }).order("received_at", { ascending: true })
+        : repliesQuery.order("received_at", { ascending: false }).limit(REPLIES_PAGE_SIZE);
+
     const [repliesRes, suppressedRes] = await Promise.all([
-      directoryDb
-        .from("inbound_emails")
-        .select("*")
-        .is("handled_at", null)
-        // Priority first (a real question), then oldest-first within each
-        // group — a sort hint for attention, never an automated action.
-        .order("is_priority", { ascending: false })
-        .order("received_at", { ascending: true }),
+      repliesQuery,
       directoryDb
         .from("businesses")
         .select("id, business_name, city, outreach_suppressed_at")
@@ -82,7 +94,7 @@ export default function RepliesPage() {
       ),
     );
     setLoading(false);
-  }, []);
+  }, [view]);
 
   useEffect(() => {
     load();
@@ -93,8 +105,12 @@ export default function RepliesPage() {
     const error = await markReplyHandled(id);
     if (error) {
       toast({ title: "Couldn't save", description: error.message, variant: "destructive" });
-    } else {
+    } else if (view === "unhandled") {
+      // The unhandled queue drops it entirely — that's the point of the view.
       setReplies((prev) => prev.filter((r) => r.id !== id));
+    } else {
+      // The "All" archive keeps showing it, now marked handled.
+      setReplies((prev) => prev.map((r) => (r.id === id ? { ...r, handled_at: new Date().toISOString() } : r)));
     }
     setBusyId(null);
   }
@@ -143,7 +159,9 @@ export default function RepliesPage() {
       <div className="mx-auto max-w-4xl px-4 py-8">
         <div className="flex items-center gap-2">
           <h1 className="text-2xl font-bold font-sans">Replies</h1>
-          {replies.length > 0 && <Badge variant="secondary">{replies.length} unhandled</Badge>}
+          {view === "unhandled" && replies.length > 0 && (
+            <Badge variant="secondary">{replies.length} unhandled</Badge>
+          )}
           <HelpTip>
             Every reply to an outreach email lands here, classified automatically by matching
             against phrases like "yes" and "stop" — never by a model guessing. A reply saying
@@ -151,9 +169,23 @@ export default function RepliesPage() {
             you for that. What does wait on you: applying a website URL someone sent, and
             reading anything that didn't match a known pattern.
           </HelpTip>
+          <div className="ml-auto flex gap-1 rounded-md border border-border p-1">
+            {(["unhandled", "all"] as const).map((v) => (
+              <Button
+                key={v}
+                size="sm"
+                variant={view === v ? "default" : "ghost"}
+                className="h-7 px-3 text-xs capitalize"
+                onClick={() => setView(v)}
+              >
+                {v}
+              </Button>
+            ))}
+          </div>
         </div>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
           Nothing here ever sends a reply automatically — every action is a click you make.
+          {view === "all" && ` Showing the most recent ${REPLIES_PAGE_SIZE}, newest first.`}
         </p>
 
         {loading ? (
@@ -163,7 +195,7 @@ export default function RepliesPage() {
         ) : replies.length === 0 ? (
           <div className="mt-10 flex flex-col items-center gap-2 py-12 text-center text-muted-foreground">
             <Mail className="h-8 w-8" aria-hidden="true" />
-            <p className="text-sm">No unhandled replies.</p>
+            <p className="text-sm">{view === "unhandled" ? "No unhandled replies." : "No replies yet."}</p>
           </div>
         ) : (
           <ul className="mt-6 space-y-3">
@@ -173,6 +205,12 @@ export default function RepliesPage() {
                   <Badge variant={reply.classification === "unsubscribe" ? "destructive" : "secondary"}>
                     {CLASSIFICATION_LABEL[reply.classification]}
                   </Badge>
+                  {reply.handled_at && (
+                    <Badge variant="outline" className="gap-1">
+                      <Check className="h-3 w-3" aria-hidden="true" />
+                      Handled
+                    </Badge>
+                  )}
                   {reply.is_priority && (
                     <Badge variant="outline" className="gap-1 border-amber-400 text-amber-700">
                       <AlertCircle className="h-3 w-3" aria-hidden="true" />
@@ -199,6 +237,7 @@ export default function RepliesPage() {
                   </p>
                 )}
 
+                {!reply.handled_at && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {reply.classification === "website" && reply.extracted_url && reply.business_id && (
                     <Button
@@ -238,6 +277,7 @@ export default function RepliesPage() {
                     Mark handled
                   </Button>
                 </div>
+                )}
               </li>
             ))}
           </ul>

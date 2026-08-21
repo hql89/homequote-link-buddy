@@ -175,6 +175,34 @@ export interface OutreachVariantStats {
   last_sent_at: string | null;
 }
 
+/**
+ * One row of every email the app has actually sent — outreach, delivery
+ * probes, admin notifications. Written once, at send time, by
+ * `supabase/functions/_shared/mailer.ts`; never edited from the browser.
+ *
+ * `subject` is the real, already-rendered line that went out — reliable.
+ * There is no column for the rendered body: reconstructing one (as
+ * /admin/outreach/sent does) means re-running the current template against
+ * the business's current info, which can drift from what was actually
+ * emailed if either has changed since.
+ */
+export interface EmailSendLogRow {
+  id: string;
+  sent_at: string;
+  job_name: string;
+  email_type: string;
+  recipient_email: string;
+  recipient_kind: string | null;
+  subject: string | null;
+  related_business_id: string | null;
+  related_lead_id: string | null;
+  status: string;
+  method: string | null;
+  error_message: string | null;
+  bounced_at: string | null;
+  bounce_kind: string | null;
+}
+
 interface DirectoryDatabase {
   // supabase-js resolves its Insert/Update generics through this key; without
   // it, writes to these tables type as `never`.
@@ -214,6 +242,14 @@ interface DirectoryDatabase {
           body: string;
         };
         Update: Partial<OutreachVariantRow>;
+        Relationships: [];
+      };
+      email_send_log: {
+        Row: EmailSendLogRow;
+        // Read-only from the browser — every row is written server-side by
+        // the mailer, at send time.
+        Insert: never;
+        Update: never;
         Relationships: [];
       };
     };

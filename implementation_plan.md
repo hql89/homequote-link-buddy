@@ -1,270 +1,42 @@
-# Implementation Plan — Business Ingestion Engine
+# Plan: Make "Outreach emails sent" and "Replies received" open real lists
 
-**Status:** Draft — awaiting approval
-**Date:** 2026-07-25
-**Blocks:** outreach (directory is currently 0 rows; the cold email says "I added your business")
-**Supersedes:** the completed Valley Home Pros pivot plan (archived to `docs/plans/`)
+## The problem right now
+- The **"Outreach emails sent"** card already links to `/admin/outreach` — but that page is the *template editor* (subject/body of your two form emails, daily limit, etc.). It has no list of the individual emails that actually went out. There's nowhere in the app to see "who got emailed, when, with what subject."
+- The **"Replies received"** card links to `/admin/replies`, which *is* a real list with full message content — but it only shows **unhandled** replies. The moment you click "Mark handled," it disappears from the page for good. So the "Open" links in Recent Activity go stale, and there's no way to look back at a reply you already dealt with.
 
-## Confirmed decisions
+## What I'll build
 
-| Decision | Choice |
-|---|---|
-| Data source | **CSLB** contractor licenses, optional per-business enrichment later |
-| Post-ingest behaviour | **Silent** — unpublished, outreach paused, no email. Released manually. |
-| Pace | **~25/day, admin-adjustable** without a deploy |
+### 1. New page: Sent Emails (`/admin/outreach/sent`)
+A new admin page listing individual outreach sends, most recent first, paginated (50 at a time, "Load more").
 
-## Why CSLB rather than Google Maps
+Each row shows: send time, recipient email, business name — city, which email (Email 1 verification / Email 2 preview + A/B version), and status (sent / failed, with the error if it failed).
 
-Scraping Google Maps violates their ToS. The official Places API is legal but its terms
-bar retaining most Place content beyond ~30 days (only `place_id` is indefinitely
-storable) — unworkable as the system of record for permanent listing pages.
+Clicking a row expands it to show the **exact subject line that was actually sent** (this is stored, so it's 100% real) and a **reconstructed body** — rendered right now from the current template + that business's info. I'll label this clearly as reconstructed, with a one-line note that it may not match word-for-word if you've edited the template or the business's name/city/phone since that email went out (the real sent body text isn't stored anywhere — only the subject is). That's an honest limitation, not a bug I'm introducing.
 
-CSLB is authoritative, free, no registration, CSV/Excel, and legal to store. Every category
-we list is a licensed CA trade: D-49 tree service, C-36 plumbing, C-20 HVAC, C-10
-electrical, C-27 landscaping. It also carries **license status and expiry**, which makes the
-"Licensed & Insured Pros" badge already on the homepage actually true, and gives the cold
-email a far better opening than "I found you on Google."
+Data source: the existing `email_send_log` table (already has real recipient + real subject, admin-read RLS policy already exists — no migration needed), joined to `businesses` for name/city and to `outreach_sends` for which template version was used.
 
-Sources: [CSLB Data Portal](https://www.cslb.ca.gov/onlineservices/dataportal/),
-[Master contractor list](https://www.cslb.ca.gov/onlineservices/dataportal/ContractorList)
+The "Outreach emails sent" KPI card on Overview, and the "Sent a verification/preview email" Recent Activity rows, will link here instead of to the settings page. The settings page itself is unchanged.
 
-## Why a staged queue instead of an auto-fetcher
+### 2. Replies page gets an "Unhandled / All" toggle
+Small change to the existing `/admin/replies` page (no new page — it already does everything needed once you can see handled ones too): add a toggle so you can switch from the default "Unhandled" view to "All," which includes replies you've already marked handled. Same full-content display it already has, just not disappearing forever.
 
-The CSLB portal is JavaScript-driven and its download endpoints could not be verified
-programmatically. Auto-fetching it would be brittle and would fail silently the first time
-the page changes. The statewide License Master is also far too large to parse inside a Deno
-edge function (~150s, constrained memory).
+This also fixes the Recent Activity "Open" links for replies — right now they point at `/admin/replies`, which only works if that reply is still unhandled.
 
-So the heavy step happens **once, outside the runtime**, and the daily engine drains a
-staging table:
+## Files touched
+- **New:** `src/pages/admin/OutreachSent.tsx` — the sent-emails list/detail page
+- `src/App.tsx` — register route `/admin/outreach/sent`, lazy import
+- `src/pages/admin/Overview.tsx` — repoint the two hrefs (KPI card + recent-activity items)
+- `src/pages/admin/Replies.tsx` — add the Unhandled/All toggle, drop the hardcoded `.is("handled_at", null)` filter when "All" is selected
+- `src/integrations/supabase/directory.ts` — a small typed helper to read `email_send_log` rows (matching the pattern already used for `outreach_sends`/`inbound_emails`)
 
-```
-CSLB portal  ──(admin downloads a filtered CSV: classification × LA County/city)
-     │
-     ▼
-[ import ] ──▶ ingest_queue (pending)
-                    │
-                    ▼  daily cron, N rows/day (admin-configurable)
-              [ process-ingest-queue ]
-                    │  dedupe → normalise → insert
-                    ▼
-               businesses (is_published = FALSE, outreach_paused = TRUE)
-                    │
-                    ▼  admin reviews, releases in batches
-               live listing + outreach eligible
-```
+## Not doing
+- Not adding a "resend" or "delete" action — this is read-only, matching what you asked for ("see and open them").
+- Not storing rendered email bodies going forward — that's a real gap (the exact body of a sent email is genuinely gone once sent) but it's a separate, bigger change to the sending job itself. I'll flag it as a follow-up, not bundle it in here.
 
-Side benefit: the engine is **source-agnostic**. Any CSV — a Places export, OSM, a manual
-list — feeds the same queue.
+## Test / verify
+- Load `/admin/outreach/sent` in the browser preview, confirm the one existing sent row (the `outreach_verify` email) renders with real recipient/subject and an expandable reconstructed body.
+- Load `/admin/replies`, mark a reply handled, confirm it vanishes from "Unhandled" but reappears under "All."
+- Click through both Overview KPI cards and confirm they land on the right page.
 
-## Scope
-
-### 1. Schema (`supabase/migrations/<ts>_ingest_engine.sql`)
-
-**`businesses`** — new columns:
-- `license_number TEXT` — CSLB number; the natural dedupe key
-- `license_status TEXT`, `license_expires_at DATE`
-- `source TEXT NOT NULL DEFAULT 'manual'` — `'cslb' | 'manual' | 'places'`
-- Unique partial index on `license_number WHERE license_number IS NOT NULL`
-
-**`ingest_queue`** — new table:
-- `id`, `source`, `raw JSONB` (the original row, kept for audit)
-- Extracted: `business_name`, `license_number`, `city`, `phone`, `address`, `classification`
-- `status TEXT` — `pending | ingested | skipped | failed`
-- `skip_reason TEXT`, `business_id UUID` (set on success), `processed_at`, `created_at`
-- Unique index on `license_number` so re-importing the same CSV is idempotent
-- RLS: service-role writes only; admins may read (matches `businesses`)
-
-**`admin_settings`** — new row `ingest_config`:
-```json
-{ "daily_limit": 25, "enabled": true, "cities": ["Sherman Oaks","Encino","Studio City","Tarzana","Valley Village","Toluca Lake"] }
-```
-Reuses the existing settings pattern (`smtp_config`, `outreach_templates`) so the rate is
-changed from admin, not a deploy.
-
-**Rollback:** drop `ingest_queue`, drop the four `businesses` columns, delete the settings
-row. Additive only; nothing existing is modified.
-
-### 2. Import path
-Admin uploads the CSLB CSV in the browser; parsed client-side and inserted into
-`ingest_queue` in chunks via a new `import-ingest-queue` edge function (service-role,
-admin-gated — same auth posture as `ingest-business`). Rows are filtered to the configured
-cities and the five target classifications at import time, so the queue only ever holds
-candidates we actually want.
-
-Client-side parse keeps the multi-hundred-thousand-row file out of the edge runtime
-entirely.
-
-### 3. Daily worker (`process-ingest-queue` edge function)
-- Reads `ingest_config`; exits immediately if `enabled` is false
-- Claims up to `daily_limit` pending rows, oldest first
-- **Dedupe** against `businesses` on `license_number`, then on `(city_slug, slug)` — marks
-  duplicates `skipped` rather than failing
-- Normalises: `slugify` the name, `toE164` the phone, map CSLB classification → our
-  vertical, drop rows with no usable phone
-- Inserts with `is_published = FALSE`, `outreach_paused = TRUE`, **no email**
-- Writes a `job_run_logs` row (existing pattern) with counts
-
-Reuses `slugify`, `toE164`, `logRun` from `_shared/directory.ts`. Deliberately does **not**
-call `ingest-business`, because that endpoint's job is to create-and-email; silent ingest is
-a different contract.
-
-### 4. Admin review UI (`/admin/ingest`)
-- Queue table: pending / ingested / skipped / failed with skip reasons
-- Ingested-but-unpublished businesses with **Publish** and **Publish + start outreach**
-  actions, individually and in batches
-- Daily limit and enabled toggle, written back to `ingest_config`
-- "Run now" button to invoke the worker manually (so this is usable before pg_cron exists)
-
-### 5. Scheduling
-The worker is registered as a known job name in `admin_toggle_cron_job` so it can be
-scheduled from System Status. **`pg_cron` is not currently installed** — until it is, the
-worker runs via the "Run now" button. Enabling pg_cron is a separate, deliberate decision;
-this worker is low-risk to schedule since it sends no email.
-
-## Out of scope (flagged, not built here)
-
-**`ai-company-lookup` fabricates business facts.** Its system prompt instructs the model to
-*"provide reasonable estimates"* when it lacks data, and it returns `license_number` and
-`years_in_business`. That is an LLM inventing license numbers for real, named businesses.
-It's wired into `ProviderDashboard` and currently inert only because `LOVABLE_API_KEY` was
-never set. It must never become the enrichment path — and it should be fixed or removed on
-its own. Recommend a separate task.
-
-## Test strategy
-
-- Unit: CSLB classification → vertical mapping; row normalisation (name/phone/city);
-  dedupe key derivation; config parsing with a malformed/missing settings row
-- Idempotency: importing the same CSV twice adds no duplicate queue rows; running the
-  worker twice over the same queue creates no duplicate businesses
-- Guard: a worker run must never set `is_published = TRUE` or send email — assert on the
-  inserted row shape
-- Manual: import a small real CSLB slice, run the worker, inspect rows, delete
-
-## Acceptance criteria
-
-- [ ] Importing a CSLB CSV populates `ingest_queue`, filtered to configured cities/classes
-- [ ] Re-importing the same file adds zero new queue rows
-- [ ] Worker ingests at most `daily_limit` per run and respects `enabled: false`
-- [ ] Every ingested business lands `is_published = FALSE`, `outreach_paused = TRUE`, with
-      **no email sent** — verified against `job_run_logs` and an empty outreach timestamp
-- [ ] Duplicate licence numbers are skipped with a reason, not failed or duplicated
-- [ ] Rows with no valid phone are skipped (a listing whose whole value is click-to-call is
-      useless without one)
-- [ ] Admin can change the daily limit and see it take effect without a deploy
-- [ ] Publishing from admin makes the listing live; outreach only starts when explicitly
-      chosen
-- [ ] Zero lint/type/test failures; build succeeds
-
-## Resolved 2026-07-25
-
-1. **Address → city only.** CSLB's address is a *mailing* address, frequently a
-   contractor's home. It is used solely to assign `city`/`city_slug` and is never published.
-2. **Active licences only.** Expired-but-renewable rows are filtered out at import.
-3. **Email → enrichment, deferred to Phase 2** (below).
-
----
-
-# Phase 2 — Email enrichment (NOT buildable from CSLB alone)
-
-**Prerequisite that does not currently exist.** The chosen approach is: fetch a business's
-own public website and extract a contact email. But the
-[CSLB Public Sales record layout](https://www.cslb.ca.gov/Resources/FormsAndApplications/Public_Sales_Record_Layout.pdf)
-contains **no website field** — license number, business type, classifications, DBA name,
-address, city/state/zip, county, phone, dates, bond, workers-comp, and nothing else. There
-is no URL to fetch.
-
-Enrichment therefore needs a **website-discovery** step first.
-
-## Discovery source: Perplexity Sonar (chosen 2026-07-25)
-
-Commercial API, no ToS conflict, and it answers the actual question ("official site for this
-contractor in this city") in one call. Base Sonar at low search context ≈ **$5 / 1,000
-requests** plus negligible tokens → roughly **$4–6/month at 25/day**, under $20/month at
-100/day.
-
-**Storage — corrected 2026-07-29.** This originally said "as a Supabase edge
-secret" (`Deno.env`). That was never actually built; what exists instead is
-`src/pages/admin/settings/PerplexitySettings.tsx`, which writes a write-only,
-masked key to `admin_settings.perplexity_config` — the same pattern already
-used for `smtp_config`. Whichever edge function implements the discovery
-step below must read it from there (mirroring `loadSmtpConfig` /
-`loadOutreachTemplates` in `_shared/`), not from `Deno.env`. The panel was
-built, then deliberately hidden from `/admin/settings` since nothing read it
-yet — a live credential with no consumer — and has now been re-enabled so
-the key can be entered ahead of this phase being built.
-
-### The hard rule: Perplexity finds URLs, it never supplies facts
-
-This is the identical failure mode to `ai-company-lookup` (killed this session): a model
-asked for a business's email returns a plausible one whether or not it knows. A wrong email
-here means sending cold outreach — *"I built you a listing"* — to an uninvolved third party,
-under a real named business. Unacceptable.
-
-Therefore the model's output is a **candidate URL only**. The email is taken from the live
-page we fetch ourselves, or not at all.
-
-### Verification chain
-
-1. **Discover** — Sonar: official website for `{dba_name}`, contractor in `{city}`, CA.
-   Take candidate URL(s); discard any prose answer.
-2. **Fetch** — request the candidate domain directly. Respect `robots.txt`, real
-   User-Agent, hard rate limit, business's own domain only.
-3. **Verify identity via CSLB phone.** CSLB's phone number is authoritative. If a phone on
-   the fetched page matches it, this is confirmed the right business — which defeats the
-   "similarly-named contractor one town over" mismatch. **No phone match → no auto-accept**,
-   row flagged `needs_review`.
-4. **Extract** — emails from page content only. Never from model output.
-5. **Store** — `email`, `email_source_url`, `email_confidence`, `enriched_at`. Only
-   `confidence = 'verified'` rows become drip-eligible.
-
-### Second hard rule: never let a model write listing copy
-
-`businesses.scraped_context` renders on the **public listing page** under the business's
-name. An LLM-written description will invent plausible claims — "family owned since 1985",
-"24/7 emergency service", "licensed and bonded". Publishing fabricated claims on behalf of a
-real business is worse than a bad email: it's public, attributed to them, and it's a
-representation we'd be making about their services.
-
-`scraped_context` may be populated **only** from the business's own site copy or from
-templated text over verified CSLB fields (name, city, licence class, licence status). Never
-from model prose.
-
-### Expected yield
-Many small tree-service and landscaping operators are phone-only or run a Facebook page.
-Assume well under half of ingested rows produce a verified email; the phone list remains the
-primary asset.
-
-**Expected hit rate is low.** Many small tree-service and landscaping operators are
-phone-only or run a Facebook page rather than a site. Assume well under half of ingested
-rows yield an email; plan outreach accordingly.
-
-**When built, it must:** respect `robots.txt`, identify itself with a real User-Agent, rate
-limit hard, fetch only the business's own domain, and take emails only from pages that
-publish them for contact. Emails found this way are stored on the business row and make it
-drip-eligible; everything else stays a phone-only directory listing.
-
-**Shipped 2026-07-30.** `enrich-business-email` (edge function), pure logic in
-`_shared/emailEnrichment.ts` (30 unit tests), admin panel at `/admin/enrichment`
-with a daily-limit control, "Run now", and a needs-review queue for confirming
-or dismissing an unmatched-phone result by hand. Defaults to `enabled: false`
-— entering the Perplexity key does not start spending; the daily limit and
-enable toggle are separate, deliberate steps taken from the admin page.
-
-**Acceptance criteria (Phase 2)**
-- [x] No email is ever written from model output — only from fetched page content
-      (Perplexity's response is parsed for a URL only; `extractUrlFromModelText`
-      discards everything else, and `enrichOne` never writes anything Perplexity
-      said as fact)
-- [x] An email without a CSLB phone match is stored as `needs_review`, never
-      auto-drip-eligible (`resolveConfidence`; only an admin confirming in
-      `/admin/enrichment` or an automatic phone match can set `verified`)
-- [x] `email_source_url` is recorded for every enriched row, so any address can be traced
-      back to the page it came from
-- [x] `scraped_context` is never populated from model prose — untouched by this phase, not built
-- [x] Fetcher respects `robots.txt` and rate limits; only the business's own domain is hit
-      (`isDisallowedByRobots`, `BETWEEN_FETCHES_MS`, and `tryFetchDomain` only
-      ever requests the discovered candidate's own origin)
-- [x] Enrichment failure never blocks or reverts ingestion — a fully separate
-      worker, reading `businesses` rows already created; `enrichOne` never throws
-      out of the batch loop
+## Rollback
+Pure UI addition + two href changes, no schema changes. Revert the commit if anything's wrong — nothing destructive.

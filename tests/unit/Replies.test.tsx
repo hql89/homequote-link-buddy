@@ -48,6 +48,25 @@ const replyRows = [
   },
 ];
 
+/** Only returned when the page asks for "All" — includes an already-handled row. */
+const allReplyRows = [
+  ...replyRows,
+  {
+    id: "reply-3",
+    message_id: "msg-3",
+    business_id: null,
+    from_email: "old@example.com",
+    from_name: null,
+    subject: "Re: Quick question",
+    body_text: "Already dealt with.",
+    classification: "unclassified",
+    is_priority: false,
+    extracted_url: null,
+    handled_at: "2026-07-27T00:00:00Z",
+    received_at: "2026-07-27T00:00:00Z",
+  },
+];
+
 const businessRows = [
   { id: "biz-1", business_name: "Lux Air HVAC", city: "Tarzana", outreach_suppressed_at: null },
 ];
@@ -63,6 +82,30 @@ function makeChain(finalRows: unknown[]) {
   }
   chain.then = (resolve: (v: { data: unknown; error: null }) => void) =>
     resolve({ data: finalRows, error: null });
+  return chain;
+}
+
+/**
+ * The "unhandled" query calls .is("handled_at", null); the "All" query never
+ * calls .is() at all and calls .limit() instead — that's the only signal
+ * available to the stub for which view asked, mirroring how
+ * makeBusinessesChain tells its two "businesses" queries apart below.
+ */
+function makeInboundEmailsChain(unhandledRows: unknown[], allRows: unknown[]) {
+  const chain: Record<string, unknown> = {};
+  let rows = unhandledRows;
+  chain.select = () => chain;
+  chain.is = () => {
+    rows = unhandledRows;
+    return chain;
+  };
+  chain.order = () => chain;
+  chain.limit = () => {
+    rows = allRows;
+    return chain;
+  };
+  chain.then = (resolve: (v: { data: unknown; error: null }) => void) =>
+    resolve({ data: rows, error: null });
   return chain;
 }
 
@@ -101,7 +144,7 @@ vi.mock("../../src/components/admin/AdminLayout", () => ({
 vi.mock("../../src/integrations/supabase/directory", () => ({
   directoryDb: {
     from: (table: string) => {
-      if (table === "inbound_emails") return makeChain(replyRows);
+      if (table === "inbound_emails") return makeInboundEmailsChain(replyRows, allReplyRows);
       // No test business is actually suppressed, so the .not() branch (the
       // suppressed-list query) returns nothing; .in() (business-info lookup
       // for matched replies) returns the fixture.
@@ -188,5 +231,23 @@ describe("RepliesPage", () => {
     fireEvent.click(within(card).getByRole("button", { name: /suppress/i }));
 
     await waitFor(() => expect(suppressCalls).toContainEqual({ id: "biz-1", suppressed: true }));
+  });
+
+  it("switching to All shows an already-handled reply, with no actions to re-handle it", async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText(/Lux Air HVAC — Tarzana/)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "all" }));
+
+    await waitFor(() => expect(screen.getByText("Already dealt with.")).toBeInTheDocument());
+    const handledCard = screen.getByText("Already dealt with.").closest("li")!;
+    expect(within(handledCard).getByText("Handled")).toBeInTheDocument();
+    expect(within(handledCard).queryByRole("button", { name: /mark handled/i })).not.toBeInTheDocument();
+
+    // The unhandled COUNT BADGE (e.g. "2 unhandled") is a claim about the
+    // unhandled queue — it must not keep showing once a different view is on
+    // screen. (The view-toggle button is also labelled "unhandled" — this
+    // only targets the digit-prefixed badge text.)
+    expect(screen.queryByText(/^\d+ unhandled$/)).not.toBeInTheDocument();
   });
 });

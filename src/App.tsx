@@ -49,6 +49,7 @@ const PhotoModerationPage = lazy(() => import("./pages/admin/PhotoModeration"));
 const RepliesPage = lazy(() => import("./pages/admin/Replies"));
 const EnrichmentPage = lazy(() => import("./pages/admin/Enrichment"));
 const OutreachPage = lazy(() => import("./pages/admin/Outreach"));
+const OutreachSentPage = lazy(() => import("./pages/admin/OutreachSent"));
 const AdminDashboard = lazy(() => import("./pages/admin/Dashboard"));
 const AdminOverview = lazy(() => import("./pages/admin/Overview"));
 const LeadDetail = lazy(() => import("./pages/admin/LeadDetail"));
@@ -150,6 +151,7 @@ const App = () => (
               <Route path="/admin/replies" element={<ProtectedRoute><RepliesPage /></ProtectedRoute>} />
               <Route path="/admin/enrichment" element={<ProtectedRoute><EnrichmentPage /></ProtectedRoute>} />
               <Route path="/admin/outreach" element={<ProtectedRoute><OutreachPage /></ProtectedRoute>} />
+              <Route path="/admin/outreach/sent" element={<ProtectedRoute><OutreachSentPage /></ProtectedRoute>} />
               <Route path="/admin/verticals" element={<ProtectedRoute><VerticalsPage /></ProtectedRoute>} />
               <Route path="/admin/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
               <Route path="/admin/spam" element={<ProtectedRoute><SpamMonitorPage /></ProtectedRoute>} />

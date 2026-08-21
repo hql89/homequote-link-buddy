@@ -141,7 +141,7 @@ export default function OverviewPage() {
 
       setActivity(mergeActivity([
         ((recentSends.data ?? []) as { id: string; sent_at: string; email_type: string }[]).map((r) => ({
-          id: `s-${r.id}`, at: r.sent_at, kind: "outreach" as const, href: "/admin/outreach",
+          id: `s-${r.id}`, at: r.sent_at, kind: "outreach" as const, href: "/admin/outreach/sent",
           text: r.email_type === "outreach_verify" ? "Sent a verification email" : "Sent a listing-preview email",
         })),
         ((recentReplies.data ?? []) as { id: string; received_at: string; from_email: string; classification: string }[]).map((r) => ({
@@ -245,7 +245,7 @@ export default function OverviewPage() {
             <h2 className="mt-8 text-lg font-semibold font-sans">Activity over {w.label}</h2>
             <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <KpiCard icon={MailCheck} label="Outreach emails sent" value={String(metrics.outreachSent)}
-                currentValue={metrics.outreachSent} previousValue={metrics.outreachSentPrev} href="/admin/outreach" />
+                currentValue={metrics.outreachSent} previousValue={metrics.outreachSentPrev} href="/admin/outreach/sent" />
               <KpiCard icon={MessageSquareReply} label="Replies received" value={String(metrics.replies)}
                 currentValue={metrics.replies} previousValue={metrics.repliesPrev} href="/admin/replies" />
               <KpiCard icon={BadgeCheck} label="Listings claimed" value={String(metrics.claims)}
