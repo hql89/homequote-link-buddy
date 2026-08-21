@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { HelpTip } from "@/components/admin/HelpTip";
 import { summariseRun, topRejectionReason } from "@/lib/jobRunSummary";
+import { explainRunError } from "@/lib/jobRunErrorHelp";
 import { classifyCronError, cronErrorMessage } from "@/lib/cronAvailability";
 
 type CronJob = {
@@ -357,7 +358,9 @@ export function BackgroundJobsSettings() {
               <HelpTip>
                 "Success" only means the job finished without erroring — it does not mean it changed anything.
                 The line under each run says what it actually did, and runs that changed nothing are tagged
-                "no change".
+                "no change". For a failure with a known, recurring cause, a plain-English line explains what
+                it means under the red error text; failures without one are one-off errors from the database
+                or network, whose exact text is the only explanation available.
               </HelpTip>
             </h3>
             <p className="text-xs text-muted-foreground">
@@ -591,6 +594,7 @@ function JobRunRow({ run }: { run: JobRunLog }) {
   // is indistinguishable from one that queued none.
   const { text: outcome, noChange } = summariseRun(run.job_name, run.metadata);
   const topReason = topRejectionReason(run.metadata);
+  const errorExplanation = explainRunError(run.job_name, run.error_message);
 
   return (
     <div className="p-3 text-xs space-y-1">
@@ -632,6 +636,9 @@ function JobRunRow({ run }: { run: JobRunLog }) {
         <div className="pl-5 text-destructive font-mono break-all">
           {run.error_message}
         </div>
+      )}
+      {errorExplanation && (
+        <p className="pl-5 text-muted-foreground">{errorExplanation}</p>
       )}
     </div>
   );
