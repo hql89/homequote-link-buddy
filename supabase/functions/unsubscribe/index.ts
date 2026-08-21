@@ -11,9 +11,17 @@
  * reusing it here (rather than minting a second per-business secret) keeps
  * one token per business rather than two to manage.
  *
- *   • GET  — a human clicking the link in the email body. Renders a small,
- *            self-contained confirmation page (no redirect, no JS, no PII
- *            beyond the business name).
+ *   • GET  — a human clicking the link in the email body. Renders a small
+ *            plain-text confirmation (no PII beyond the business name).
+ *            NOT html: Supabase Edge Functions silently rewrite a `GET`
+ *            response's Content-Type to text/plain regardless of what the
+ *            function sets ("HTML content is not supported", per Supabase's
+ *            own Edge Functions docs) — confirmed against this deployment on
+ *            2026-08-20, where an `htmlPage()` version of this function came
+ *            back labelled text/plain with the markup un-rendered. Since the
+ *            platform enforces plain text either way, this authors it as
+ *            plain text on purpose rather than shipping mangled tag soup to
+ *            a real business owner who just clicked "unsubscribe".
  *   • POST — RFC 8058 one-click: mail providers (Gmail, Yahoo, Outlook) POST
  *            here directly, with no page render and typically no meaningful
  *            body, when a recipient taps their own "Unsubscribe" button.
@@ -30,16 +38,10 @@ import { corsHeaders, logRun } from "../_shared/directory.ts";
 const JOB_NAME = "unsubscribe";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function htmlPage(title: string, message: string): Response {
-  const body =
-    `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
-    `<meta name="viewport" content="width=device-width,initial-scale=1">` +
-    `<title>${title}</title></head>` +
-    `<body style="font-family:system-ui,sans-serif;max-width:32rem;margin:4rem auto;padding:0 1rem;color:#1a1a1a;line-height:1.5;">` +
-    `<h1 style="font-size:1.25rem;">${title}</h1><p>${message}</p></body></html>`;
-  return new Response(body, {
+function textPage(message: string): Response {
+  return new Response(message, {
     status: 200,
-    headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" },
+    headers: { ...corsHeaders, "Content-Type": "text/plain; charset=utf-8" },
   });
 }
 
@@ -65,7 +67,7 @@ Deno.serve(async (req) => {
     });
     return isOneClick
       ? new Response(null, { status: 200, headers: corsHeaders })
-      : htmlPage("Link no longer valid", "This unsubscribe link is invalid or has expired.");
+      : textPage("This unsubscribe link is invalid or has expired.");
   }
 
   const { data: business, error } = await supabase
@@ -79,7 +81,7 @@ Deno.serve(async (req) => {
     await logRun(supabase, JOB_NAME, "failure", Date.now() - startedAt, error.message, { method: req.method });
     return isOneClick
       ? new Response(null, { status: 200, headers: corsHeaders })
-      : htmlPage("Something went wrong", "We couldn't process this request. Please reply STOP to the email instead.");
+      : textPage("We couldn't process this request. Please reply STOP to the email instead.");
   }
 
   if (!business) {
@@ -88,7 +90,7 @@ Deno.serve(async (req) => {
     });
     return isOneClick
       ? new Response(null, { status: 200, headers: corsHeaders })
-      : htmlPage("Link no longer valid", "This unsubscribe link is invalid or has expired.");
+      : textPage("This unsubscribe link is invalid or has expired.");
   }
 
   // Only write if not already suppressed — preserves the original opt-out
@@ -108,10 +110,7 @@ Deno.serve(async (req) => {
       });
       return isOneClick
         ? new Response(null, { status: 500, headers: corsHeaders })
-        : htmlPage(
-          "Something went wrong",
-          "We couldn't record your unsubscribe request. Please reply STOP to the email instead.",
-        );
+        : textPage("We couldn't record your unsubscribe request. Please reply STOP to the email instead.");
     }
   }
 
@@ -123,8 +122,5 @@ Deno.serve(async (req) => {
 
   return isOneClick
     ? new Response(null, { status: 200, headers: corsHeaders })
-    : htmlPage(
-      "You're unsubscribed",
-      `You won't receive any more emails about the ${business.business_name} listing.`,
-    );
+    : textPage(`You're unsubscribed. You won't receive any more emails about the ${business.business_name} listing.`);
 });
