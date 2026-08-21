@@ -302,7 +302,7 @@ Deno.serve(async (req) => {
           subject: renderTemplate(verifyVariant.subject, vars),
           text: renderTemplate(verifyVariant.body, vars),
           bcc: bccCopy,
-          headers: buildUnsubscribeHeaders(unsubscribeUrl),
+          headers: buildUnsubscribeHeaders(unsubscribeUrl, config?.fromEmail),
         },
         {
           supabase,
@@ -408,7 +408,7 @@ Deno.serve(async (req) => {
           subject: renderTemplate(previewVariant.subject, vars),
           text: renderTemplate(previewVariant.body, vars),
           bcc: bccCopy,
-          headers: buildUnsubscribeHeaders(unsubscribeUrl),
+          headers: buildUnsubscribeHeaders(unsubscribeUrl, config?.fromEmail),
         },
         {
           supabase,

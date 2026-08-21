@@ -5,6 +5,7 @@ import {
   resolveBccCopy,
   buildUnsubscribeHeaders,
 } from "../../supabase/functions/_shared/emailSafety";
+import { classifyReply } from "../../supabase/functions/_shared/inboundClassifier";
 
 /**
  * Both guards here were ported after a real incident in a sibling project
@@ -227,5 +228,43 @@ describe("buildUnsubscribeHeaders", () => {
   it("declares one-click support so mail clients don't require opening a page", () => {
     const headers = buildUnsubscribeHeaders("https://example.supabase.co/functions/v1/unsubscribe?token=abc");
     expect(headers["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click");
+  });
+
+  it("omits the mailto: entry entirely when no sending address is known, rather than emitting mailto:undefined", () => {
+    const headers = buildUnsubscribeHeaders("https://example.supabase.co/functions/v1/unsubscribe?token=abc");
+    expect(headers["List-Unsubscribe"]).not.toContain("mailto:");
+  });
+
+  it("adds a mailto: alternative ahead of the link when a sending address is given", () => {
+    const headers = buildUnsubscribeHeaders(
+      "https://example.supabase.co/functions/v1/unsubscribe?token=abc",
+      "admin@homequotelink.com",
+    );
+    expect(headers["List-Unsubscribe"]).toBe(
+      "<mailto:admin@homequotelink.com?subject=unsubscribe&body=STOP>, " +
+        "<https://example.supabase.co/functions/v1/unsubscribe?token=abc>",
+    );
+  });
+
+  it("trims a sending address before using it, same as resolveBccCopy does elsewhere", () => {
+    const headers = buildUnsubscribeHeaders("https://example.com/unsubscribe", "  admin@homequotelink.com  ");
+    expect(headers["List-Unsubscribe"]).toContain("<mailto:admin@homequotelink.com?subject=unsubscribe&body=STOP>");
+  });
+
+  // The gap this guards against: receive-inbound-email's classifyReply() only
+  // reads the message BODY, never the subject (see index.ts's `classifyReply(
+  // bodyText)` call — subject is logged but never classified on). Most mail
+  // clients open a mailto: link as an empty compose window, so a recipient who
+  // hits Send without typing anything would produce a body of "" — which
+  // classifyReply reads as unclassified, not unsubscribe, and nothing would
+  // ever get suppressed. Prefilling the mailto body with STOP is what makes an
+  // unedited one-click mailto send actually work; this test is what would fail
+  // if that regex and this prefill ever drifted apart again.
+  it("prefills a mailto body that classifyReply actually recognises as an unsubscribe", () => {
+    const headers = buildUnsubscribeHeaders("https://example.com/unsubscribe", "admin@homequotelink.com");
+    const mailtoMatch = headers["List-Unsubscribe"].match(/mailto:[^>]*body=([^&>]+)/);
+    expect(mailtoMatch).not.toBeNull();
+    const prefilledBody = decodeURIComponent(mailtoMatch![1]);
+    expect(classifyReply(prefilledBody).classification).toBe("unsubscribe");
   });
 });

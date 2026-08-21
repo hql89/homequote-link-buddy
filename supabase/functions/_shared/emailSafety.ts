@@ -114,10 +114,28 @@ export function resolveBccCopy(
  * automated one-click POST (List-Unsubscribe-Post: List-Unsubscribe=One-Click)
  * targets — neither existed on outreach mail before this, which is also why
  * the copy itself had no working opt-out: there was nothing to point it at.
+ *
+ * `mailtoAddress` adds a second, RFC 8058-permitted URI for clients that
+ * prefer a mailto: unsubscribe over a link — omitted entirely (not emitted
+ * as a broken `mailto:undefined`) when no sending address is known yet.
+ * Its body is prefilled with `STOP`, not left blank: most mail clients open
+ * a mailto: link as an empty compose window, and receive-inbound-email's
+ * classifyReply() only reads the message BODY, never the subject — an
+ * unedited send with only "subject=unsubscribe" and no body would come back
+ * as `unclassified`, not `unsubscribe`, and silently never suppress anyone.
+ * Prefilling the body means even an unedited send still matches
+ * classifyReply()'s existing UNSUBSCRIBE_RE, with no classifier change
+ * needed. See tests/unit/emailSafety.test.ts for the cross-check against
+ * that regex.
  */
-export function buildUnsubscribeHeaders(unsubscribeUrl: string): Record<string, string> {
+export function buildUnsubscribeHeaders(
+  unsubscribeUrl: string,
+  mailtoAddress?: string | null,
+): Record<string, string> {
+  const address = mailtoAddress?.trim();
+  const mailtoUri = address ? `<mailto:${address}?subject=unsubscribe&body=STOP>, ` : "";
   return {
-    "List-Unsubscribe": `<${unsubscribeUrl}>`,
+    "List-Unsubscribe": `${mailtoUri}<${unsubscribeUrl}>`,
     "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
   };
 }
