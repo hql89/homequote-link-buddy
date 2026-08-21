@@ -67,6 +67,24 @@ describe("AdminLayout sidebar grouping", () => {
     }
   });
 
+  it("puts Overview above the groups as the landing page", () => {
+    renderLayout();
+    const nav = screen.getByRole("navigation");
+    const links = within(nav).getAllByRole("link");
+    expect(links[0].textContent).toBe("Overview");
+    expect(links[0].getAttribute("href")).toBe("/admin");
+  });
+
+  it("points Leads at its own path now that /admin is the Overview", () => {
+    // The leads table used to BE /admin. If this link isn't repointed it
+    // silently lands on the overview and the leads table becomes unreachable
+    // from the sidebar.
+    renderLayout();
+    const nav = screen.getByRole("navigation");
+    const leads = within(nav).getByText("Leads").closest("a")!;
+    expect(leads.getAttribute("href")).toBe("/admin/leads");
+  });
+
   it("explains the pipeline as visible text, not hover-only help", () => {
     // HelpTip's own docstring: hover-only help is invisible on touch devices
     // and to anyone who doesn't think to look for it — "I forget how this

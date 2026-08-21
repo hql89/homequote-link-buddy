@@ -22,7 +22,10 @@ export function useAdminCounts() {
       ]);
 
       return {
-        "/admin": leads.count ?? 0,
+        // Repointed when Overview took over /admin — the badge counts NEW
+        // LEADS, so it has to follow the leads table to its new path or it
+        // would silently badge the overview instead.
+        "/admin/leads": leads.count ?? 0,
         "/admin/applications": applications.count ?? 0,
         "/admin/reviews": reviews.count ?? 0,
         "/admin/spam": spam.count ?? 0,

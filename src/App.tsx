@@ -50,6 +50,7 @@ const RepliesPage = lazy(() => import("./pages/admin/Replies"));
 const EnrichmentPage = lazy(() => import("./pages/admin/Enrichment"));
 const OutreachPage = lazy(() => import("./pages/admin/Outreach"));
 const AdminDashboard = lazy(() => import("./pages/admin/Dashboard"));
+const AdminOverview = lazy(() => import("./pages/admin/Overview"));
 const LeadDetail = lazy(() => import("./pages/admin/LeadDetail"));
 const BuyersPage = lazy(() => import("./pages/admin/Buyers"));
 const RoutingPage = lazy(() => import("./pages/admin/Routing"));
@@ -126,7 +127,11 @@ const App = () => (
               <Route path="/directory/:city/:slug" element={<DirectoryListing />} />
               <Route path="/admin/login" element={<AdminLogin />} />
               <Route path="/reset-password" element={<ResetPassword />} />
-              <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
+              {/* Overview is the landing page: /admin was a raw leads table, which
+                  answered "what are my leads" but never "what needs attention".
+                  The leads table keeps working, at its own explicit path. */}
+              <Route path="/admin" element={<ProtectedRoute><AdminOverview /></ProtectedRoute>} />
+              <Route path="/admin/leads" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
               <Route path="/admin/leads/:id" element={<ProtectedRoute><LeadDetail /></ProtectedRoute>} />
               <Route path="/admin/buyers" element={<ProtectedRoute><BuyersPage /></ProtectedRoute>} />
               <Route path="/admin/routing" element={<ProtectedRoute><RoutingPage /></ProtectedRoute>} />

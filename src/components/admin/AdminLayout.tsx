@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AlarmBanner } from "@/components/admin/AlarmBanner";
-import { Users, FileText, Settings, LogOut, Menu, X, Wrench, ExternalLink, BookOpen, Image as ImageIcon, BarChart3, Activity, TrendingUp, UserCheck, Star, Building, Layers, DownloadCloud, ClipboardList, ShieldAlert, Camera, MailOpen, Search, Archive, Send } from "lucide-react";
+import { Users, FileText, Settings, LogOut, Menu, X, Wrench, ExternalLink, BookOpen, Image as ImageIcon, BarChart3, Activity, TrendingUp, UserCheck, Star, Building, Layers, DownloadCloud, ClipboardList, ShieldAlert, Camera, MailOpen, Search, Archive, Send, LayoutDashboard } from "lucide-react";
 
 /**
  * Grouped by where each screen sits in the business's lifecycle, not by when
@@ -54,7 +54,7 @@ const navGroups: {
   {
     label: "Leads & buyers",
     items: [
-      { to: "/admin", label: "Leads", icon: FileText },
+      { to: "/admin/leads", label: "Leads", icon: FileText },
       { to: "/admin/buyers", label: "Buyers", icon: Users },
       { to: "/admin/routing", label: "Routing", icon: Settings },
       { to: "/admin/homeowners", label: "Homeowners", icon: UserCheck },
@@ -79,8 +79,11 @@ const navGroups: {
   },
 ];
 
+/** Sits above the groups: it is the landing page and belongs to no pipeline. */
+const homeItem = { to: "/admin", label: "Overview", icon: LayoutDashboard };
+
 /** Flattened once for anything (like useAdminCounts lookups) that still just needs "all items". */
-const navItems = navGroups.flatMap((g) => g.items);
+const navItems = [homeItem, ...navGroups.flatMap((g) => g.items)];
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -108,8 +111,21 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="flex-1 overflow-y-auto py-4 px-2">
+          <Link
+            to={homeItem.to}
+            className={cn(
+              "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+              location.pathname === homeItem.to
+                ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+            )}
+          >
+            <homeItem.icon className="h-4 w-4 flex-shrink-0" />
+            {!collapsed && <span>{homeItem.label}</span>}
+          </Link>
+
           {navGroups.map((group, i) => (
-            <div key={group.label} className={cn("space-y-1", i > 0 && "mt-4 pt-4 border-t border-sidebar-border")}>
+            <div key={group.label} className={cn("space-y-1 mt-4 pt-4 border-t border-sidebar-border")}>
               {!collapsed && (
                 <div className="px-3 pb-1">
                   <p className="text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/40">
