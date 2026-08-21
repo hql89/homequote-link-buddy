@@ -3,6 +3,7 @@ import {
   isSelfAddressed,
   checkVolumeCircuitBreaker,
   resolveBccCopy,
+  buildUnsubscribeHeaders,
 } from "../../supabase/functions/_shared/emailSafety";
 
 /**
@@ -207,5 +208,24 @@ describe("checkVolumeCircuitBreaker", () => {
     // whether the kill switch could be written.
     const { client } = fakeClient({ sendCount: 300, updateError: { message: "permission denied" } });
     await expect(checkVolumeCircuitBreaker(client)).resolves.toMatchObject({ tripped: true });
+  });
+});
+
+// Added alongside the unsubscribe/index.ts edge function and the
+// {{unsubscribe_url}} line in outreach copy (2026-08-20): outreach mail had
+// no List-Unsubscribe header at all, so neither a mailbox provider's own
+// "Unsubscribe" button nor RFC 8058 one-click worked, regardless of what the
+// email body said.
+describe("buildUnsubscribeHeaders", () => {
+  it("wraps the URL in angle brackets per RFC 8058", () => {
+    const headers = buildUnsubscribeHeaders("https://example.supabase.co/functions/v1/unsubscribe?token=abc");
+    expect(headers["List-Unsubscribe"]).toBe(
+      "<https://example.supabase.co/functions/v1/unsubscribe?token=abc>",
+    );
+  });
+
+  it("declares one-click support so mail clients don't require opening a page", () => {
+    const headers = buildUnsubscribeHeaders("https://example.supabase.co/functions/v1/unsubscribe?token=abc");
+    expect(headers["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click");
   });
 });

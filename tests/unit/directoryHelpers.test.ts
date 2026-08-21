@@ -246,4 +246,30 @@ describe("outreach templates", () => {
     expect(body).toMatch(/never sell or share/);
     expect(body).toMatch(/goes only to you/);
   });
+
+  // Regression coverage for the compliance gap found 2026-08-20: comments in
+  // inboundClassifier.ts / emailSafety.ts asserted the copy "literally
+  // instructs reply STOP" while it never actually did — only "reply YES" was
+  // ever in the body. If either template loses the opt-out line again, that
+  // claim goes back to being false without anything here catching it.
+  it("gives both stages a working, conspicuous opt-out", () => {
+    for (const key of ["outreach_verify", "outreach_preview"] as const) {
+      const body = DEFAULT_OUTREACH_TEMPLATES[key].body;
+      expect(body).toMatch(/\breply STOP\b/i);
+      expect(body).toContain("{{unsubscribe_url}}");
+    }
+  });
+
+  it("renders the opt-out line into a real unsubscribe URL", () => {
+    const rendered = renderTemplate(DEFAULT_OUTREACH_TEMPLATES.outreach_verify.body, {
+      owner_name: "Dana",
+      business_name: "Valley Roofing Co",
+      city: "Reseda",
+      phone: "(818) 555-0100",
+      sender_name: "David",
+      unsubscribe_url: "https://example.supabase.co/functions/v1/unsubscribe?token=abc-123",
+    });
+    expect(rendered).toContain("https://example.supabase.co/functions/v1/unsubscribe?token=abc-123");
+    expect(rendered).not.toMatch(/\{\{/);
+  });
 });

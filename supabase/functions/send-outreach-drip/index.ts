@@ -23,6 +23,7 @@ import {
 } from "../_shared/directory.ts";
 import { remainingDailyBudget, startOfUtcDay } from "../_shared/outreachVariants.ts";
 import { loadSmtpConfig, sendOutreachEmail } from "../_shared/mailer.ts";
+import { buildUnsubscribeHeaders } from "../_shared/emailSafety.ts";
 
 const JOB_NAME = "send-outreach-drip";
 const DRIP_DELAY_DAYS = 3;
@@ -280,12 +281,19 @@ Deno.serve(async (req) => {
     for (const row of (pendingFirst ?? []) as BusinessRow[]) {
       if (!row.email || !verifyVariant) continue;
       if (budget <= 0) break;
+      // Points at the edge function directly (not a frontend page) because
+      // RFC 8058's List-Unsubscribe-Post one-click POST is fired by the
+      // recipient's mail provider, not a browser — there is no page to land
+      // on. The same URL also works for a human clicking it in the body,
+      // since the function itself renders a confirmation page on GET.
+      const unsubscribeUrl = `${supabaseUrl}/functions/v1/unsubscribe?token=${row.claim_token}`;
       const vars = {
         business_name: row.business_name,
         city: row.city,
         owner_name: row.owner_name || "there",
         phone: row.phone ? formatPhoneDisplay(row.phone) : "the number on your listing",
         sender_name: senderName,
+        unsubscribe_url: unsubscribeUrl,
       };
       const result = await sendOutreachEmail(
         config,
@@ -294,6 +302,7 @@ Deno.serve(async (req) => {
           subject: renderTemplate(verifyVariant.subject, vars),
           text: renderTemplate(verifyVariant.body, vars),
           bcc: bccCopy,
+          headers: buildUnsubscribeHeaders(unsubscribeUrl),
         },
         {
           supabase,
@@ -381,6 +390,7 @@ Deno.serve(async (req) => {
       if (budget <= 0) break;
       const claimUrl =
         `${siteUrl}/directory/${row.city_slug}/${row.slug}/claim?token=${row.claim_token}`;
+      const unsubscribeUrl = `${supabaseUrl}/functions/v1/unsubscribe?token=${row.claim_token}`;
 
       const vars = {
         business_name: row.business_name,
@@ -389,6 +399,7 @@ Deno.serve(async (req) => {
         phone: row.phone ? formatPhoneDisplay(row.phone) : "",
         claim_url: claimUrl,
         sender_name: senderName,
+        unsubscribe_url: unsubscribeUrl,
       };
       const result = await sendOutreachEmail(
         config,
@@ -397,6 +408,7 @@ Deno.serve(async (req) => {
           subject: renderTemplate(previewVariant.subject, vars),
           text: renderTemplate(previewVariant.body, vars),
           bcc: bccCopy,
+          headers: buildUnsubscribeHeaders(unsubscribeUrl),
         },
         {
           supabase,

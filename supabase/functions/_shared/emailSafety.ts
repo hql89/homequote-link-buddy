@@ -101,6 +101,27 @@ export function resolveBccCopy(
   return { bcc: candidate };
 }
 
+/**
+ * RFC 8058 one-click unsubscribe headers for outreach mail.
+ *
+ * Split out here rather than built inline in mailer.ts for the same reason
+ * isSelfAddressed/resolveBccCopy live here: mailer.ts pulls in a real SMTP
+ * client import and cannot be unit-tested, so anything worth a regression
+ * test belongs in this file instead.
+ *
+ * Both headers together are what lets Gmail/Yahoo/Outlook show their own
+ * "Unsubscribe" button next to the sender name, and what a mail client's
+ * automated one-click POST (List-Unsubscribe-Post: List-Unsubscribe=One-Click)
+ * targets — neither existed on outreach mail before this, which is also why
+ * the copy itself had no working opt-out: there was nothing to point it at.
+ */
+export function buildUnsubscribeHeaders(unsubscribeUrl: string): Record<string, string> {
+  return {
+    "List-Unsubscribe": `<${unsubscribeUrl}>`,
+    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+  };
+}
+
 export interface CircuitBreakerResult {
   tripped: boolean;
   reason?: string;

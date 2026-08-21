@@ -54,6 +54,12 @@ export interface OutreachEmail {
    * the recipient got, rather than a re-render that could drift from it.
    */
   bcc?: string;
+  /**
+   * Extra raw email headers, e.g. List-Unsubscribe / List-Unsubscribe-Post
+   * (see emailSafety.ts's buildUnsubscribeHeaders). Passed through verbatim
+   * to whichever transport actually sends the message.
+   */
+  headers?: Record<string, string>;
 }
 
 export async function loadSmtpConfig(
@@ -96,6 +102,7 @@ async function sendViaSmtp(config: SmtpConfig, email: OutreachEmail): Promise<vo
       subject: email.subject,
       content: email.text,
       ...(email.html ? { html: email.html } : {}),
+      ...(email.headers ? { headers: email.headers } : {}),
     });
     await client.close();
   })();
@@ -129,6 +136,7 @@ async function sendViaResend(email: OutreachEmail, fallbackFrom: string): Promis
       subject: email.subject,
       text: email.text,
       ...(email.html ? { html: email.html } : {}),
+      ...(email.headers ? { headers: email.headers } : {}),
     }),
   });
 

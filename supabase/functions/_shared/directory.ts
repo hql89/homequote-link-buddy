@@ -142,6 +142,8 @@ export const DEFAULT_OUTREACH_TEMPLATES: Record<string, OutreachTemplate> = {
       "I built a local directory for {{city}} businesses and added {{business_name}}. " +
       "I want to make sure your phone number ({{phone}}) is correct before we push it live.\n\n" +
       "If it is correct, please reply YES. If not, let me know what to change.\n\n" +
+      "Don't want future emails about this listing? Reply STOP, or unsubscribe here: " +
+      "{{unsubscribe_url}}\n\n" +
       "Best,\n{{sender_name}}",
   },
   outreach_preview: {
@@ -154,6 +156,8 @@ export const DEFAULT_OUTREACH_TEMPLATES: Record<string, OutreachTemplate> = {
       "never sell or share it, and there's no fee or commission. Your own phone number is " +
       "on the page too, so calls go directly to you, not through us.\n\n" +
       "Claiming takes under a minute — just confirm your email and phone.\n\n" +
+      "Don't want future emails about this listing? Reply STOP, or unsubscribe here: " +
+      "{{unsubscribe_url}}\n\n" +
       "Best,\n{{sender_name}}",
   },
 };
