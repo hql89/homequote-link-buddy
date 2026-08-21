@@ -34,6 +34,7 @@
 import { serviceRoleKey as readServiceRoleKey } from "../_shared/supabaseKeys.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 import { corsHeaders, logRun } from "../_shared/directory.ts";
+import { checkTokenMissRate } from "../_shared/alarmRate.ts";
 
 const JOB_NAME = "unsubscribe";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -88,6 +89,9 @@ Deno.serve(async (req) => {
     await logRun(supabase, JOB_NAME, "failure", Date.now() - startedAt, "No business for token", {
       method: req.method,
     });
+    // Never blocks the response: this only debounces and records an alarm
+    // row if a sustained run of misses is found. See alarmRate.ts.
+    await checkTokenMissRate(supabase, JOB_NAME);
     return isOneClick
       ? new Response(null, { status: 200, headers: corsHeaders })
       : textPage("This unsubscribe link is invalid or has expired.");

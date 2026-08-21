@@ -15,7 +15,8 @@ export type AlarmKind =
   | "email_circuit_breaker"
   | "suppression_spike"
   | "action_write_failed"
-  | "delivery_canary_failed";
+  | "delivery_canary_failed"
+  | "unsubscribe_token_misses";
 
 export interface AlarmRecord {
   id: string;
@@ -39,6 +40,7 @@ const TITLES: Record<AlarmKind, string> = {
   suppression_spike: "Unsubscribes are arriving far above the normal rate",
   action_write_failed: "An automatic action ran but its write failed silently",
   delivery_canary_failed: "The delivery check couldn't confirm mail is arriving",
+  unsubscribe_token_misses: "Unsubscribe links are failing to match a business",
 };
 
 const SEVERITY: Record<AlarmKind, DisplayAlarm["severity"]> = {
@@ -46,6 +48,7 @@ const SEVERITY: Record<AlarmKind, DisplayAlarm["severity"]> = {
   suppression_spike: "warning",
   action_write_failed: "critical",
   delivery_canary_failed: "warning",
+  unsubscribe_token_misses: "warning",
 };
 
 /**

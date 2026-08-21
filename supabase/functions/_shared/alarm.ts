@@ -43,7 +43,9 @@ export type AlarmKind =
   /** An automatic action's write failed, so the action did not actually take effect. */
   | "action_write_failed"
   /** A delivery-canary probe was unconfirmed past its grace period, or could not be sent at all. */
-  | "delivery_canary_failed";
+  | "delivery_canary_failed"
+  /** A well-formed unsubscribe token repeatedly matched no business — links may be broken. */
+  | "unsubscribe_token_misses";
 
 /**
  * Records an alarm. Never throws.
