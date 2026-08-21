@@ -349,7 +349,7 @@ export function BackgroundJobsSettings() {
         )}
       </div>
 
-      <div className="pt-4 border-t">
+      <div id="recent-runs" className="pt-4 border-t scroll-mt-4">
         <div className="flex items-center justify-between mb-3">
           <div>
             <h3 className="text-sm font-semibold flex items-center gap-2">

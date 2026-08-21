@@ -252,3 +252,19 @@ describe("BackgroundJobsSettings — diagnostics and runs errors", () => {
     expect(screen.getByText(/No runs recorded yet/i)).toBeInTheDocument();
   });
 });
+
+describe("BackgroundJobsSettings — recent-runs anchor", () => {
+  // The Overview page's "Check recent runs" link points at
+  // /admin/settings#recent-runs, and Settings.tsx scrolls to whatever
+  // element owns that id. If this id ever moves or gets renamed, the link
+  // silently goes back to landing at the top of the page with no runs in
+  // sight — this test exists to catch that before a user does.
+  it("gives the Recent runs section the id the Overview link scrolls to", async () => {
+    renderPanel();
+
+    await waitFor(() => expect(screen.getByText("Recent runs")).toBeInTheDocument());
+    const heading = screen.getByText("Recent runs");
+    const section = heading.closest("#recent-runs");
+    expect(section).not.toBeNull();
+  });
+});

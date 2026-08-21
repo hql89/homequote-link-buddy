@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import { PageMeta } from "@/components/PageMeta";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Loader2 } from "lucide-react";
@@ -26,6 +27,7 @@ const DEFAULT_CONFIG: SmtpConfig = {
 
 export default function SettingsPage() {
   const { user } = useAuth();
+  const location = useLocation();
   const [config, setConfig] = useState<SmtpConfig>(DEFAULT_CONFIG);
   const [templates, setTemplates] = useState<Record<string, { subject: string; body: string }>>(DEFAULT_EMAIL_TEMPLATES);
   const [loading, setLoading] = useState(true);
@@ -58,6 +60,17 @@ export default function SettingsPage() {
     }
     load();
   }, []);
+
+  // BrowserRouter doesn't scroll to a URL hash on client-side navigation
+  // (that's a data-router-only feature via ScrollRestoration), so a link
+  // like "/admin/settings#recent-runs" would otherwise land at the top of
+  // this long page. Do it ourselves once the section has actually mounted.
+  useEffect(() => {
+    if (loading || !location.hash) return;
+    const id = location.hash.slice(1);
+    const target = document.getElementById(id);
+    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [loading, location.hash]);
 
   if (loading) {
     return (

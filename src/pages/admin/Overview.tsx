@@ -327,7 +327,7 @@ export default function OverviewPage() {
                     <XCircle className="h-4 w-4" aria-hidden="true" />
                     <AlertTitle>{metrics.jobFailures} background job failures</AlertTitle>
                     <AlertDescription className="text-sm">
-                      <Link to="/admin/settings" className="underline">Check recent runs</Link>
+                      <Link to="/admin/settings#recent-runs" className="underline">Check recent runs</Link>
                     </AlertDescription>
                   </Alert>
                 )}
