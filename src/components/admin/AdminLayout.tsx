@@ -5,6 +5,7 @@ import { useAdminCounts } from "@/hooks/useAdminCounts";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { AlarmBanner } from "@/components/admin/AlarmBanner";
 import { Users, FileText, Settings, LogOut, Menu, X, Wrench, ExternalLink, BookOpen, Image as ImageIcon, BarChart3, Activity, TrendingUp, UserCheck, Star, Building, Layers, DownloadCloud, ClipboardList, ShieldAlert, Camera, MailOpen, Search, Archive, Send } from "lucide-react";
 
 /**
@@ -21,9 +22,18 @@ import { Users, FileText, Settings, LogOut, Menu, X, Wrench, ExternalLink, BookO
  * Applications is a second, parallel entry point (a business asking to join
  * directly rather than being imported), so it opens the next group instead.
  */
-const navGroups: { label: string; items: { to: string; label: string; icon: typeof FileText }[] }[] = [
+const navGroups: {
+  label: string;
+  /** Shown as visible text under the heading, not hover-only — per
+   *  HelpTip's own docstring, help that only appears on hover is invisible
+   *  on touch and to anyone who doesn't think to look for it, which is
+   *  exactly the "I forget how this works" case this exists for. */
+  blurb?: string;
+  items: { to: string; label: string; icon: typeof FileText }[];
+}[] = [
   {
     label: "Directory pipeline",
+    blurb: "Verticals → Ingestion brings businesses in. Email Finder finds their address. Outreach contacts them. Replies come back here.",
     items: [
       { to: "/admin/verticals", label: "Verticals", icon: Layers },
       { to: "/admin/ingest", label: "Ingestion", icon: DownloadCloud },
@@ -101,9 +111,14 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           {navGroups.map((group, i) => (
             <div key={group.label} className={cn("space-y-1", i > 0 && "mt-4 pt-4 border-t border-sidebar-border")}>
               {!collapsed && (
-                <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/40">
-                  {group.label}
-                </p>
+                <div className="px-3 pb-1">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/40">
+                    {group.label}
+                  </p>
+                  {group.blurb && (
+                    <p className="mt-0.5 text-[10px] leading-snug text-sidebar-foreground/50">{group.blurb}</p>
+                  )}
+                </div>
               )}
               {group.items.map((item) => {
                 const isActive =
@@ -171,7 +186,10 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
 
       {/* Main content */}
       <main className="flex-1 overflow-auto bg-background">
-        <div className="p-6 md:p-8">{children}</div>
+        <div className="p-6 md:p-8">
+          <AlarmBanner />
+          {children}
+        </div>
       </main>
     </div>
   );

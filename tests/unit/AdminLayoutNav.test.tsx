@@ -19,6 +19,16 @@ vi.mock("../../src/hooks/useAdminCounts", () => ({
   useAdminCounts: () => ({ data: {} }),
 }));
 
+// AdminLayout now mounts AlarmBanner, which talks to the real client module
+// directly (not through useAdminCounts). Mocked here purely so this file's
+// nav-structure assertions aren't racing a real network call.
+vi.mock("../../src/integrations/supabase/client", () => ({
+  supabase: {
+    rpc: () => Promise.resolve({ data: [], error: null }),
+    from: () => ({ select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }) }) }),
+  },
+}));
+
 const { AdminLayout } = await import("../../src/components/admin/AdminLayout");
 
 function renderLayout() {
@@ -55,6 +65,16 @@ describe("AdminLayout sidebar grouping", () => {
     for (const label of ["Directory pipeline", "Provider content", "Leads & buyers", "Site content", "Admin & ops"]) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
+  });
+
+  it("explains the pipeline as visible text, not hover-only help", () => {
+    // HelpTip's own docstring: hover-only help is invisible on touch devices
+    // and to anyone who doesn't think to look for it — "I forget how this
+    // works" is exactly that case, so this has to be plain text on the page.
+    renderLayout();
+    expect(
+      screen.getByText(/Verticals.*Ingestion brings businesses in/i),
+    ).toBeInTheDocument();
   });
 
   it("still renders every screen that existed before the regroup", () => {
