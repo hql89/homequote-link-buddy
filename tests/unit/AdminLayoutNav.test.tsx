@@ -1,6 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { vi, describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 
 /**
  * The sidebar was a flat list in build order — Leads/Buyers first (the
@@ -42,12 +43,12 @@ function renderLayout() {
 }
 
 describe("AdminLayout sidebar grouping", () => {
-  it("groups the five directory-pipeline screens together, in pipeline order", () => {
+  it("groups the directory-pipeline screens together, in pipeline order", () => {
     renderLayout();
     const nav = screen.getByRole("navigation");
     const links = within(nav).getAllByRole("link").map((l) => l.textContent);
 
-    const pipeline = ["Verticals", "Ingestion", "Email Finder", "Outreach", "Replies"];
+    const pipeline = ["Verticals", "Ingestion", "Email Finder", "Outreach", "Sent Emails", "Replies"];
     const positions = pipeline.map((label) => links.indexOf(label));
 
     // All present, none missing from the flattened link list.
@@ -83,6 +84,58 @@ describe("AdminLayout sidebar grouping", () => {
     const nav = screen.getByRole("navigation");
     const leads = within(nav).getByText("Leads").closest("a")!;
     expect(leads.getAttribute("href")).toBe("/admin/leads");
+  });
+
+  it("has a sidebar link for every admin page that is not a drill-down", () => {
+    // The real complaint: /admin/outreach/sent existed as a working page with
+    // no way to click to it. Parameterised routes (:id, :metric) are reached
+    // by clicking a row or card, /admin/login is pre-auth, and
+    // /admin/site-analytics is a redirect — everything else must be clickable.
+    const app = readFileSync("src/App.tsx", "utf8");
+    const routes = [...app.matchAll(/path="(\/admin[^"]*)"/g)]
+      .map((m) => m[1])
+      .filter((r) => !r.includes(":"))
+      .filter((r) => r !== "/admin/login" && r !== "/admin/site-analytics");
+
+    const layout = readFileSync("src/components/admin/AdminLayout.tsx", "utf8");
+    const linked = new Set([...layout.matchAll(/to: "(\/admin[^"]*)"/g)].map((m) => m[1]));
+
+    const unreachable = routes.filter((r) => !linked.has(r));
+    expect(unreachable).toEqual([]);
+  });
+
+  it("links to Sent Emails, and highlights only it — not its parent — when open", () => {
+    render(
+      <MemoryRouter initialEntries={["/admin/outreach/sent"]}>
+        <AdminLayout><div>content</div></AdminLayout>
+      </MemoryRouter>,
+    );
+    const nav = screen.getByRole("navigation");
+
+    const sent = within(nav).getByText("Sent Emails").closest("a")!;
+    const outreach = within(nav).getByText("Outreach").closest("a")!;
+    const overview = within(nav).getByText("Overview").closest("a")!;
+
+    // Exact class tokens, not substring: the INACTIVE style contains
+    // "hover:bg-sidebar-accent", which a toContain() check matches too.
+    const isHighlighted = (el: Element) => el.className.split(/\s+/).includes("bg-sidebar-accent");
+
+    // A plain startsWith would light up all three at once.
+    expect(isHighlighted(sent)).toBe(true);
+    expect(isHighlighted(outreach)).toBe(false);
+    expect(isHighlighted(overview)).toBe(false);
+  });
+
+  it("still highlights the parent for a drill-down route with no nav item of its own", () => {
+    render(
+      <MemoryRouter initialEntries={["/admin/leads/some-lead-id"]}>
+        <AdminLayout><div>content</div></AdminLayout>
+      </MemoryRouter>,
+    );
+    const nav = screen.getByRole("navigation");
+    expect(
+      within(nav).getByText("Leads").closest("a")!.className.split(/\s+/),
+    ).toContain("bg-sidebar-accent");
   });
 
   it("explains the pipeline as visible text, not hover-only help", () => {

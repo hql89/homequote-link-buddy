@@ -6,15 +6,16 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AlarmBanner } from "@/components/admin/AlarmBanner";
-import { Users, FileText, Settings, LogOut, Menu, X, Wrench, ExternalLink, BookOpen, Image as ImageIcon, BarChart3, Activity, TrendingUp, UserCheck, Star, Building, Layers, DownloadCloud, ClipboardList, ShieldAlert, Camera, MailOpen, Search, Archive, Send, LayoutDashboard } from "lucide-react";
+import { Users, FileText, Settings, LogOut, Menu, X, Wrench, ExternalLink, BookOpen, Image as ImageIcon, BarChart3, Activity, TrendingUp, UserCheck, Star, Building, Layers, DownloadCloud, ClipboardList, ShieldAlert, Camera, MailOpen, Search, Archive, Send, LayoutDashboard, MailCheck } from "lucide-react";
 
 /**
  * Grouped by where each screen sits in the business's lifecycle, not by when
  * it was built. Previously a flat list in build order — Leads/Buyers first
  * (the original product), then whatever shipped next appended to the end —
- * so the five screens that form one continuous pipeline (import a business →
- * find its email → review it → decide to contact it → send, then watch for
- * replies) were scattered among unrelated ones with no visual relationship.
+ * so the screens that form one continuous pipeline (import a business → find
+ * its email → review it → decide to contact it → send, see what went out, then
+ * watch for replies) were scattered among unrelated ones with no visual
+ * relationship.
  *
  * Order within "Directory pipeline" matches the actual left-to-right flow:
  * a business enters via Verticals/Ingestion, gets an email via Email Finder,
@@ -33,12 +34,13 @@ const navGroups: {
 }[] = [
   {
     label: "Directory pipeline",
-    blurb: "Verticals → Ingestion brings businesses in. Email Finder finds their address. Outreach contacts them. Replies come back here.",
+    blurb: "Verticals → Ingestion brings businesses in. Email Finder finds their address. Outreach contacts them, Sent Emails is the record of what went out, and Replies come back here.",
     items: [
       { to: "/admin/verticals", label: "Verticals", icon: Layers },
       { to: "/admin/ingest", label: "Ingestion", icon: DownloadCloud },
       { to: "/admin/enrichment", label: "Email Finder", icon: Search },
       { to: "/admin/outreach", label: "Outreach", icon: Send },
+      { to: "/admin/outreach/sent", label: "Sent Emails", icon: MailCheck },
       { to: "/admin/replies", label: "Replies", icon: MailOpen },
     ],
   },
@@ -85,11 +87,30 @@ const homeItem = { to: "/admin", label: "Overview", icon: LayoutDashboard };
 /** Flattened once for anything (like useAdminCounts lookups) that still just needs "all items". */
 const navItems = [homeItem, ...navGroups.flatMap((g) => g.items)];
 
+/**
+ * The ONE nav path that should render as active for a given URL — the longest
+ * item that matches it.
+ *
+ * A plain `startsWith` lights up every ancestor: on /admin/outreach/sent both
+ * "Outreach" and "Sent Emails" would highlight, and on any admin page at all
+ * "Overview" (/admin) would too. Longest-match picks the most specific one, so
+ * a detail route like /admin/leads/:id still correctly highlights "Leads"
+ * (nothing longer matches) without also highlighting its parents.
+ */
+function activeNavPath(pathname: string, items = navItems): string | null {
+  const matches = items
+    .map((i) => i.to)
+    .filter((to) => pathname === to || pathname.startsWith(`${to}/`));
+  if (matches.length === 0) return null;
+  return matches.reduce((best, to) => (to.length > best.length ? to : best));
+}
+
 export function AdminLayout({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
   const { user, signOut } = useAuth();
   const { data: counts } = useAdminCounts();
+  const activePath = activeNavPath(location.pathname);
 
   return (
     <div className="flex min-h-screen">
@@ -115,7 +136,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
             to={homeItem.to}
             className={cn(
               "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-              location.pathname === homeItem.to
+              activePath === homeItem.to
                 ? "bg-sidebar-accent text-sidebar-accent-foreground"
                 : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
             )}
@@ -137,8 +158,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
                 </div>
               )}
               {group.items.map((item) => {
-                const isActive =
-                  location.pathname === item.to || (item.to !== "/admin" && location.pathname.startsWith(item.to));
+                const isActive = activePath === item.to;
                 return (
                   <Link
                     key={item.to}
