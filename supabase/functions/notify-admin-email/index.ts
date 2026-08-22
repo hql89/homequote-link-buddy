@@ -370,6 +370,9 @@ Deno.serve(async (req) => {
         recipientEmail: toEmail,
         recipientKind,
         subject,
+        // Never attempted — the breaker tripped before send. html is what
+        // WOULD have gone out, kept so a refused send is still auditable.
+        body: html,
         status: "failed",
         errorMessage: breaker.reason ?? "Circuit breaker tripped.",
       });
@@ -387,6 +390,9 @@ Deno.serve(async (req) => {
         recipientEmail: toEmail,
         recipientKind,
         subject,
+        // Never attempted — refused as self-addressed before send. html is
+        // what WOULD have gone out, kept so a refused send is still auditable.
+        body: html,
         status: "failed",
         errorMessage: message,
       });
@@ -435,6 +441,9 @@ Deno.serve(async (req) => {
         recipientEmail: toEmail,
         recipientKind,
         subject,
+        // The real send was attempted and failed; html is exactly what was
+        // handed to the SMTP client.
+        body: html,
         status: "failed",
         method: "smtp",
         errorMessage: sendErr instanceof Error ? sendErr.message : String(sendErr),
@@ -448,6 +457,8 @@ Deno.serve(async (req) => {
       recipientEmail: toEmail,
       recipientKind,
       subject,
+      // The exact HTML that was successfully sent.
+      body: html,
       status: "sent",
       method: "smtp",
     });

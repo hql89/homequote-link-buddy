@@ -206,6 +206,10 @@ export async function sendOutreachEmail(
     recipientEmail: email.to,
     recipientKind: audit.recipientKind,
     subject: email.subject,
+    // The exact text handed to the send attempt — this is what makes
+    // /admin/outreach-sent show the real email instead of reconstructing an
+    // approximation from whatever the template and business record say today.
+    body: email.text,
     relatedBusinessId: audit.relatedBusinessId,
     relatedLeadId: audit.relatedLeadId,
     status: result.success ? "sent" : "failed",

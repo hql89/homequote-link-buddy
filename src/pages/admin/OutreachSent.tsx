@@ -28,9 +28,18 @@ interface Row extends EmailSendLogRow {
   variant_key: string | null;
 }
 
-/** What's needed to reconstruct a body — fetched only when a row is opened. */
-interface ReconstructedBody {
+/**
+ * The body shown when a row is expanded.
+ *
+ * "real" means `row.body` — the exact text the send actually used, stored
+ * since 20260821010000. "reconstructed" only ever applies to rows sent
+ * before that migration, where no real body was ever captured and this is
+ * the best available approximation, re-rendered from the current template
+ * and the business's current info.
+ */
+interface DisplayBody {
   state: "loading" | "ready" | "unavailable";
+  source?: "real" | "reconstructed";
   text?: string;
 }
 
@@ -41,14 +50,14 @@ export default function OutreachSentPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [bodies, setBodies] = useState<Record<string, ReconstructedBody>>({});
+  const [bodies, setBodies] = useState<Record<string, DisplayBody>>({});
 
   const loadPage = useCallback(async (offset: number) => {
     // Fetch one extra row to know whether another page exists, without a
     // separate count query.
     const { data, error } = await directoryDb
       .from("email_send_log")
-      .select("id, sent_at, job_name, email_type, recipient_email, recipient_kind, subject, related_business_id, related_lead_id, status, method, error_message, bounced_at, bounce_kind")
+      .select("id, sent_at, job_name, email_type, recipient_email, recipient_kind, subject, body, related_business_id, related_lead_id, status, method, error_message, bounced_at, bounce_kind")
       .in("email_type", ["outreach_verify", "outreach_preview"])
       .eq("recipient_kind", "business")
       .order("sent_at", { ascending: false })
@@ -128,6 +137,15 @@ export default function OutreachSentPage() {
     }
     setExpanded(row.id);
     if (bodies[row.id]) return; // already fetched
+
+    // The common case now: the real body was stored at send time, so there is
+    // nothing to reconstruct and nothing to fetch. Reconstruction below is
+    // reached only by rows sent before 20260821010000, when body was null.
+    if (row.body) {
+      setBodies((prev) => ({ ...prev, [row.id]: { state: "ready", source: "real", text: row.body! } }));
+      return;
+    }
+
     if (!row.related_business_id) {
       setBodies((prev) => ({ ...prev, [row.id]: { state: "unavailable" } }));
       return;
@@ -182,7 +200,10 @@ export default function OutreachSentPage() {
         : {}),
     };
 
-    setBodies((prev) => ({ ...prev, [row.id]: { state: "ready", text: renderPreview(body, vars) } }));
+    setBodies((prev) => ({
+      ...prev,
+      [row.id]: { state: "ready", source: "reconstructed", text: renderPreview(body, vars) },
+    }));
   }
 
   return (
@@ -193,10 +214,10 @@ export default function OutreachSentPage() {
           <h1 className="text-2xl font-bold font-sans">Sent Emails</h1>
           <HelpTip>
             Every outreach email the send job has actually delivered (or tried to), most recent
-            first. The subject shown is the exact line that was sent. The body is not stored
-            anywhere, so opening a row reconstructs it from the current template and that
-            business's current info — it can drift from the real thing if either has changed
-            since the send.
+            first. Both the subject and the body shown are the exact text that was sent. Rows
+            from before 2026-08-21 didn't have their body saved — for those only, opening the
+            row reconstructs an approximation from the current template and that business's
+            current info, which can drift from what was really sent.
           </HelpTip>
         </div>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
@@ -280,14 +301,17 @@ export default function OutreachSentPage() {
                           </p>
                         ) : (
                           <>
-                            <div className="flex items-start gap-2 rounded-md border border-yellow-600/30 bg-yellow-500/5 p-2 text-xs">
-                              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-yellow-600" aria-hidden="true" />
-                              <p className="text-muted-foreground">
-                                Reconstructed from the current template and this business's current info —
-                                not a saved copy. The subject above is the real one that was sent; this body
-                                may differ if the template or the business's details changed since.
-                              </p>
-                            </div>
+                            {body.source === "reconstructed" && (
+                              <div className="flex items-start gap-2 rounded-md border border-yellow-600/30 bg-yellow-500/5 p-2 text-xs">
+                                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-yellow-600" aria-hidden="true" />
+                                <p className="text-muted-foreground">
+                                  Sent before bodies were saved (2026-08-21), so this is reconstructed from
+                                  the current template and this business's current info — not a saved copy.
+                                  The subject above is the real one that was sent; this body may differ if
+                                  the template or the business's details changed since.
+                                </p>
+                              </div>
+                            )}
                             <pre className="mt-2 whitespace-pre-wrap font-sans text-sm text-muted-foreground">
                               {body.text}
                             </pre>

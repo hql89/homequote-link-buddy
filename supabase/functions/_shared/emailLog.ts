@@ -14,6 +14,9 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.98.0
 /** Long free-text fields are capped so one pathological error can't bloat the table. */
 const MAX_SUBJECT = 500;
 const MAX_ERROR = 1000;
+/** An email body is bigger than a subject or error line by nature — the cap
+ *  bounds it rather than omitting it, matching the other two long fields. */
+const MAX_BODY = 20_000;
 
 export interface EmailLogEntry {
   /** The function that sent it, e.g. "send-outreach-drip". */
@@ -25,6 +28,12 @@ export interface EmailLogEntry {
   /** "business" | "lead" | "admin" | "buyer" — free-form on purpose. */
   recipientKind?: string;
   subject?: string;
+  /**
+   * The rendered body actually handed to the send call — plain text or HTML,
+   * whichever the email was sent as. Not present on rows logged before this
+   * field existed; the admin UI reconstructs those, and only those.
+   */
+  body?: string | null;
   /** Soft references. Safe to pass ids of rows that may later be deleted. */
   relatedBusinessId?: string | null;
   relatedLeadId?: string | null;
@@ -62,6 +71,7 @@ export async function logEmailSend(
       recipient_email: recipient,
       recipient_kind: entry.recipientKind ?? null,
       subject: clamp(entry.subject, MAX_SUBJECT),
+      body: clamp(entry.body, MAX_BODY),
       related_business_id: entry.relatedBusinessId ?? null,
       related_lead_id: entry.relatedLeadId ?? null,
       status: entry.status,

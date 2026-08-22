@@ -194,6 +194,12 @@ export interface EmailSendLogRow {
   recipient_email: string;
   recipient_kind: string | null;
   subject: string | null;
+  /**
+   * The real, exact text/HTML handed to the send attempt. Added
+   * 20260821010000 — null on every row sent before that, which is the only
+   * case /admin/outreach-sent falls back to reconstructing.
+   */
+  body: string | null;
   related_business_id: string | null;
   related_lead_id: string | null;
   status: string;

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { vi, describe, it, expect } from "vitest";
 
 /**
@@ -9,20 +9,25 @@ import { vi, describe, it, expect } from "vitest";
  *    counts already shown elsewhere.
  * 2. A failed send surfaces its error message rather than looking identical
  *    to a successful one.
- * 3. Opening a row reconstructs the body from the template + business info,
- *    and visibly labels it as reconstructed — never presented as the exact
- *    text that was actually emailed, since that text isn't stored anywhere.
+ * 3. A row with a stored body (everything sent since 20260821010000) shows
+ *    THAT text directly, with no reconstruction warning — it is the real
+ *    thing, not an approximation.
+ * 4. A row with no stored body (sent before that migration) still falls back
+ *    to reconstructing from the template + business info, and visibly labels
+ *    it as reconstructed — never presented as the exact text that was
+ *    actually emailed.
  */
 
 const sendLogRows = [
   {
     id: "log-1",
-    sent_at: "2026-08-19T10:00:00Z",
+    sent_at: "2026-08-21T10:00:00Z",
     job_name: "send-outreach-drip",
     email_type: "outreach_verify",
     recipient_email: "owner@luxairhvac.com",
     recipient_kind: "business",
     subject: "Quick question about Lux Air HVAC",
+    body: "Hi Dana,\n\nIs (818) 555-0142 the right number for Lux Air HVAC?\n\nBest,\nThe Directory Team",
     related_business_id: "biz-1",
     related_lead_id: null,
     status: "sent",
@@ -39,11 +44,30 @@ const sendLogRows = [
     recipient_email: "owner@brokenroofing.com",
     recipient_kind: "business",
     subject: "Your listing preview",
+    body: null,
     related_business_id: "biz-2",
     related_lead_id: null,
     status: "failed",
     method: "smtp",
     error_message: "SMTP connection refused",
+    bounced_at: null,
+    bounce_kind: null,
+  },
+  {
+    id: "log-3",
+    // Before 20260821010000 — body was never captured for this one.
+    sent_at: "2026-08-15T10:00:00Z",
+    job_name: "send-outreach-drip",
+    email_type: "outreach_verify",
+    recipient_email: "owner@luxairhvac.com",
+    recipient_kind: "business",
+    subject: "An earlier send to Lux Air HVAC",
+    body: null,
+    related_business_id: "biz-1",
+    related_lead_id: null,
+    status: "sent",
+    method: "smtp",
+    error_message: null,
     bounced_at: null,
     bounce_kind: null,
   },
@@ -148,8 +172,8 @@ describe("OutreachSentPage", () => {
   it("shows the real recipient, subject, and matched business for each send", async () => {
     renderPage();
 
-    await waitFor(() => expect(screen.getByText(/Lux Air HVAC — Tarzana/)).toBeInTheDocument());
-    expect(screen.getByText("owner@luxairhvac.com", { exact: false })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByText(/Lux Air HVAC — Tarzana/).length).toBeGreaterThan(0));
+    expect(screen.getAllByText("owner@luxairhvac.com", { exact: false }).length).toBeGreaterThan(0);
     expect(screen.getByText("Quick question about Lux Air HVAC")).toBeInTheDocument();
   });
 
@@ -161,15 +185,29 @@ describe("OutreachSentPage", () => {
     expect(screen.getByText("Failed")).toBeInTheDocument();
   });
 
-  it("opening a row reconstructs and labels the body as reconstructed, never as the real sent text", async () => {
+  it("shows a stored body directly, with no reconstruction warning — it is the real thing", async () => {
     renderPage();
-    await waitFor(() => expect(screen.getByText(/Lux Air HVAC — Tarzana/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Quick question about Lux Air HVAC")).toBeInTheDocument());
 
-    fireEvent.click(screen.getAllByRole("button", { name: /view body/i })[0]);
+    const card = screen.getByText("Quick question about Lux Air HVAC").closest("li")!;
+    fireEvent.click(within(card).getByRole("button", { name: /view body/i }));
 
     await waitFor(() =>
-      expect(screen.getByText(/Hi Dana, this is The Directory Team at Lux Air HVAC\./)).toBeInTheDocument(),
+      expect(within(card).getByText(/Is \(818\) 555-0142 the right number/)).toBeInTheDocument(),
     );
-    expect(screen.getByText(/Reconstructed from the current template/)).toBeInTheDocument();
+    expect(within(card).queryByText(/[Rr]econstructed/)).not.toBeInTheDocument();
+  });
+
+  it("falls back to a labelled reconstruction only for a row with no stored body", async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText("An earlier send to Lux Air HVAC")).toBeInTheDocument());
+
+    const card = screen.getByText("An earlier send to Lux Air HVAC").closest("li")!;
+    fireEvent.click(within(card).getByRole("button", { name: /view body/i }));
+
+    await waitFor(() =>
+      expect(within(card).getByText(/Hi Dana, this is The Directory Team at Lux Air HVAC\./)).toBeInTheDocument(),
+    );
+    expect(within(card).getByText(/Sent before bodies were saved/)).toBeInTheDocument();
   });
 });
