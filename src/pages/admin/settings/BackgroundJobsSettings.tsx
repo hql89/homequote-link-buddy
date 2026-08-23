@@ -320,6 +320,9 @@ export function BackgroundJobsSettings() {
             <p className="text-xs text-muted-foreground">
               Backend health at the moment you last refreshed: queries running now, scheduled job failures,
               which tables are largest, and which queries cost the most time.
+              {diagnostics?.captured_at && (
+                <span> Captured {new Date(diagnostics.captured_at).toLocaleString()}.</span>
+              )}
             </p>
           </div>
           <Button

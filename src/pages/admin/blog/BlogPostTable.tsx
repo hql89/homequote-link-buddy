@@ -12,6 +12,7 @@ interface Post {
   source: string;
   tags: string[] | null;
   created_at: string | null;
+  published_at: string | null;
 }
 
 interface BlogPostTableProps {
@@ -58,7 +59,11 @@ export function BlogPostTable({ posts, onEdit, onDelete }: BlogPostTableProps) {
                 </div>
               </TableCell>
               <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
-                {post.created_at ? format(new Date(post.created_at), "MMM d, yyyy") : "—"}
+                {post.status === "published" && post.published_at
+                  ? format(new Date(post.published_at), "MMM d, yyyy")
+                  : post.created_at
+                    ? format(new Date(post.created_at), "MMM d, yyyy")
+                    : "—"}
               </TableCell>
               <TableCell className="text-right">
                 <div className="flex justify-end gap-1">

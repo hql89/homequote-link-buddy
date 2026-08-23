@@ -7,6 +7,7 @@ import { toast } from "@/hooks/use-toast";
 import { HelpTip } from "@/components/admin/HelpTip";
 import { directoryDb, setBusinessPhotoStatus, type BusinessPhotoRow } from "@/integrations/supabase/directory";
 import { Loader2, Check, X, ImageOff } from "lucide-react";
+import { format } from "date-fns";
 
 interface PendingPhoto extends BusinessPhotoRow {
   url: string;
@@ -115,6 +116,9 @@ export default function PhotoModerationPage() {
                 <div className="p-3">
                   <p className="truncate text-sm font-medium">{photo.business_name}</p>
                   <p className="text-xs text-muted-foreground">{photo.city}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Uploaded {format(new Date(photo.created_at), "MMM d, yyyy")}
+                  </p>
                   {photo.caption && <p className="mt-1 text-xs text-muted-foreground">"{photo.caption}"</p>}
                   <div className="mt-3 flex gap-2">
                     <Button

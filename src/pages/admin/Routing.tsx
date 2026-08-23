@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "@/hooks/use-toast";
 import { SFV_CITIES, VERTICALS, getServiceTypes } from "@/lib/constants";
 import { Loader2, Plus, Pencil, Trash2, AlertTriangle } from "lucide-react";
+import { format } from "date-fns";
 import type { RoutingSetting, RoutingSettingInsert } from "@/types";
 
 const emptyRouting: RoutingSettingInsert = {
@@ -95,6 +96,7 @@ export default function RoutingPage() {
                   <TableHead>Buyer</TableHead>
                   <TableHead>Max Daily</TableHead>
                   <TableHead>Active</TableHead>
+                  <TableHead>Updated</TableHead>
                   <TableHead className="w-[80px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -106,6 +108,9 @@ export default function RoutingPage() {
                     <TableCell>{(s as RoutingSetting & { buyers?: { business_name: string } }).buyers?.business_name || "—"}</TableCell>
                     <TableCell>{s.max_daily_leads ?? "—"}</TableCell>
                     <TableCell>{s.is_active ? "✓" : "—"}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {s.updated_at ? format(new Date(s.updated_at), "MMM d, yyyy") : "—"}
+                    </TableCell>
                     <TableCell>
                       <div className="flex gap-1">
                         <Button variant="ghost" size="icon" onClick={() => openEdit(s)}><Pencil className="h-4 w-4" /></Button>
@@ -115,7 +120,7 @@ export default function RoutingPage() {
                   </TableRow>
                 ))}
                 {(!settings || settings.length === 0) && (
-                  <TableRow><TableCell colSpan={6} className="text-center py-10 text-muted-foreground">No routing rules yet.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={7} className="text-center py-10 text-muted-foreground">No routing rules yet.</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>

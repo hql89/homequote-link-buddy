@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "@/hooks/use-toast";
 import { Loader2, Plus, Pencil, Trash2 } from "lucide-react";
+import { format } from "date-fns";
 import { VERTICALS } from "@/lib/constants";
 import type { Buyer, BuyerInsert } from "@/types";
 
@@ -116,6 +117,7 @@ export default function BuyersPage() {
                    <TableHead>Vertical</TableHead>
                    <TableHead>Active</TableHead>
                    <TableHead>Cap</TableHead>
+                   <TableHead>Added</TableHead>
                   <TableHead className="w-[80px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -129,6 +131,9 @@ export default function BuyersPage() {
                     <TableCell className="text-sm capitalize">{buyer.vertical}</TableCell>
                     <TableCell>{buyer.is_active ? "✓" : "—"}</TableCell>
                     <TableCell>{buyer.daily_lead_cap ?? "—"}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {buyer.created_at ? format(new Date(buyer.created_at), "MMM d, yyyy") : "—"}
+                    </TableCell>
                     <TableCell>
                       <div className="flex gap-1">
                         <Button variant="ghost" size="icon" onClick={() => openEdit(buyer)}><Pencil className="h-4 w-4" /></Button>
@@ -138,7 +143,7 @@ export default function BuyersPage() {
                   </TableRow>
                 ))}
                 {(!buyers || buyers.length === 0) && (
-                  <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground">No buyers yet.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={9} className="text-center py-10 text-muted-foreground">No buyers yet.</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>

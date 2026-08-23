@@ -14,6 +14,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { toast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, Pencil, Trash2 } from "lucide-react";
+import { format } from "date-fns";
 
 const emptyVertical = {
   slug: "",
@@ -108,6 +109,7 @@ export default function VerticalsPage() {
                   <TableHead>Slug</TableHead>
                   <TableHead>Service Types</TableHead>
                   <TableHead>Active</TableHead>
+                  <TableHead>Updated</TableHead>
                   <TableHead className="w-[80px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -128,6 +130,9 @@ export default function VerticalsPage() {
                       </div>
                     </TableCell>
                     <TableCell>{v.is_active ? "✓" : "—"}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {v.updated_at ? format(new Date(v.updated_at), "MMM d, yyyy") : "—"}
+                    </TableCell>
                     <TableCell>
                       <div className="flex gap-1">
                         <Button variant="ghost" size="icon" onClick={() => openEdit(v)}><Pencil className="h-4 w-4" /></Button>
@@ -137,7 +142,7 @@ export default function VerticalsPage() {
                   </TableRow>
                 ))}
                 {(!verticals || verticals.length === 0) && (
-                  <TableRow><TableCell colSpan={6} className="text-center py-10 text-muted-foreground">No verticals configured.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={7} className="text-center py-10 text-muted-foreground">No verticals configured.</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>

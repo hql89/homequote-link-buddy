@@ -13,6 +13,7 @@ interface Review {
   id: string;
   rating: number;
   review_text?: string | null;
+  created_at?: string | null;
   buyers?: { business_name?: string | null } | null;
 }
 
@@ -152,7 +153,12 @@ export default function Homeowners() {
                     {selectedLeads.map((l) => (
                       <div key={l.id} className="flex items-center justify-between rounded bg-muted p-2">
                         <span>{l.service_type || "Lead"} — {l.full_name}</span>
-                        <Badge variant="outline">{l.status}</Badge>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">
+                            {l.created_at ? format(new Date(l.created_at), "MMM d, yyyy") : "—"}
+                          </span>
+                          <Badge variant="outline">{l.status}</Badge>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -172,6 +178,11 @@ export default function Homeowners() {
                           <span>{"★".repeat(r.rating)}{"☆".repeat(5 - r.rating)}</span>
                         </div>
                         {r.review_text && <p className="text-muted-foreground mt-1">{r.review_text}</p>}
+                        {r.created_at && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {format(new Date(r.created_at), "MMM d, yyyy")}
+                          </p>
+                        )}
                       </div>
                     ))}
                   </div>
