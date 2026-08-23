@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useBuyers, useInsertBuyer, useUpdateBuyer, useDeleteBuyer } from "@/hooks/useBuyers";
+import { useActiveVerticals } from "@/hooks/useVerticals";
 import { supabase } from "@/integrations/supabase/client";
 import { PageMeta } from "@/components/PageMeta";
 import { AdminLayout } from "@/components/admin/AdminLayout";
@@ -15,16 +16,20 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { toast } from "@/hooks/use-toast";
 import { Loader2, Plus, Pencil, Trash2 } from "lucide-react";
 import { format } from "date-fns";
-import { VERTICALS } from "@/lib/constants";
 import type { Buyer, BuyerInsert } from "@/types";
 
 const emptyBuyer: BuyerInsert = {
   business_name: "", contact_name: "", email: "", phone: "",
-  service_areas: [], supported_service_types: [], daily_lead_cap: undefined, notes: "", vertical: "plumbing",
+  service_areas: [], supported_service_types: [], daily_lead_cap: undefined, notes: "", vertical: "",
 };
 
 export default function BuyersPage() {
   const { data: buyers, isLoading } = useBuyers();
+  // Live source of truth for verticals — see src/pages/admin/Verticals.tsx.
+  // This page used to offer a hardcoded, long-stale list (src/lib/constants.ts's
+  // VERTICALS) that only ever had one entry, silently hiding every other real
+  // vertical from this picker.
+  const { data: verticals, isLoading: verticalsLoading, isError: verticalsError } = useActiveVerticals();
   const insertBuyer = useInsertBuyer();
   const updateBuyer = useUpdateBuyer();
   const deleteBuyer = useDeleteBuyer();
@@ -33,8 +38,12 @@ export default function BuyersPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; leadCount: number } | null>(null);
 
+  function verticalLabel(slug: string | null | undefined) {
+    return verticals?.find((v) => v.slug === slug)?.label || slug || "—";
+  }
+
   function openNew() {
-    setEditingBuyer({ ...emptyBuyer });
+    setEditingBuyer({ ...emptyBuyer, vertical: verticals?.[0]?.slug ?? "" });
     setIsEditing(false);
     setDialogOpen(true);
   }
@@ -128,7 +137,7 @@ export default function BuyersPage() {
                     <TableCell>{buyer.contact_name}</TableCell>
                     <TableCell className="text-sm">{buyer.email}</TableCell>
                     <TableCell className="text-sm">{buyer.phone}</TableCell>
-                    <TableCell className="text-sm capitalize">{buyer.vertical}</TableCell>
+                    <TableCell className="text-sm">{verticalLabel(buyer.vertical)}</TableCell>
                     <TableCell>{buyer.is_active ? "✓" : "—"}</TableCell>
                     <TableCell>{buyer.daily_lead_cap ?? "—"}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">
@@ -165,12 +174,31 @@ export default function BuyersPage() {
               <div><Label>Service Types (comma-separated)</Label><Input value={(editingBuyer.supported_service_types || []).join(", ")} onChange={(e) => setEditingBuyer({ ...editingBuyer, supported_service_types: e.target.value.split(",").map(s => s.trim()).filter(Boolean) })} /></div>
               <div>
                 <Label>Vertical</Label>
-                <Select value={editingBuyer.vertical || "plumbing"} onValueChange={(v) => setEditingBuyer({ ...editingBuyer, vertical: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                <Select
+                  value={editingBuyer.vertical || undefined}
+                  onValueChange={(v) => setEditingBuyer({ ...editingBuyer, vertical: v })}
+                  disabled={verticalsLoading || verticalsError || !verticals?.length}
+                >
+                  <SelectTrigger>
+                    <SelectValue
+                      placeholder={
+                        verticalsLoading
+                          ? "Loading verticals…"
+                          : verticalsError
+                          ? "Couldn't load verticals"
+                          : "Select a vertical"
+                      }
+                    />
+                  </SelectTrigger>
                   <SelectContent>
-                    {Object.entries(VERTICALS).map(([key, v]) => <SelectItem key={key} value={key}>{v.label}</SelectItem>)}
+                    {verticals?.map((v) => <SelectItem key={v.id} value={v.slug}>{v.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
+                {verticalsError && (
+                  <p className="mt-1 text-xs text-destructive">
+                    Verticals failed to load — reload the page before saving.
+                  </p>
+                )}
               </div>
               <div><Label>Notes</Label><Textarea value={editingBuyer.notes || ""} onChange={(e) => setEditingBuyer({ ...editingBuyer, notes: e.target.value })} /></div>
               <div className="flex items-center gap-2">

@@ -51,7 +51,7 @@ function useSpamEvents(range: TimeRange) {
 
 export default function SpamMonitor() {
   const [range, setRange] = useState<TimeRange>("24h");
-  const { data: events, isLoading } = useSpamEvents(range);
+  const { data: events, isLoading, isError, error } = useSpamEvents(range);
   const queryClient = useQueryClient();
   const [blocking, setBlocking] = useState<Record<string, boolean>>({});
 
@@ -131,7 +131,9 @@ export default function SpamMonitor() {
                 <Icon className="h-5 w-5 text-muted-foreground" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-card-foreground">{counts[key as keyof typeof counts]}</p>
+                <p className="text-2xl font-bold text-card-foreground">
+                  {isError ? "—" : counts[key as keyof typeof counts]}
+                </p>
                 <p className="text-xs text-muted-foreground">{label}</p>
               </div>
             </div>
@@ -142,6 +144,17 @@ export default function SpamMonitor() {
         {isLoading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : isError ? (
+          <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm">
+            <p className="font-medium">Couldn't load spam events</p>
+            <p className="mt-1 text-muted-foreground">
+              This is not a "looking clean" result — the query failed, so what's actually
+              happening in this time range is unknown.
+            </p>
+            <p className="mt-1 font-mono text-xs text-muted-foreground">
+              {(error as Error)?.message}
+            </p>
           </div>
         ) : !events?.length ? (
           <div className="text-center py-12 text-muted-foreground">

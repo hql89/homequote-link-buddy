@@ -30,7 +30,7 @@ export default function Reviews() {
   const [ratingFilter, setRatingFilter] = useState<string>("all");
   const queryClient = useQueryClient();
 
-  const { data: reviews, isLoading } = useQuery({
+  const { data: reviews, isLoading, isError, error } = useQuery({
     queryKey: ["admin-reviews"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -89,7 +89,7 @@ export default function Reviews() {
         <div>
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-bold text-foreground">Reviews</h1>
-            <Badge variant="secondary">{reviews?.length ?? 0} total</Badge>
+            {!isError && <Badge variant="secondary">{reviews?.length ?? 0} total</Badge>}
           </div>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
             Feedback homeowners left after a job. Reviews are collected by the automated follow-up email
@@ -128,6 +128,15 @@ export default function Reviews() {
             <TableBody>
               {isLoading ? (
                 <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground">Loading…</TableCell></TableRow>
+              ) : isError ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="py-8 text-center">
+                    <p className="font-medium text-destructive">Couldn't load reviews</p>
+                    <p className="mt-1 font-mono text-xs text-muted-foreground">
+                      {(error as Error)?.message}
+                    </p>
+                  </TableCell>
+                </TableRow>
               ) : filtered?.length === 0 ? (
                 <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground">No reviews</TableCell></TableRow>
               ) : (
