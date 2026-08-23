@@ -233,6 +233,15 @@ describe("RepliesPage", () => {
     await waitFor(() => expect(suppressCalls).toContainEqual({ id: "biz-1", suppressed: true }));
   });
 
+  it("shows each reply's received date/time", async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText(/Lux Air HVAC — Tarzana/)).toBeInTheDocument());
+
+    const expected = new Date("2026-07-28T00:00:00Z").toLocaleString();
+    const card = screen.getByText(/Lux Air HVAC — Tarzana/).closest("li")!;
+    expect(within(card).getByText(expected)).toBeInTheDocument();
+  });
+
   it("switching to All shows an already-handled reply, with no actions to re-handle it", async () => {
     renderPage();
     await waitFor(() => expect(screen.getByText(/Lux Air HVAC — Tarzana/)).toBeInTheDocument());

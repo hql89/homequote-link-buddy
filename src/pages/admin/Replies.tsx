@@ -224,6 +224,9 @@ export default function RepliesPage() {
                   ) : (
                     <Badge variant="outline">No matching business</Badge>
                   )}
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {new Date(reply.received_at).toLocaleString()}
+                  </span>
                 </div>
 
                 <p className="mt-2 text-xs text-muted-foreground">
