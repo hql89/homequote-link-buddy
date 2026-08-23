@@ -11,7 +11,9 @@
  * Every message is logged to inbound_emails before any interpretation —
  * message_id is unique, so a re-poll delivering the same message is a
  * dedupe no-op, never a second suppression. An unmatched sender is still
- * logged with business_id null, never silently dropped.
+ * logged with business_id null, never silently dropped. A sender an admin
+ * has marked as noise (ignored_senders) is likewise stored in full, filed
+ * as 'ignored' and pre-marked handled rather than discarded.
  *
  * Classification is deterministic (_shared/inboundClassifier.ts), not an
  * LLM — see that module's header for why. The only automatic *action* taken
@@ -33,6 +35,7 @@ import {
   extractBouncedRecipient,
   type BounceKind,
 } from "../_shared/inboundClassifier.ts";
+import { findIgnoreRule, type IgnoredSenderRule } from "../_shared/ignoredSenders.ts";
 import { loadSmtpConfig, isSelfAddressed } from "../_shared/mailer.ts";
 import { raiseAlarm } from "../_shared/alarm.ts";
 
@@ -335,6 +338,79 @@ Deno.serve(async (req) => {
         matched: Boolean(outcome.businessId),
         retryable: outcome.retryable,
         duplicate: bounceInsertError?.code === "23505",
+      });
+    }
+
+    // ── Ignored senders ────────────────────────────────────────────────────
+    // Ordinary operational mail arriving at the outreach mailbox — login
+    // codes, deploy notices, vendor marketing — which an admin has marked as
+    // not-a-reply (public.ignored_senders, managed from /admin/replies).
+    //
+    // Its position between the two blocks above and below is the whole
+    // design, and both edges matter:
+    //
+    //   AFTER bounce, so an ignore rule can never blind us to a delivery
+    //   failure. Ignoring "googlemail.com" as noise still leaves
+    //   mailer-daemon@googlemail.com bounces fully processed — otherwise one
+    //   convenience rule would silently strand every business whose address
+    //   is dead.
+    //
+    //   BEFORE classifyReply, so an ignored message triggers no automatic
+    //   action at all. This is not hypothetical: UNSUBSCRIBE_RE matches the
+    //   bare word "unsubscribe", which sits in the footer of every marketing
+    //   email in existence. Two vendor newsletters were already stored here
+    //   classified "unsubscribe"; they suppressed nobody only because
+    //   neither sender matched a business. That was luck, not design.
+    //
+    // The message is still stored in full — filed as 'ignored' and pre-marked
+    // handled, so it leaves the queue without leaving the record.
+    const { data: ignoreRules, error: ignoreRulesError } = await supabase
+      .from("ignored_senders")
+      .select("match_type, pattern");
+
+    if (ignoreRulesError) {
+      // Fail OPEN, deliberately. A failed read here costs a noisy inbox; the
+      // fail-closed alternative would mean quietening a real reply because a
+      // table was briefly unreadable. Of the two, a noisy inbox is recoverable.
+      console.error(`[${JOB_NAME}] could not read ignored_senders, ignoring nothing: ${ignoreRulesError.message}`);
+    }
+
+    const ignoreRule = ignoreRulesError
+      ? null
+      : findIgnoreRule(fromEmail, (ignoreRules ?? []) as IgnoredSenderRule[]);
+
+    if (ignoreRule) {
+      const { error: ignoredInsertError } = await supabase
+        .from("inbound_emails")
+        .insert({
+          message_id: messageId,
+          // Never attached to a business. An ignored sender is by definition
+          // not one of our contractors — the RPC that creates these rules
+          // refuses any pattern matching a business's email.
+          business_id: null,
+          from_email: fromEmail,
+          from_name: fromName,
+          subject: payload.subject ?? null,
+          body_text: bodyText || null,
+          classification: "ignored",
+          extracted_url: null,
+          is_priority: false,
+          // Nothing waits on a human, so it never enters the unhandled queue.
+          handled_at: new Date().toISOString(),
+        });
+
+      if (ignoredInsertError && ignoredInsertError.code !== "23505") {
+        throw new Error(`Insert failed: ${ignoredInsertError.message}`);
+      }
+
+      return json({
+        success: true,
+        classification: "ignored",
+        matched: false,
+        // Echoed so an operator reading logs can tell which rule did it, and
+        // therefore which entry to remove if it was the wrong call.
+        ignored_by: `${ignoreRule.match_type}:${ignoreRule.pattern}`,
+        duplicate: ignoredInsertError?.code === "23505",
       });
     }
 

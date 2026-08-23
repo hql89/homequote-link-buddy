@@ -120,6 +120,25 @@ export interface BusinessPhotoRow {
 }
 
 /**
+ * Every value the `inbound_emails.classification` CHECK constraint accepts.
+ *
+ * Kept in step with the migrations that widen it (bounce: 20260801280000,
+ * self_sent: 20260803220000, ignored: 20260823230000). This union having
+ * drifted behind the constraint is not a hypothetical cost: it is typed as a
+ * Record key in /admin/replies, so a value missing here renders an EMPTY
+ * badge rather than failing to compile — which is exactly what the one
+ * production `bounce` row was doing.
+ */
+export type InboundClassification =
+  | "unsubscribe"
+  | "confirm"
+  | "website"
+  | "unclassified"
+  | "bounce"
+  | "self_sent"
+  | "ignored";
+
+/**
  * A logged reply to our own outreach, as read by /admin/replies. Every field
  * except `handled_at` is set once by receive-inbound-email and never edited
  * from the browser — the one client-side write is marking a reply handled.
@@ -132,7 +151,7 @@ export interface InboundEmailRow {
   from_name: string | null;
   subject: string | null;
   body_text: string | null;
-  classification: "unsubscribe" | "confirm" | "website" | "unclassified";
+  classification: InboundClassification;
   is_priority: boolean;
   extracted_url: string | null;
   handled_at: string | null;
@@ -239,6 +258,12 @@ interface DirectoryDatabase {
         Update: Partial<InboundEmailRow>;
         Relationships: [];
       };
+      ignored_senders: {
+        Row: IgnoredSenderRow;
+        Insert: Partial<IgnoredSenderRow> & { match_type: string; pattern: string };
+        Update: Partial<IgnoredSenderRow>;
+        Relationships: [];
+      };
       outreach_template_variants: {
         Row: OutreachVariantRow;
         Insert: Partial<OutreachVariantRow> & {
@@ -342,6 +367,84 @@ export async function setBusinessPhotoStatus(
 ): Promise<{ message: string } | null> {
   const table = directoryDb.from("business_photos") as unknown as WritableTable;
   const { error } = await table.update({ status }).eq("id", id);
+  return error;
+}
+
+/**
+ * One sender-level noise rule, as read by /admin/replies.
+ *
+ * `match_type: "domain"` covers the domain and its subdomains — `vercel.com`
+ * also covers `ship@info.vercel.com`.
+ */
+export interface IgnoredSenderRow {
+  id: string;
+  match_type: "address" | "domain";
+  pattern: string;
+  note: string | null;
+  created_at: string;
+}
+
+/**
+ * The RPCs are absent from the generated `types.ts`, which would resolve
+ * their argument type to `never`. One narrow cast here rather than a
+ * scattering at call sites — the same approach `directoryDb` and
+ * `src/lib/archive.ts` already take.
+ */
+interface RpcClient {
+  rpc: (
+    fn: string,
+    args: Record<string, unknown>,
+  ) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
+}
+
+/** Current noise rules, oldest first. */
+export async function listIgnoredSenders(): Promise<{
+  rows: IgnoredSenderRow[];
+  error: { message: string } | null;
+}> {
+  const { data, error } = await directoryDb
+    .from("ignored_senders")
+    .select("id, match_type, pattern, note, created_at")
+    .order("created_at", { ascending: true });
+
+  return { rows: (data ?? []) as IgnoredSenderRow[], error };
+}
+
+/**
+ * Adds a noise rule and re-files matching past messages, returning how many
+ * were re-filed.
+ *
+ * Goes through the RPC rather than writing the table directly, and not for
+ * permission reasons — `authenticated` already holds table privileges on
+ * `inbound_emails`. It is that the RPC runs checks a direct write would
+ * skip: it refuses a single-label pattern like "com", and it refuses any
+ * pattern matching a real business's email so a contractor can never be
+ * muted by accident. Those checks are the whole reason this is safe to put
+ * behind a one-click button.
+ */
+export async function addIgnoredSender(
+  matchType: "address" | "domain",
+  pattern: string,
+  note?: string,
+): Promise<{ swept: number; error: { message: string } | null }> {
+  const db = directoryDb as unknown as RpcClient;
+  const { data, error } = await db.rpc("admin_add_ignored_sender", {
+    p_match_type: matchType,
+    p_pattern: pattern,
+    p_note: note ?? null,
+  });
+
+  return { swept: typeof data === "number" ? data : 0, error };
+}
+
+/**
+ * Removes a noise rule. Messages already filed as ignored stay filed and stay
+ * readable in the Ignored view — removing a rule means "stop ignoring this
+ * sender from now on", not "that vendor mail was a real reply after all".
+ */
+export async function removeIgnoredSender(id: string): Promise<{ message: string } | null> {
+  const db = directoryDb as unknown as RpcClient;
+  const { error } = await db.rpc("admin_remove_ignored_sender", { p_id: id });
   return error;
 }
 

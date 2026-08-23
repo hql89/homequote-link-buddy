@@ -48,6 +48,33 @@ const replyRows = [
   },
 ];
 
+/**
+ * Returned only for the "Ignored" view. A bounce row rides along in the
+ * unhandled fixture below to cover the badge-label map, which is keyed on the
+ * classification union and renders an EMPTY badge for any value missing from
+ * it — how `bounce` rows sat unlabelled in production.
+ */
+const ignoredRows = [
+  {
+    id: "reply-4",
+    message_id: "msg-4",
+    business_id: null,
+    from_email: "system@vercel.com",
+    from_name: "Vercel",
+    subject: "092303 is your Vercel log in code",
+    body_text: "Here is your login code.",
+    classification: "ignored",
+    is_priority: false,
+    extracted_url: null,
+    handled_at: "2026-08-23T00:00:00Z",
+    received_at: "2026-08-23T00:00:00Z",
+  },
+];
+
+const ignoredSenderRows = [
+  { id: "rule-1", match_type: "domain", pattern: "vercel.com", note: null, created_at: "2026-08-23T00:00:00Z" },
+];
+
 /** Only returned when the page asks for "All" — includes an already-handled row. */
 const allReplyRows = [
   ...replyRows,
@@ -67,9 +94,34 @@ const allReplyRows = [
   },
 ];
 
+// Unfiltered, this row WOULD appear in the unhandled queue and push its count
+// to 3. It is the fixture the exclusion test depends on.
+replyRows.push(ignoredRows[0]);
+
+// Added to the "All" fixture rather than the unhandled queue so it exercises
+// the badge-label map without changing the unhandled count the other tests
+// assert on.
+allReplyRows.push({
+  id: "reply-bounce",
+  message_id: "msg-bounce",
+  business_id: null,
+  from_email: "mailer-daemon@googlemail.com",
+  from_name: "Mail Delivery Subsystem",
+  subject: "Delivery Status Notification (Failure)",
+  body_text: "Address not found.",
+  classification: "bounce",
+  is_priority: false,
+  extracted_url: null,
+  handled_at: null,
+  received_at: "2026-07-28T02:00:00Z",
+});
+
 const businessRows = [
   { id: "biz-1", business_name: "Lux Air HVAC", city: "Tarzana", outreach_suppressed_at: null },
 ];
+
+const addIgnoredCalls: { matchType: string; pattern: string }[] = [];
+const removeIgnoredCalls: string[] = [];
 
 const suppressCalls: { id: string; suppressed: boolean }[] = [];
 const applyUrlCalls: { businessId: string; url: string }[] = [];
@@ -86,26 +138,50 @@ function makeChain(finalRows: unknown[]) {
 }
 
 /**
- * The "unhandled" query calls .is("handled_at", null); the "All" query never
- * calls .is() at all and calls .limit() instead — that's the only signal
- * available to the stub for which view asked, mirroring how
- * makeBusinessesChain tells its two "businesses" queries apart below.
+ * Three views, told apart by which filter the page reaches for:
+ *   unhandled → .neq(classification, ignored) then .is("handled_at", null)
+ *   all       → .neq(classification, ignored) then .limit()
+ *   ignored   → .eq("classification", "ignored") then .limit()
+ *
+ * .limit() must not clobber a view already pinned by .eq(), since the ignored
+ * query calls both — hence the explicit view variable rather than assigning
+ * rows directly, which is what the two-view version of this stub did.
  */
-function makeInboundEmailsChain(unhandledRows: unknown[], allRows: unknown[]) {
+function makeInboundEmailsChain(unhandledRows: unknown[], allRows: unknown[], ignoredViewRows: unknown[]) {
   const chain: Record<string, unknown> = {};
-  let rows = unhandledRows;
+  let view: "unhandled" | "all" | "ignored" = "unhandled";
+  // .neq("classification", "ignored") is APPLIED, not just accepted. A stub
+  // that swallowed it would let the exclusion test pass on a page that had
+  // dropped the filter entirely — the fixtures below deliberately seed an
+  // ignored row into the unhandled set so the filter has something to do.
+  let excludeIgnored = false;
+  const applyFilters = (rows: unknown[]) =>
+    excludeIgnored
+      ? rows.filter((r) => (r as { classification: string }).classification !== "ignored")
+      : rows;
   chain.select = () => chain;
+  chain.neq = () => {
+    excludeIgnored = true;
+    return chain;
+  };
+  chain.eq = () => {
+    view = "ignored";
+    return chain;
+  };
   chain.is = () => {
-    rows = unhandledRows;
+    view = "unhandled";
     return chain;
   };
   chain.order = () => chain;
   chain.limit = () => {
-    rows = allRows;
+    if (view !== "ignored") view = "all";
     return chain;
   };
   chain.then = (resolve: (v: { data: unknown; error: null }) => void) =>
-    resolve({ data: rows, error: null });
+    resolve({
+      data: applyFilters(view === "unhandled" ? unhandledRows : view === "all" ? allRows : ignoredViewRows),
+      error: null,
+    });
   return chain;
 }
 
@@ -144,7 +220,7 @@ vi.mock("../../src/components/admin/AdminLayout", () => ({
 vi.mock("../../src/integrations/supabase/directory", () => ({
   directoryDb: {
     from: (table: string) => {
-      if (table === "inbound_emails") return makeInboundEmailsChain(replyRows, allReplyRows);
+      if (table === "inbound_emails") return makeInboundEmailsChain(replyRows, allReplyRows, ignoredRows);
       // No test business is actually suppressed, so the .not() branch (the
       // suppressed-list query) returns nothing; .in() (business-info lookup
       // for matched replies) returns the fixture.
@@ -164,6 +240,15 @@ vi.mock("../../src/integrations/supabase/directory", () => ({
     applyUrlCalls.push({ businessId, url });
     return Promise.resolve(null);
   },
+  listIgnoredSenders: () => Promise.resolve({ rows: ignoredSenderRows, error: null }),
+  addIgnoredSender: (matchType: string, pattern: string) => {
+    addIgnoredCalls.push({ matchType, pattern });
+    return Promise.resolve({ swept: 3, error: null });
+  },
+  removeIgnoredSender: (id: string) => {
+    removeIgnoredCalls.push(id);
+    return Promise.resolve(null);
+  },
 }));
 
 const { default: RepliesPage } = await import("../../src/pages/admin/Replies");
@@ -181,6 +266,8 @@ beforeEach(() => {
   suppressCalls.length = 0;
   applyUrlCalls.length = 0;
   markHandledCalls.length = 0;
+  addIgnoredCalls.length = 0;
+  removeIgnoredCalls.length = 0;
 });
 
 describe("RepliesPage", () => {
@@ -258,5 +345,90 @@ describe("RepliesPage", () => {
     // screen. (The view-toggle button is also labelled "unhandled" — this
     // only targets the digit-prefixed badge text.)
     expect(screen.queryByText(/^\d+ unhandled$/)).not.toBeInTheDocument();
+  });
+
+  /**
+   * The label map is keyed on the classification union, so a value missing
+   * from it renders an empty badge instead of failing to compile. That is not
+   * hypothetical — the one real `bounce` row in production rendered blank
+   * until 2026-08-23.
+   */
+  it("labels a bounce rather than rendering an empty badge", async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText(/Lux Air HVAC — Tarzana/)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "all" }));
+
+    await waitFor(() => expect(screen.getByText("Delivery failed")).toBeInTheDocument());
+  });
+
+  it("keeps ignored mail out of the unhandled queue but reachable in its own view", async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText(/Lux Air HVAC — Tarzana/)).toBeInTheDocument());
+
+    // The whole point: vendor noise is not competing for attention here.
+    expect(screen.queryByText(/Vercel log in code/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "ignored" }));
+
+    // ...but it was never discarded, and is one click away.
+    await waitFor(() => expect(screen.getByText(/Vercel log in code/)).toBeInTheDocument());
+    expect(screen.getByText("Ignored sender")).toBeInTheDocument();
+  });
+
+  it("offers both an address and a domain rule, and calls the helper rather than writing the table", async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText("No matching business")).toBeInTheDocument());
+
+    const card = screen.getByText("No matching business").closest("li")!;
+    fireEvent.click(within(card).getByRole("button", { name: /ignore sender/i }));
+
+    // Both choices are spelled out — the domain rule is the broader hammer
+    // and must never be applied without the admin seeing which domain.
+    expect(within(card).getByRole("button", { name: "Just unknown@example.com" })).toBeInTheDocument();
+
+    fireEvent.click(within(card).getByRole("button", { name: "Everything from example.com" }));
+
+    await waitFor(() =>
+      expect(addIgnoredCalls).toContainEqual({ matchType: "domain", pattern: "example.com" }),
+    );
+  });
+
+  it("adds a typed pattern, treating a bare domain as a domain rule", async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText(/Lux Air HVAC — Tarzana/)).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText(/address or domain to ignore/i), {
+      target: { value: "github.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Ignore" }));
+
+    await waitFor(() =>
+      expect(addIgnoredCalls).toContainEqual({ matchType: "domain", pattern: "github.com" }),
+    );
+  });
+
+  it("adds a typed pattern containing @ as an address rule", async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText(/Lux Air HVAC — Tarzana/)).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText(/address or domain to ignore/i), {
+      target: { value: "welcome@supabase.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Ignore" }));
+
+    await waitFor(() =>
+      expect(addIgnoredCalls).toContainEqual({ matchType: "address", pattern: "welcome@supabase.com" }),
+    );
+  });
+
+  it("lists existing rules and removes one through the helper", async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText("vercel.com")).toBeInTheDocument());
+
+    const rule = screen.getByText("vercel.com").closest("li")!;
+    fireEvent.click(within(rule).getByRole("button", { name: /remove/i }));
+
+    await waitFor(() => expect(removeIgnoredCalls).toContain("rule-1"));
   });
 });
