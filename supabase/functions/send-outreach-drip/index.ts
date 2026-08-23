@@ -281,12 +281,16 @@ Deno.serve(async (req) => {
     for (const row of (pendingFirst ?? []) as BusinessRow[]) {
       if (!row.email || !verifyVariant) continue;
       if (budget <= 0) break;
-      // Points at the edge function directly (not a frontend page) because
-      // RFC 8058's List-Unsubscribe-Post one-click POST is fired by the
-      // recipient's mail provider, not a browser — there is no page to land
-      // on. The same URL also works for a human clicking it in the body,
-      // since the function itself renders a confirmation page on GET.
-      const unsubscribeUrl = `${supabaseUrl}/functions/v1/unsubscribe?token=${row.claim_token}`;
+      // Routed through the homequotelink.com domain (vercel.json rewrites
+      // /unsubscribe to the edge function) rather than the raw supabase.co
+      // URL, so the link doesn't look like a mismatched/phishy domain next
+      // to a "Home Quote Link" branded email. The rewrite is a transparent
+      // proxy, so it still works for RFC 8058's List-Unsubscribe-Post
+      // one-click POST fired by the recipient's mail provider (not a
+      // browser) — there is no page to land on. The same URL also works for
+      // a human clicking it in the body, since the function itself renders
+      // a confirmation page on GET.
+      const unsubscribeUrl = `${siteUrl}/unsubscribe?token=${row.claim_token}`;
       const vars = {
         business_name: row.business_name,
         city: row.city,
@@ -390,7 +394,7 @@ Deno.serve(async (req) => {
       if (budget <= 0) break;
       const claimUrl =
         `${siteUrl}/directory/${row.city_slug}/${row.slug}/claim?token=${row.claim_token}`;
-      const unsubscribeUrl = `${supabaseUrl}/functions/v1/unsubscribe?token=${row.claim_token}`;
+      const unsubscribeUrl = `${siteUrl}/unsubscribe?token=${row.claim_token}`;
 
       const vars = {
         business_name: row.business_name,

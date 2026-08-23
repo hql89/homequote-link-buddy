@@ -6,6 +6,10 @@
       "destination": "https://lrqdbpphallqehpdqalr.supabase.co/functions/v1/sitemap"
     },
     {
+      "source": "/unsubscribe",
+      "destination": "https://lrqdbpphallqehpdqalr.supabase.co/functions/v1/unsubscribe"
+    },
+    {
       "source": "/((?!assets/).*)",
       "destination": "/index.html"
     }
