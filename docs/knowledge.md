@@ -4,6 +4,48 @@ Durable technical learnings. Newest first.
 
 ---
 
+## A concatenated `.select()` string silently loses supabase-js's column typing
+**Context**: Extending `submit-directory-lead`'s business lookup to select two more
+columns, written as `"a, b, c" + " ,d, e"` for line-length reasons. `deno check` then
+failed with 10 errors, all `Property 'x' does not exist on type 'GenericStringError'` —
+every field on `business`, even ones untouched by the edit.
+
+**Learning**: supabase-js infers the shape of a query's result from the *literal string
+type* of the argument passed to `.select()`. That inference only works when TypeScript can
+see the argument as a string literal. A `+`-concatenated string widens to the general
+`string` type at the call site, so the overload resolution can't parse column names out of
+it and falls back to an opaque `GenericStringError` — every field access after that reads
+as nonexistent, even fields that were already being selected correctly before the edit.
+
+**Pattern**: Keep a `.select()` argument as a single unbroken string literal (a multi-line
+template literal without interpolation works fine — line breaks inside the literal don't
+break inference, only concatenation via `+` does). If the column list needs to be
+constructed dynamically, that has to happen outside the type-checked call, e.g. building it
+in a `const` and asserting the type back to a literal, not by writing `+` at the call site.
+
+---
+
+## Committing in a repo shared with a concurrent session: pathspec, not `-a`
+**Context**: Went to commit a finished, reviewed change and found the working tree also
+contained unrelated staged and unstaged changes from a different concurrent session
+(a same-day canary-frequency change) that had not been part of this conversation at all.
+
+**Learning**: `git commit -- <path> <path> ...` commits exactly the given paths' current
+content — staged or not — without touching the index state of any other path. This is safe
+to run even while another process holds unrelated changes staged in the same working tree;
+`git add -A` or `git commit -a` are not, since either would sweep in and commit the other
+session's in-progress work as if it were part of this one. New (untracked) files still need
+an explicit `git add <path>` first — `git commit -- <path>` alone does not pick up a file
+git has never seen — but that `git add` is likewise scoped to only the path given.
+
+**Pattern**: Before committing in this repo, run `git status --short` first and confirm
+every modified/staged path is one you actually touched this session. If it isn't, commit
+by explicit pathspec (after `git add`-ing any new files by the same explicit paths) rather
+than a blanket `-a`/`-A`, so a commit's authorship in `git log` stays honest about who
+actually reviewed what's in it.
+
+---
+
 ## Bundle-hash comparison can't detect a rebuild that changes nothing observable
 **Context**: After untracking `.env` from git (moving its four values to Vercel's own
 dashboard-configured Environment Variables instead), verified the resulting deploy by polling

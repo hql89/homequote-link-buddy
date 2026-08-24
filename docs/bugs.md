@@ -4,6 +4,36 @@ Newest first. Root causes, not just symptoms.
 
 ---
 
+## Lead-notification email kept re-pinging proven-dead business addresses — 2026-08-24
+**Symptom**: User asked (looking at a bounce row in `/admin/replies`) whether there was a
+way to designate an email as invalid so the system stops re-emailing it — implying a
+suspicion the mechanism either didn't exist or wasn't working.
+**Root Cause**: There *was* an automatic, working suppression mechanism —
+`receive-inbound-email`'s `handleBounce()` stamps `businesses.email_undeliverable_at` the
+moment a real recipient-side bounce arrives, and `send-outreach-drip` already filters on
+it. But `submit-directory-lead` (the edge function that emails a business every time a
+homeowner submits the "Request a Free Quote" form) never checked that flag — it sent to
+`business.email` unconditionally. A business proven dead by cold-outreach bounce detection
+would still get pinged on every subsequent lead. Confirmed live: Thynk Remodeling's
+`email_undeliverable_at` was already set from a real bounce, but nothing in the lead path
+read it.
+**Fix**: Added `emailSkipReason()` (`supabase/functions/_shared/directory.ts`) — a small
+pure function shared conceptually with `send-outreach-drip`'s existing filter. Wired into
+`submit-directory-lead` to skip the send (lead is still saved) and record why in a new
+`directory_leads.notify_skipped_reason` column, kept separate from `notify_error` so "we
+knew not to try" is never indistinguishable from "we tried and it broke."
+**Prevention**: `tests/unit/emailSkipReason.test.ts` covers both flags and the safe-to-send
+case. Also made the mechanism *visible* rather than trust-me: `/admin/replies` now shows an
+"Auto-suppressed since <date>" badge on a bounce row the instant the flag is set (no click
+needed), and `/admin` (Overview) has a running KPI counting skipped notifications per date
+range — so the fact that suppression is working stays checkable at a glance instead of
+resting on memory of a single row. General lesson: when a table has more than one
+notification/send path to the same recipient, a suppression flag added for one path does
+not automatically protect the others — grep every place that reads `business.email` before
+trusting a "we stopped emailing them" claim.
+
+---
+
 ## Lead form crashed on any non-tree category — 2026-07-25
 **Symptom**: Would have thrown on step 3 of 3 (the contact/consent step) for Plumbing,
 HVAC, Landscaping or Electrical — after the user had already filled in everything.
