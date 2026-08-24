@@ -23,6 +23,12 @@ interface BusinessInfo {
   business_name: string;
   city: string;
   outreach_suppressed_at: string | null;
+  /** Set automatically the moment a recipient-side bounce proves this
+   *  business's address is dead — see receive-inbound-email's handleBounce().
+   *  Independent of outreach_suppressed_at (that one is a manual/opt-out
+   *  flag); a bounce row can show this without anyone having clicked
+   *  "Suppress" at all. */
+  email_undeliverable_at: string | null;
 }
 
 interface ReplyRow extends InboundEmailRow {
@@ -100,7 +106,7 @@ export default function RepliesPage() {
       repliesQuery,
       directoryDb
         .from("businesses")
-        .select("id, business_name, city, outreach_suppressed_at")
+        .select("id, business_name, city, outreach_suppressed_at, email_undeliverable_at")
         .not("outreach_suppressed_at", "is", null),
       listIgnoredSenders(),
     ]);
@@ -118,10 +124,21 @@ export default function RepliesPage() {
     if (businessIds.length > 0) {
       const { data: bizRows } = await directoryDb
         .from("businesses")
-        .select("id, business_name, city, outreach_suppressed_at")
+        .select("id, business_name, city, outreach_suppressed_at, email_undeliverable_at")
         .in("id", businessIds);
-      for (const b of (bizRows ?? []) as { id: string; business_name: string; city: string; outreach_suppressed_at: string | null }[]) {
-        businessMap.set(b.id, { business_name: b.business_name, city: b.city, outreach_suppressed_at: b.outreach_suppressed_at });
+      for (const b of (bizRows ?? []) as {
+        id: string;
+        business_name: string;
+        city: string;
+        outreach_suppressed_at: string | null;
+        email_undeliverable_at: string | null;
+      }[]) {
+        businessMap.set(b.id, {
+          business_name: b.business_name,
+          city: b.city,
+          outreach_suppressed_at: b.outreach_suppressed_at,
+          email_undeliverable_at: b.email_undeliverable_at,
+        });
       }
     }
 
@@ -139,9 +156,21 @@ export default function RepliesPage() {
 
     setReplies(rows.map((r) => ({ ...r, business: r.business_id ? businessMap.get(r.business_id) ?? null : null })));
     setSuppressed(
-      ((suppressedRes.data ?? []) as { id: string; business_name: string; city: string; outreach_suppressed_at: string | null }[]).map(
-        (b) => ({ id: b.id, business_name: b.business_name, city: b.city, outreach_suppressed_at: b.outreach_suppressed_at }),
-      ),
+      (
+        (suppressedRes.data ?? []) as {
+          id: string;
+          business_name: string;
+          city: string;
+          outreach_suppressed_at: string | null;
+          email_undeliverable_at: string | null;
+        }[]
+      ).map((b) => ({
+        id: b.id,
+        business_name: b.business_name,
+        city: b.city,
+        outreach_suppressed_at: b.outreach_suppressed_at,
+        email_undeliverable_at: b.email_undeliverable_at,
+      })),
     );
     setLoading(false);
   }, [view]);
@@ -348,6 +377,19 @@ export default function RepliesPage() {
                     </span>
                   ) : (
                     <Badge variant="outline">No matching business</Badge>
+                  )}
+                  {/* This bounce already did its job with zero clicks: the
+                      moment it arrived, receive-inbound-email stamped
+                      email_undeliverable_at on the business, and every
+                      outreach send since then has been filtering it out.
+                      Shown so the row proves that on its own — otherwise the
+                      only evidence is an unclicked "Suppress" button, which
+                      looks identical to nothing having happened. */}
+                  {reply.business?.email_undeliverable_at && (
+                    <Badge variant="outline" className="gap-1 border-emerald-500 text-emerald-700">
+                      <ShieldOff className="h-3 w-3" aria-hidden="true" />
+                      {`Auto-suppressed since ${new Date(reply.business.email_undeliverable_at).toLocaleDateString()}`}
+                    </Badge>
                   )}
                   <span className="ml-auto text-xs text-muted-foreground">
                     {new Date(reply.received_at).toLocaleString()}

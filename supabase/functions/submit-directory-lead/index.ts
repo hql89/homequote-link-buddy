@@ -8,7 +8,7 @@
  */
 import { serviceRoleKey as readServiceRoleKey } from "../_shared/supabaseKeys.ts";
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
-import { corsHeaders, json, logRun, toE164 } from "../_shared/directory.ts";
+import { corsHeaders, emailSkipReason, json, logRun, toE164 } from "../_shared/directory.ts";
 import { loadSmtpConfig, sendOutreachEmail } from "../_shared/mailer.ts";
 
 const JOB_NAME = "submit-directory-lead";
@@ -175,7 +175,9 @@ Deno.serve(async (req) => {
 
     const { data: business, error: bizError } = await supabase
       .from("businesses")
-      .select("id, business_name, email, phone, city, slug, city_slug, is_published, is_claimed")
+      .select(
+        "id, business_name, email, phone, city, slug, city_slug, is_published, is_claimed, email_undeliverable_at, outreach_suppressed_at",
+      )
       .eq("id", businessId)
       .maybeSingle();
 
@@ -218,8 +220,18 @@ Deno.serve(async (req) => {
     // ── Notify the business ────────────────────────────────────────────────
     let notified = false;
     let notifyError: string | null = null;
+    const skipReason = emailSkipReason(business);
 
-    if (business.email) {
+    if (skipReason) {
+      // Known-dead or opted-out address. Sending here would (a) waste the
+      // attempt, (b) risk sender reputation on a proven-bad mailbox, and (c)
+      // be indistinguishable in the data from "we tried and it broke" if we
+      // wrote it to notify_error instead — hence the separate column.
+      await supabase
+        .from("directory_leads")
+        .update({ notify_skipped_reason: skipReason })
+        .eq("id", lead.id);
+    } else if (business.email) {
       const { config } = await loadSmtpConfig(supabase);
       const lines = [
         `New quote request for ${business.business_name}`,
@@ -268,10 +280,10 @@ Deno.serve(async (req) => {
     await logRun(
       supabase,
       JOB_NAME,
-      notifyError ? "partial" : "success",
+      notifyError || skipReason ? "partial" : "success",
       Date.now() - startedAt,
-      notifyError,
-      { business_id: business.id, lead_id: lead.id, source, notified },
+      notifyError ?? skipReason,
+      { business_id: business.id, lead_id: lead.id, source, notified, skip_reason: skipReason },
     );
 
     // The lead is saved either way — never fail the user's submission just

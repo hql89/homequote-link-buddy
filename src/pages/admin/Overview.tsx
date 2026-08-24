@@ -13,7 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { directoryDb } from "@/integrations/supabase/directory";
 import {
   Loader2, Building2, MailCheck, MessageSquareReply, BadgeCheck, FileText,
-  XCircle, ArrowRight, Search, Send, DownloadCloud, Activity as ActivityIcon,
+  XCircle, ArrowRight, Search, Send, DownloadCloud, Activity as ActivityIcon, ShieldOff,
 } from "lucide-react";
 
 const RANGES: { key: RangePreset; label: string }[] = [
@@ -37,6 +37,13 @@ interface Metrics {
   claimsPrev: number;
   leads: number;
   leadsPrev: number;
+  /** Lead-notification emails deliberately not sent because the business's
+   *  address was already known-dead or suppressed at submit time — see
+   *  submit-directory-lead's emailSkipReason(). A rising count here is the
+   *  ongoing proof that the skip is actually firing, not a one-time badge
+   *  on a single Replies row. */
+  notifySkipped: number;
+  notifySkippedPrev: number;
   jobFailures: number;
   jobFailuresPrev: number;
   enrichedInRange: number;
@@ -74,7 +81,7 @@ export default function OverviewPage() {
       const [
         total, published, verified, needsReview, eligible, pausedWithEmail,
         sent, sentPrev, replies, repliesPrev, claims, claimsPrev,
-        leads, leadsPrev, enriched,
+        leads, leadsPrev, enriched, notifySkipped, notifySkippedPrev,
         cfgRes, variantsRes, sentTodayRes, cronRes, runsRes,
         recentSends, recentReplies, recentClaims, recentLeads,
       ] = await Promise.all([
@@ -98,6 +105,10 @@ export default function OverviewPage() {
         supabase.from("leads").select("id", { count: "exact", head: true }).gte("created_at", ISO(w.since)),
         supabase.from("leads").select("id", { count: "exact", head: true }).gte("created_at", ISO(w.prevSince)).lt("created_at", ISO(w.prevUntil)),
         directoryDb.from("businesses").select("id", { count: "exact", head: true }).gte("enriched_at", ISO(w.since)),
+        directoryDb.from("directory_leads").select("id", { count: "exact", head: true })
+          .not("notify_skipped_reason", "is", null).gte("created_at", ISO(w.since)),
+        directoryDb.from("directory_leads").select("id", { count: "exact", head: true })
+          .not("notify_skipped_reason", "is", null).gte("created_at", ISO(w.prevSince)).lt("created_at", ISO(w.prevUntil)),
 
         supabase.from("admin_settings").select("setting_value").eq("setting_key", "outreach_config").maybeSingle(),
         supabase.from("outreach_template_variants").select("email_type, is_active").eq("is_active", true),
@@ -124,6 +135,7 @@ export default function OverviewPage() {
         replies: count(replies), repliesPrev: count(repliesPrev),
         claims: count(claims), claimsPrev: count(claimsPrev),
         leads: count(leads), leadsPrev: count(leadsPrev),
+        notifySkipped: count(notifySkipped), notifySkippedPrev: count(notifySkippedPrev),
         jobFailures: runs.filter((r) => r.status === "failure" && r.created_at >= ISO(w.since)).length,
         jobFailuresPrev: runs.filter((r) => r.status === "failure" && r.created_at >= ISO(w.prevSince) && r.created_at < ISO(w.prevUntil)).length,
         enrichedInRange: count(enriched),
@@ -260,6 +272,8 @@ export default function OverviewPage() {
               <KpiCard icon={Building2} label="Published" value={String(metrics.published)} />
               <KpiCard icon={MailCheck} label="With a verified email" value={String(metrics.verifiedEmail)} href="/admin/enrichment" />
               <KpiCard icon={Search} label={`Emails found in ${w.label}`} value={String(metrics.enrichedInRange)} href="/admin/enrichment" />
+              <KpiCard icon={ShieldOff} label="Lead notifications skipped (dead email)" value={String(metrics.notifySkipped)}
+                currentValue={metrics.notifySkipped} previousValue={metrics.notifySkippedPrev} invertTrend href="/admin/replies" />
             </div>
 
             {/* ── Activity feed + quick actions ──────────────────────── */}

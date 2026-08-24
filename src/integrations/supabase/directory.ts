@@ -228,6 +228,29 @@ export interface EmailSendLogRow {
   bounce_kind: string | null;
 }
 
+/**
+ * A lead captured through a listing page's "Request a Free Quote" form.
+ * Written server-side by submit-directory-lead; the browser only ever reads
+ * it (admin visibility), hence Insert/Update: never below, same as
+ * email_send_log.
+ */
+export interface DirectoryLeadRow {
+  id: string;
+  business_id: string;
+  full_name: string;
+  phone: string;
+  email: string | null;
+  created_at: string;
+  notified_at: string | null;
+  notify_error: string | null;
+  /** Set instead of attempting a send when the business's email was already
+   *  known-dead (email_undeliverable_at) or suppressed (outreach_suppressed_at)
+   *  at submit time — see submit-directory-lead's emailSkipReason(). Never
+   *  set together with notify_error: one means "didn't try", the other means
+   *  "tried and failed". */
+  notify_skipped_reason: string | null;
+}
+
 interface DirectoryDatabase {
   // supabase-js resolves its Insert/Update generics through this key; without
   // it, writes to these tables type as `never`.
@@ -279,6 +302,14 @@ interface DirectoryDatabase {
         Row: EmailSendLogRow;
         // Read-only from the browser — every row is written server-side by
         // the mailer, at send time.
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      directory_leads: {
+        Row: DirectoryLeadRow;
+        // Read-only from the browser — written server-side by
+        // submit-directory-lead.
         Insert: never;
         Update: never;
         Relationships: [];

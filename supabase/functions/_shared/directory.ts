@@ -91,6 +91,29 @@ export function isExpired(raw: string | null | undefined, now: Date = new Date()
   return expiry.getTime() < now.getTime();
 }
 
+/** The subset of `businesses` needed to decide whether it's safe to email them. */
+export interface EmailGateFields {
+  email_undeliverable_at: string | null;
+  outreach_suppressed_at: string | null;
+}
+
+/**
+ * Mirrors the `.is("email_undeliverable_at", null).is("outreach_suppressed_at",
+ * null)` filter send-outreach-drip applies before it will queue a send. That
+ * filter runs at query time there because it's picking candidates out of a
+ * table; call sites with one specific business already in hand (e.g.
+ * submit-directory-lead) use this instead so the two paths can't drift.
+ */
+export function emailSkipReason(business: EmailGateFields): string | null {
+  if (business.email_undeliverable_at) {
+    return `Business email marked undeliverable on ${business.email_undeliverable_at} (recipient-side bounce).`;
+  }
+  if (business.outreach_suppressed_at) {
+    return `Business outreach suppressed on ${business.outreach_suppressed_at}.`;
+  }
+  return null;
+}
+
 const RAW_FIELD_ALIASES: Record<"status" | "expires", string[]> = {
   status: ["primarystatus", "licensestatus", "status"],
   expires: ["expirationdate", "expiration", "expiresdate", "expdate"],
