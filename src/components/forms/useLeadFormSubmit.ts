@@ -7,7 +7,6 @@ import { scoreLead } from "@/services/leadScoringService";
 import { checkDuplicate } from "@/services/duplicateDetectionService";
 import { trackFormStep, trackConversion } from "@/services/analyticsService";
 import { toast } from "@/hooks/use-toast";
-import type { VerticalKey } from "@/lib/constants";
 import {
   LeadFormValues,
   normalizePhone,
@@ -31,7 +30,7 @@ async function isBlocked(email?: string, phone?: string): Promise<boolean> {
   }
 }
 
-export function useLeadFormSubmit(vertical: VerticalKey | string) {
+export function useLeadFormSubmit(vertical: string | undefined) {
   const navigate = useNavigate();
   const tracking = useTrackingParams();
   const insertLead = useInsertLead();
@@ -81,7 +80,10 @@ export function useLeadFormSubmit(vertical: VerticalKey | string) {
       preferred_contact_method: values.preferred_contact_method || "call",
       consent_to_contact: false,
       status: "partial",
-      vertical,
+      // Only written when actually resolved — the column has its own
+      // server-side default, which is more honest than the frontend
+      // guessing a placeholder vertical.
+      ...(vertical ? { vertical } : {}),
       utm_source: tracking.utm_source,
       utm_medium: tracking.utm_medium,
       utm_campaign: tracking.utm_campaign,
@@ -183,7 +185,9 @@ export function useLeadFormSubmit(vertical: VerticalKey | string) {
       email_normalized: normalizeEmail(values.email) || null,
       lead_score: scoreLead(values),
       duplicate_flag: checkDuplicate(values).isDuplicate,
-      vertical,
+      // Only written when actually resolved — see the matching comment on
+      // partialData above.
+      ...(vertical ? { vertical } : {}),
       utm_source: tracking.utm_source,
       utm_medium: tracking.utm_medium,
       utm_campaign: tracking.utm_campaign,

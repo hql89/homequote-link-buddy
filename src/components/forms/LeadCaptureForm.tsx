@@ -3,7 +3,6 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { trackFormStep } from "@/services/analyticsService";
 import { cityFromZip } from "@/lib/zipCityMap";
-import type { VerticalKey } from "@/lib/constants";
 import { Form } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -17,7 +16,13 @@ import { LocationStep } from "./steps/LocationStep";
 import { ContactStep } from "./steps/ContactStep";
 
 interface LeadCaptureFormProps {
-  vertical?: VerticalKey | string;
+  /**
+   * Slug of the chosen category, from the `verticals` table. Can be briefly
+   * undefined while the caller is still resolving a default selection — see
+   * useLeadFormSubmit, which omits it from the lead payload rather than
+   * writing a placeholder value when that happens.
+   */
+  vertical?: string;
   /**
    * Service options for the chosen category. Passed through when the category
    * comes from the `verticals` table so the options match what was picked.
@@ -28,7 +33,7 @@ interface LeadCaptureFormProps {
 }
 
 export function LeadCaptureForm({
-  vertical = "tree_service",
+  vertical,
   serviceTypes,
   categoryLabel,
 }: LeadCaptureFormProps) {
@@ -142,7 +147,6 @@ export function LeadCaptureForm({
         {step === 0 && (
           <ServiceStep
             form={form}
-            vertical={vertical}
             serviceTypes={serviceTypes}
             stepRef={stepContainerRef}
           />

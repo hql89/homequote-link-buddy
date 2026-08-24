@@ -1,25 +1,24 @@
 import { UseFormReturn } from "react-hook-form";
-import { getServiceTypes, URGENCY_LEVELS } from "@/lib/constants";
-import type { VerticalKey } from "@/lib/constants";
+import { URGENCY_LEVELS } from "@/lib/constants";
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { LeadFormValues } from "../leadFormSchema";
 
 interface ServiceStepProps {
   form: UseFormReturn<LeadFormValues>;
-  vertical: VerticalKey | string;
   /**
-   * Service options for the selected category, supplied by the caller when the
-   * category comes from the `verticals` table. Without this the list falls back
-   * to the hardcoded VERTICALS map, which only knows tree service — so a
-   * homeowner picking "Plumbing" would be offered stump grinding.
+   * Service options for the selected category, sourced from the live
+   * `verticals` table by the caller. There is no hardcoded fallback list any
+   * more — one used to exist and only ever covered tree service, so a
+   * homeowner picking "Plumbing" would silently have been offered stump
+   * grinding.
    */
   serviceTypes?: readonly string[];
   stepRef: React.RefObject<HTMLDivElement | null>;
 }
 
-export function ServiceStep({ form, vertical, serviceTypes, stepRef }: ServiceStepProps) {
-  const options = serviceTypes?.length ? serviceTypes : getServiceTypes(vertical);
+export function ServiceStep({ form, serviceTypes, stepRef }: ServiceStepProps) {
+  const options = serviceTypes ?? [];
 
   return (
     <div className="space-y-4" ref={stepRef} tabIndex={-1}>

@@ -1,6 +1,5 @@
 import { UseFormReturn } from "react-hook-form";
-import { getVertical, CONTACT_METHODS } from "@/lib/constants";
-import type { VerticalKey } from "@/lib/constants";
+import { CONTACT_METHODS } from "@/lib/constants";
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -10,16 +9,23 @@ import type { LeadFormValues } from "../leadFormSchema";
 
 interface ContactStepProps {
   form: UseFormReturn<LeadFormValues>;
-  vertical: VerticalKey | string;
+  vertical: string | undefined;
   /** Display label for the chosen category, when it came from the `verticals` table. */
   categoryLabel?: string;
   stepRef: React.RefObject<HTMLDivElement | null>;
 }
 
+/**
+ * Turns a vertical slug into readable copy without depending on a fixed map
+ * of known verticals — used only when the caller didn't supply a real
+ * `categoryLabel` from the `verticals` table.
+ */
+function humanizeVertical(vertical: string | undefined): string {
+  return (vertical || "").replace(/[_-]+/g, " ").trim() || "service";
+}
+
 export function ContactStep({ form, vertical, categoryLabel, stepRef }: ContactStepProps) {
-  // getVertical() falls back safely; a bare VERTICALS[vertical] lookup returns
-  // undefined for any DB-backed category (e.g. "plumbing") and throws on .label.
-  const label = categoryLabel ?? getVertical(vertical).label;
+  const label = categoryLabel ?? humanizeVertical(vertical);
 
   return (
     <div className="space-y-4" ref={stepRef} tabIndex={-1}>
