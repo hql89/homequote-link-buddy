@@ -251,11 +251,12 @@ export default function SiteAnalyticsPage() {
 
         <Alert className="mb-6 bg-blue-50/50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-900 border">
           <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-          <AlertTitle className="text-blue-800 dark:text-blue-300">Transition to Google Analytics (GA4)</AlertTitle>
+          <AlertTitle className="text-blue-800 dark:text-blue-300">Also tracked in Google Analytics (GA4)</AlertTitle>
           <AlertDescription className="text-blue-700 dark:text-blue-400/90">
             <p className="mb-3">
-              We have migrated our internal analytics tracking to Google Analytics 4 (GA4) to improve system performance. 
-              The charts and metrics displayed below represent <strong>Legacy Internal Data</strong> collected prior to the migration.
+              Traffic is also tracked in Google Analytics 4 (GA4). The charts and metrics below are{" "}
+              <strong>live internal data</strong> for whatever date range you select above — not a historical
+              snapshot from before a migration — pulled directly from this site's own analytics_events table.
             </p>
             <a 
               href="https://analytics.google.com/analytics/web/#/a388401023p529410400/reports/intelligenthome" 

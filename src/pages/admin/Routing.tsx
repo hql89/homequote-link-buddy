@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useRoutingSettings, useInsertRoutingSetting, useUpdateRoutingSetting, useDeleteRoutingSetting } from "@/hooks/useRouting";
 import { useBuyers } from "@/hooks/useBuyers";
+import { useActiveVerticals } from "@/hooks/useVerticals";
 import { PageMeta } from "@/components/PageMeta";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
@@ -11,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
-import { SFV_CITIES, VERTICALS, getServiceTypes } from "@/lib/constants";
+import { SFV_CITIES } from "@/lib/constants";
 import { Loader2, Plus, Pencil, Trash2, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 import type { RoutingSetting, RoutingSettingInsert } from "@/types";
@@ -24,6 +25,11 @@ const emptyRouting: RoutingSettingInsert = {
 export default function RoutingPage() {
   const { data: settings, isLoading } = useRoutingSettings();
   const { data: buyers } = useBuyers();
+  // Live source of truth for verticals and their service types — see
+  // src/pages/admin/Verticals.tsx. Replaces the long-stale hardcoded
+  // VERTICALS map, which only ever had one entry ("tree_service") while the
+  // real table has 5 active verticals, each with its own service types.
+  const { data: verticals } = useActiveVerticals();
   const insertSetting = useInsertRoutingSetting();
   const updateSetting = useUpdateRoutingSetting();
   const deleteSetting = useDeleteRoutingSetting();
@@ -141,17 +147,21 @@ export default function RoutingPage() {
                 </Select>
               </div>
               <div>
-                <Label>Service Type *</Label>
-                <Select value={editing.service_type} onValueChange={(v) => setEditing({ ...editing, service_type: v })}>
-                  <SelectTrigger><SelectValue placeholder="Select service" /></SelectTrigger>
-                  <SelectContent>{getServiceTypes(editing.vertical || undefined).map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+                <Label>Vertical</Label>
+                <Select value={editing.vertical || undefined} onValueChange={(v) => setEditing({ ...editing, vertical: v, service_type: "" })}>
+                  <SelectTrigger><SelectValue placeholder="Select vertical" /></SelectTrigger>
+                  <SelectContent>{verticals?.map((v) => <SelectItem key={v.id} value={v.slug}>{v.label}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div>
-                <Label>Vertical</Label>
-                <Select value={editing.vertical || "plumbing"} onValueChange={(v) => setEditing({ ...editing, vertical: v, service_type: "" })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{Object.entries(VERTICALS).map(([key, v]) => <SelectItem key={key} value={key}>{v.label}</SelectItem>)}</SelectContent>
+                <Label>Service Type *</Label>
+                <Select value={editing.service_type} onValueChange={(v) => setEditing({ ...editing, service_type: v })}>
+                  <SelectTrigger><SelectValue placeholder="Select service" /></SelectTrigger>
+                  <SelectContent>
+                    {(verticals?.find((v) => v.slug === editing.vertical)?.service_types ?? []).map((s) => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
+                  </SelectContent>
                 </Select>
               </div>
               <div>

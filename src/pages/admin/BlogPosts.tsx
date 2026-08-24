@@ -133,7 +133,7 @@ export default function BlogPostsPage() {
     return () => { if (autosaveTimer.current) clearTimeout(autosaveTimer.current); };
   }, [form, dialogOpen, editingId]);
 
-  const { data: posts, isLoading } = useQuery({
+  const { data: posts, isLoading, isError, error: postsError } = useQuery({
     queryKey: ["admin_posts"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -296,6 +296,19 @@ export default function BlogPostsPage() {
     return (
       <AdminLayout>
         <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
+      </AdminLayout>
+    );
+  }
+
+  if (isError) {
+    return (
+      <AdminLayout>
+        <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm">
+          <p className="font-medium">Couldn't load blog posts</p>
+          <p className="mt-1 font-mono text-xs text-muted-foreground">
+            {(postsError as Error)?.message}
+          </p>
+        </div>
       </AdminLayout>
     );
   }

@@ -29,7 +29,7 @@ interface SystemStatus {
     postMetrics: number;
     postVersions: number;
   };
-  cronJobs: { jobname?: string; name?: string; schedule?: string; [key: string]: unknown }[];
+  cronJobs: { jobname?: string; name?: string; schedule?: string; active?: boolean; [key: string]: unknown }[];
 }
 
 function formatBytes(bytes: number): string {
@@ -210,10 +210,21 @@ export default function SystemStatusPage() {
                   <div className="space-y-2">
                     {status.cronJobs.map((job, i) => (
                       <div key={i} className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card">
-                        <CheckCircle2 className="h-4 w-4 text-green-500" />
+                        {/* admin_list_cron_jobs() reports whether pg_cron actually has the
+                            job enabled — a disabled job is not "healthy" just because it
+                            exists, so this reads the real flag instead of always showing
+                            green. */}
+                        {job.active === false ? (
+                          <XCircle className="h-4 w-4 text-destructive" />
+                        ) : (
+                          <CheckCircle2 className="h-4 w-4 text-green-500" />
+                        )}
                         <div>
                           <p className="text-sm font-medium text-foreground">{job.jobname || job.name || `Job ${i + 1}`}</p>
-                          <p className="text-xs text-muted-foreground">{job.schedule || "—"}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {job.schedule || "—"}
+                            {job.active === false && " · disabled"}
+                          </p>
                         </div>
                       </div>
                     ))}

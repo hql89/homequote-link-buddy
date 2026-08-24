@@ -29,7 +29,7 @@ export default function MediaLibraryPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [previewAsset, setPreviewAsset] = useState<MediaAsset | null>(null);
 
-  const { data: assets, isLoading } = useQuery({
+  const { data: assets, isLoading, isError, error: assetsError } = useQuery({
     queryKey: ["media_assets", search],
     queryFn: async () => {
       let query = supabase
@@ -81,6 +81,19 @@ export default function MediaLibraryPage() {
       <AdminLayout>
         <div className="flex justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </AdminLayout>
+    );
+  }
+
+  if (isError) {
+    return (
+      <AdminLayout>
+        <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm">
+          <p className="font-medium">Couldn't load the media library</p>
+          <p className="mt-1 font-mono text-xs text-muted-foreground">
+            {(assetsError as Error)?.message}
+          </p>
         </div>
       </AdminLayout>
     );

@@ -15,7 +15,7 @@ import { toast } from "@/hooks/use-toast";
 import { archiveRow } from "@/lib/archive";
 import { format } from "date-fns";
 import { CheckCircle, XCircle, Eye, Loader2 } from "lucide-react";
-import { VERTICALS } from "@/lib/constants";
+import { useActiveVerticals } from "@/hooks/useVerticals";
 
 interface Application {
   id: string;
@@ -38,11 +38,15 @@ export default function ProviderApplications() {
     contact_name: "",
     email: "",
     phone: "",
-    vertical: "plumbing",
+    vertical: "",
     service_areas: "",
   });
+  // Live source of truth for verticals — see src/pages/admin/Verticals.tsx.
+  // Replaces the long-stale hardcoded VERTICALS map, which only ever had one
+  // entry ("tree_service") while the real table has 5 active verticals.
+  const { data: verticals } = useActiveVerticals();
 
-  const { data: applications, isLoading } = useQuery({
+  const { data: applications, isLoading, isError, error: applicationsError } = useQuery({
     queryKey: ["provider-applications"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -121,7 +125,7 @@ export default function ProviderApplications() {
       contact_name: "",
       email: "",
       phone: "",
-      vertical: "plumbing",
+      vertical: verticals?.[0]?.slug ?? "",
       service_areas: "",
     });
     setSelectedApp(app);
@@ -135,7 +139,7 @@ export default function ProviderApplications() {
           <div>
             <div className="flex items-center justify-between">
               <h1 className="text-2xl font-bold font-sans">Provider Applications</h1>
-              <Badge variant="secondary">{applications?.length ?? 0} pending</Badge>
+              {!isError && <Badge variant="secondary">{applications?.length ?? 0} pending</Badge>}
             </div>
             <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
               Contractors who applied to join the network through the public sign-up form. Approving one
@@ -145,6 +149,13 @@ export default function ProviderApplications() {
 
           {isLoading ? (
             <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
+          ) : isError ? (
+            <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm">
+              <p className="font-medium">Couldn't load applications</p>
+              <p className="mt-1 font-mono text-xs text-muted-foreground">
+                {(applicationsError as Error)?.message}
+              </p>
+            </div>
           ) : !applications || applications.length === 0 ? (
             <div className="rounded-lg border bg-card p-10 text-center text-muted-foreground">
               No pending applications.
@@ -216,10 +227,10 @@ export default function ProviderApplications() {
                 <div><Label>Phone *</Label><Input value={approveForm.phone} onChange={(e) => setApproveForm({ ...approveForm, phone: e.target.value })} /></div>
                 <div>
                   <Label>Vertical</Label>
-                  <Select value={approveForm.vertical} onValueChange={(v) => setApproveForm({ ...approveForm, vertical: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                  <Select value={approveForm.vertical || undefined} onValueChange={(v) => setApproveForm({ ...approveForm, vertical: v })}>
+                    <SelectTrigger><SelectValue placeholder="Select a vertical" /></SelectTrigger>
                     <SelectContent>
-                      {Object.entries(VERTICALS).map(([key, v]) => <SelectItem key={key} value={key}>{v.label}</SelectItem>)}
+                      {verticals?.map((v) => <SelectItem key={v.id} value={v.slug}>{v.label}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -227,7 +238,7 @@ export default function ProviderApplications() {
 
                 <Button
                   onClick={() => approveMutation.mutate(selectedApp)}
-                  disabled={!approveForm.business_name || !approveForm.email || !approveForm.phone || !approveForm.contact_name || approveMutation.isPending}
+                  disabled={!approveForm.business_name || !approveForm.email || !approveForm.phone || !approveForm.contact_name || !approveForm.vertical || approveMutation.isPending}
                   className="w-full"
                 >
                   {approveMutation.isPending ? "Creating…" : "Approve & Create Buyer"}

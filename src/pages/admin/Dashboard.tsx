@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useLeads } from "@/hooks/useLeads";
+import { useActiveVerticals } from "@/hooks/useVerticals";
 import { supabase } from "@/integrations/supabase/client";
 import { PageMeta } from "@/components/PageMeta";
 import { AdminLayout } from "@/components/admin/AdminLayout";
@@ -12,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { SFV_CITIES, LEAD_STATUSES, URGENCY_LEVELS, VERTICALS, getServiceTypes } from "@/lib/constants";
+import { SFV_CITIES, LEAD_STATUSES, URGENCY_LEVELS } from "@/lib/constants";
 import { Search, Loader2, ScanSearch, ShieldBan, X } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -176,6 +177,11 @@ export default function AdminDashboard() {
   const [bulkSpamLoading, setBulkSpamLoading] = useState(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  // Live source of truth for verticals and their service types — see
+  // src/pages/admin/Verticals.tsx. Replaces the long-stale hardcoded
+  // VERTICALS map, which only ever had one entry ("tree_service") while the
+  // real table has 5 active verticals, each with its own service types.
+  const { data: verticals } = useActiveVerticals();
 
   function handleToggle(id: string) {
     setSelectedIds((prev) => {
@@ -418,14 +424,19 @@ export default function AdminDashboard() {
               <SelectTrigger className="w-[160px]"><SelectValue placeholder="Vertical" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Verticals</SelectItem>
-                {Object.entries(VERTICALS).map(([key, v]) => <SelectItem key={key} value={key}>{v.label}</SelectItem>)}
+                {verticals?.map((v) => <SelectItem key={v.id} value={v.slug}>{v.label}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={serviceType} onValueChange={handleFilterChange(setServiceType)}>
               <SelectTrigger className="w-[170px]"><SelectValue placeholder="Service" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Services</SelectItem>
-                {getServiceTypes(vertical || undefined).map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                {(vertical
+                  ? verticals?.find((v) => v.slug === vertical)?.service_types ?? []
+                  // Multiple verticals can share a service type name (e.g. "Other"),
+                  // so dedupe across all of them for the unfiltered list.
+                  : Array.from(new Set(verticals?.flatMap((v) => v.service_types) ?? []))
+                ).map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={urgency} onValueChange={handleFilterChange(setUrgency)}>
