@@ -103,10 +103,10 @@ const MANAGED_JOBS: ManagedJob[] = [
     name: "email-canary-check",
     label: "Check email delivery (canary)",
     description:
-      "Sends a probe email roughly hourly and confirms whether it actually arrived, so a delivery " +
+      "Sends a probe email once a day and confirms whether it actually arrived, so a delivery " +
       "outage is caught automatically instead of being discovered by an admin noticing nothing came " +
       "through.",
-    schedule: "Checked hourly",
+    schedule: "Daily at 2:00 PM UTC (7 AM PT)",
     confirm: {
       title: "Turn on the email delivery check?",
       body:

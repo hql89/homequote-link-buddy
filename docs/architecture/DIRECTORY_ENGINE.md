@@ -76,7 +76,7 @@ Set in the Supabase project (Edge Function secrets):
 |---|---|---|
 | `RESEND_API_KEY` | Email fallback | Optional — SMTP alone still works |
 | `RESEND_SENDER_EMAIL` | Email fallback | Defaults to the SMTP from-address |
-| `PUBLIC_SITE_URL` | Claim links in Email 2 | Defaults to `https://homequotelink.com` |
+| `PUBLIC_SITE_URL` | Claim links in Email 2, unsubscribe links in every outreach email | Set to `https://www.homequotelink.com` on 2026-08-24. The `https://homequotelink.com` fallback in code still works — the apex 308-redirects to `www` — but the explicit `www` value skips that hop, which matters for the RFC 8058 one-click unsubscribe POST fired by mail providers. |
 
 ## Deploy
 

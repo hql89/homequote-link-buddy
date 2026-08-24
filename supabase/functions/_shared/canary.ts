@@ -25,8 +25,20 @@
 /** How long a probe may go unconfirmed before it's treated as a failure. */
 export const GRACE_MINUTES = 20;
 
-/** Target cadence for new probes. Enforced by shouldSendNewProbe, not a cron interval. */
-export const PROBE_INTERVAL_MINUTES = 60;
+/**
+ * Target cadence for new probes. Enforced by shouldSendNewProbe, not a cron
+ * interval.
+ *
+ * 23 hours, not 24, for a daily probe — deliberately. The cron job fires at
+ * a fixed wall-clock time, but the probe actually sends a few seconds later
+ * (HTTP dispatch + SMTP handshake), so each day's last_sent_at drifts a
+ * little later than the one before. At a flat 1440 the very next run would
+ * measure ~23h59m since the last probe, decide "not due yet", and skip —
+ * silently turning a daily canary into a no-op. The hour of headroom
+ * absorbs that drift while still making a second probe in the same day
+ * impossible (a manual re-invoke minutes later is correctly a no-op).
+ */
+export const PROBE_INTERVAL_MINUTES = 23 * 60;
 
 const SUBJECT_PREFIX = "HomeQuoteLink Delivery Probe";
 

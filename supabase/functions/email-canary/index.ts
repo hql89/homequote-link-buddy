@@ -13,16 +13,20 @@
  *      (alarm_raised_at is set so a persistent outage doesn't re-alarm on
  *      the same row every time this runs).
  *   2. Sends a new probe if enough time has passed since the last one
- *      (shouldSendNewProbe — roughly hourly by default).
+ *      (shouldSendNewProbe — once a day by default).
  *
- * Checked hourly (cron schedule set in admin_toggle_cron_job). A tighter
+ * Checked once a day (cron schedule set in admin_toggle_cron_job). A tighter
  * check interval would catch an overdue probe sooner — the 20-minute grace
- * period only bites at check time, so hourly checks mean up to ~an hour's
+ * period only bites at check time, so daily checks mean up to ~a day's
  * detection latency for the "SMTP accepted it and silently discarded it"
  * failure mode specifically (a synchronous send failure is still caught
  * immediately regardless of check frequency, inside the same invocation
- * that attempts the send). Set to hourly deliberately, trading detection
- * speed for a simpler schedule — see migration 20260804160000.
+ * that attempts the send, and is what every canary failure so far has
+ * been). Slowed from hourly to daily at the user's explicit request
+ * (2026-08-24): one probe an hour was more mail than the signal justified.
+ * Scheduled an hour ahead of the outreach drip so a delivery problem
+ * surfaces before the day's real sends go out — see migration
+ * 20260824020000.
  *
  * The confirming half lives in confirm-canary and is driven by a SEPARATE
  * system: an n8n workflow with a Gmail API trigger (not IMAP — see

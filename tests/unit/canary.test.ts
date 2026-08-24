@@ -50,8 +50,24 @@ describe("shouldSendNewProbe", () => {
 
   it("is not due before the interval has elapsed", () => {
     const lastSentAt = new Date("2026-08-04T12:00:00Z");
-    const now = new Date(lastSentAt.getTime() + 59 * MIN);
+    const now = new Date(lastSentAt.getTime() + (PROBE_INTERVAL_MINUTES - 1) * MIN);
     expect(shouldSendNewProbe(lastSentAt, now)).toBe(false);
+  });
+
+  // The reason the daily interval is 23h and not 24h: cron fires at a fixed
+  // wall-clock time but the probe sends a few seconds later, so each day's
+  // last_sent_at drifts later. A flat 1440 would measure just under 24h on
+  // the next run and skip it — permanently.
+  it("stays due despite the send drifting later than the cron tick", () => {
+    const lastSentAt = new Date("2026-08-04T14:00:06Z");
+    const nextCronTick = new Date("2026-08-05T14:00:00Z");
+    expect(shouldSendNewProbe(lastSentAt, nextCronTick)).toBe(true);
+  });
+
+  it("does not fire twice in one day when re-invoked by hand", () => {
+    const lastSentAt = new Date("2026-08-04T14:00:06Z");
+    const minutesLater = new Date("2026-08-04T14:20:00Z");
+    expect(shouldSendNewProbe(lastSentAt, minutesLater)).toBe(false);
   });
 
   it("is due once the interval has fully elapsed", () => {

@@ -111,11 +111,11 @@ export function SMTPSettings({ config, setConfig, addLog }: SMTPSettingsProps) {
       if (error) throw error;
 
       setOfferCanary(false);
-      addLog("success", "Delivery check turned on — runs hourly.");
+      addLog("success", "Delivery check turned on — runs once a day.");
       toast({
         title: "Delivery check turned on",
         description:
-          "It will alarm every hour until the separate inbox-watching automation exists — that's expected, not a fault.",
+          "It will alarm once a day until the separate inbox-watching automation exists — that's expected, not a fault.",
       });
     } catch (err) {
       const error = err as Error;
@@ -379,11 +379,11 @@ export function SMTPSettings({ config, setConfig, addLog }: SMTPSettingsProps) {
               <div className="flex-1">
                 <p className="text-sm font-medium">Turn on the automatic delivery check?</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Checks hourly, going forward, that email is still actually arriving — not just being
+                  Checks once a day, going forward, that email is still actually arriving — not just being
                   accepted — so an outage like this one is caught automatically instead of discovered by
                   accident. One thing to know first: it needs a separate piece (an automation watching the
                   inbox and reporting back) that isn't built yet. Until it is, every check will correctly
-                  report "not confirmed" — an hourly false alarm, not a real one.
+                  report "not confirmed" — a daily false alarm, not a real one.
                 </p>
                 <div className="mt-3 flex gap-2">
                   <Button size="sm" className="gap-2" disabled={enablingCanary} onClick={handleEnableCanary}>

@@ -98,7 +98,7 @@ describe("SMTPSettings — test/confirm/canary flow", () => {
 
     await waitFor(() => expect(screen.getByText(/Turn on the automatic delivery check/i)).toBeInTheDocument());
     // The false-alarm caveat must be visible right there, not hidden behind another click.
-    expect(screen.getByText(/hourly false alarm, not a real one/i)).toBeInTheDocument();
+    expect(screen.getByText(/daily false alarm, not a real one/i)).toBeInTheDocument();
   });
 
   it("turning it on calls the same RPC Background Jobs uses, with the right job name", async () => {
