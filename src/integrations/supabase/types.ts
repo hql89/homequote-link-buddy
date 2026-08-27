@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.1"
+    PostgrestVersion: "14.17"
   }
   public: {
     Tables: {
@@ -189,9 +189,212 @@ export type Database = {
           },
         ]
       }
+      business_photos: {
+        Row: {
+          archive_reason: string | null
+          archived_at: string | null
+          archived_by: string | null
+          business_id: string
+          caption: string | null
+          created_at: string
+          id: string
+          sort_order: number
+          status: string
+          storage_path: string
+        }
+        Insert: {
+          archive_reason?: string | null
+          archived_at?: string | null
+          archived_by?: string | null
+          business_id: string
+          caption?: string | null
+          created_at?: string
+          id?: string
+          sort_order?: number
+          status?: string
+          storage_path: string
+        }
+        Update: {
+          archive_reason?: string | null
+          archived_at?: string | null
+          archived_by?: string | null
+          business_id?: string
+          caption?: string | null
+          created_at?: string
+          id?: string
+          sort_order?: number
+          status?: string
+          storage_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_photos_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "business_photos_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "public_business_listings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      businesses: {
+        Row: {
+          archive_reason: string | null
+          archived_at: string | null
+          archived_by: string | null
+          business_name: string
+          city: string
+          city_slug: string
+          claim_token: string
+          claimed_at: string | null
+          classification: string | null
+          created_at: string
+          email: string | null
+          email_confidence: string | null
+          email_review_assessed_at: string | null
+          email_review_notes: string | null
+          email_review_verdict: string | null
+          email_source_address: string | null
+          email_source_phone: string | null
+          email_source_url: string | null
+          email_undeliverable_at: string | null
+          enriched_at: string | null
+          featured_until: string | null
+          id: string
+          is_claimed: boolean
+          is_published: boolean
+          license_expires_at: string | null
+          license_number: string | null
+          license_status: string | null
+          listing_tier: string
+          outreach_bounce_kind: string | null
+          outreach_bounced_at: string | null
+          outreach_email_1_sent_at: string | null
+          outreach_email_2_sent_at: string | null
+          outreach_paused: boolean
+          outreach_suppressed_at: string | null
+          owner_name: string | null
+          phone: string | null
+          scraped_context: string | null
+          services: Json
+          slug: string
+          source: string
+          updated_at: string
+          vertical_slug: string | null
+          website_url: string | null
+        }
+        Insert: {
+          archive_reason?: string | null
+          archived_at?: string | null
+          archived_by?: string | null
+          business_name: string
+          city: string
+          city_slug: string
+          claim_token?: string
+          claimed_at?: string | null
+          classification?: string | null
+          created_at?: string
+          email?: string | null
+          email_confidence?: string | null
+          email_review_assessed_at?: string | null
+          email_review_notes?: string | null
+          email_review_verdict?: string | null
+          email_source_address?: string | null
+          email_source_phone?: string | null
+          email_source_url?: string | null
+          email_undeliverable_at?: string | null
+          enriched_at?: string | null
+          featured_until?: string | null
+          id?: string
+          is_claimed?: boolean
+          is_published?: boolean
+          license_expires_at?: string | null
+          license_number?: string | null
+          license_status?: string | null
+          listing_tier?: string
+          outreach_bounce_kind?: string | null
+          outreach_bounced_at?: string | null
+          outreach_email_1_sent_at?: string | null
+          outreach_email_2_sent_at?: string | null
+          outreach_paused?: boolean
+          outreach_suppressed_at?: string | null
+          owner_name?: string | null
+          phone?: string | null
+          scraped_context?: string | null
+          services?: Json
+          slug: string
+          source?: string
+          updated_at?: string
+          vertical_slug?: string | null
+          website_url?: string | null
+        }
+        Update: {
+          archive_reason?: string | null
+          archived_at?: string | null
+          archived_by?: string | null
+          business_name?: string
+          city?: string
+          city_slug?: string
+          claim_token?: string
+          claimed_at?: string | null
+          classification?: string | null
+          created_at?: string
+          email?: string | null
+          email_confidence?: string | null
+          email_review_assessed_at?: string | null
+          email_review_notes?: string | null
+          email_review_verdict?: string | null
+          email_source_address?: string | null
+          email_source_phone?: string | null
+          email_source_url?: string | null
+          email_undeliverable_at?: string | null
+          enriched_at?: string | null
+          featured_until?: string | null
+          id?: string
+          is_claimed?: boolean
+          is_published?: boolean
+          license_expires_at?: string | null
+          license_number?: string | null
+          license_status?: string | null
+          listing_tier?: string
+          outreach_bounce_kind?: string | null
+          outreach_bounced_at?: string | null
+          outreach_email_1_sent_at?: string | null
+          outreach_email_2_sent_at?: string | null
+          outreach_paused?: boolean
+          outreach_suppressed_at?: string | null
+          owner_name?: string | null
+          phone?: string | null
+          scraped_context?: string | null
+          services?: Json
+          slug?: string
+          source?: string
+          updated_at?: string
+          vertical_slug?: string | null
+          website_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "businesses_vertical_slug_fkey"
+            columns: ["vertical_slug"]
+            isOneToOne: false
+            referencedRelation: "verticals"
+            referencedColumns: ["slug"]
+          },
+        ]
+      }
       buyer_profiles: {
         Row: {
           ai_enriched_data: Json | null
+          archive_reason: string | null
+          archived_at: string | null
+          archived_by: string | null
           buyer_id: string | null
           company_description: string | null
           created_at: string | null
@@ -205,6 +408,9 @@ export type Database = {
         }
         Insert: {
           ai_enriched_data?: Json | null
+          archive_reason?: string | null
+          archived_at?: string | null
+          archived_by?: string | null
           buyer_id?: string | null
           company_description?: string | null
           created_at?: string | null
@@ -218,6 +424,9 @@ export type Database = {
         }
         Update: {
           ai_enriched_data?: Json | null
+          archive_reason?: string | null
+          archived_at?: string | null
+          archived_by?: string | null
           buyer_id?: string | null
           company_description?: string | null
           created_at?: string | null
@@ -241,6 +450,9 @@ export type Database = {
       }
       buyers: {
         Row: {
+          archive_reason: string | null
+          archived_at: string | null
+          archived_by: string | null
           business_name: string
           contact_name: string
           created_at: string
@@ -256,6 +468,9 @@ export type Database = {
           vertical: string
         }
         Insert: {
+          archive_reason?: string | null
+          archived_at?: string | null
+          archived_by?: string | null
           business_name: string
           contact_name: string
           created_at?: string
@@ -271,6 +486,9 @@ export type Database = {
           vertical?: string
         }
         Update: {
+          archive_reason?: string | null
+          archived_at?: string | null
+          archived_by?: string | null
           business_name?: string
           contact_name?: string
           created_at?: string
@@ -287,8 +505,200 @@ export type Database = {
         }
         Relationships: []
       }
+      data_audit_log: {
+        Row: {
+          action: string
+          actor_context: string
+          actor_user_id: string | null
+          id: string
+          occurred_at: string
+          reason: string | null
+          row_id: string
+          row_snapshot: Json
+          table_name: string
+        }
+        Insert: {
+          action: string
+          actor_context?: string
+          actor_user_id?: string | null
+          id?: string
+          occurred_at?: string
+          reason?: string | null
+          row_id: string
+          row_snapshot: Json
+          table_name: string
+        }
+        Update: {
+          action?: string
+          actor_context?: string
+          actor_user_id?: string | null
+          id?: string
+          occurred_at?: string
+          reason?: string | null
+          row_id?: string
+          row_snapshot?: Json
+          table_name?: string
+        }
+        Relationships: []
+      }
+      directory_leads: {
+        Row: {
+          archive_reason: string | null
+          archived_at: string | null
+          archived_by: string | null
+          business_id: string
+          created_at: string
+          email: string | null
+          full_name: string
+          id: string
+          ip_address: string | null
+          message: string | null
+          notified_at: string | null
+          notify_error: string | null
+          notify_skipped_reason: string | null
+          phone: string
+          preferred_time: string | null
+          source: string
+        }
+        Insert: {
+          archive_reason?: string | null
+          archived_at?: string | null
+          archived_by?: string | null
+          business_id: string
+          created_at?: string
+          email?: string | null
+          full_name: string
+          id?: string
+          ip_address?: string | null
+          message?: string | null
+          notified_at?: string | null
+          notify_error?: string | null
+          notify_skipped_reason?: string | null
+          phone: string
+          preferred_time?: string | null
+          source?: string
+        }
+        Update: {
+          archive_reason?: string | null
+          archived_at?: string | null
+          archived_by?: string | null
+          business_id?: string
+          created_at?: string
+          email?: string | null
+          full_name?: string
+          id?: string
+          ip_address?: string | null
+          message?: string | null
+          notified_at?: string | null
+          notify_error?: string | null
+          notify_skipped_reason?: string | null
+          phone?: string
+          preferred_time?: string | null
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "directory_leads_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "directory_leads_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "public_business_listings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_canary_probes: {
+        Row: {
+          alarm_raised_at: string | null
+          confirmed_at: string | null
+          id: string
+          send_error: string | null
+          send_status: string
+          sent_at: string
+        }
+        Insert: {
+          alarm_raised_at?: string | null
+          confirmed_at?: string | null
+          id?: string
+          send_error?: string | null
+          send_status: string
+          sent_at?: string
+        }
+        Update: {
+          alarm_raised_at?: string | null
+          confirmed_at?: string | null
+          id?: string
+          send_error?: string | null
+          send_status?: string
+          sent_at?: string
+        }
+        Relationships: []
+      }
+      email_send_log: {
+        Row: {
+          body: string | null
+          bounce_kind: string | null
+          bounced_at: string | null
+          email_type: string
+          error_message: string | null
+          id: string
+          job_name: string
+          method: string | null
+          recipient_email: string
+          recipient_kind: string | null
+          related_business_id: string | null
+          related_lead_id: string | null
+          sent_at: string
+          status: string
+          subject: string | null
+        }
+        Insert: {
+          body?: string | null
+          bounce_kind?: string | null
+          bounced_at?: string | null
+          email_type: string
+          error_message?: string | null
+          id?: string
+          job_name: string
+          method?: string | null
+          recipient_email: string
+          recipient_kind?: string | null
+          related_business_id?: string | null
+          related_lead_id?: string | null
+          sent_at?: string
+          status: string
+          subject?: string | null
+        }
+        Update: {
+          body?: string | null
+          bounce_kind?: string | null
+          bounced_at?: string | null
+          email_type?: string
+          error_message?: string | null
+          id?: string
+          job_name?: string
+          method?: string | null
+          recipient_email?: string
+          recipient_kind?: string | null
+          related_business_id?: string | null
+          related_lead_id?: string | null
+          sent_at?: string
+          status?: string
+          subject?: string | null
+        }
+        Relationships: []
+      }
       homeowner_profiles: {
         Row: {
+          archive_reason: string | null
+          archived_at: string | null
+          archived_by: string | null
           created_at: string | null
           email: string
           full_name: string | null
@@ -298,6 +708,9 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          archive_reason?: string | null
+          archived_at?: string | null
+          archived_by?: string | null
           created_at?: string | null
           email: string
           full_name?: string | null
@@ -307,6 +720,9 @@ export type Database = {
           user_id: string
         }
         Update: {
+          archive_reason?: string | null
+          archived_at?: string | null
+          archived_by?: string | null
           created_at?: string | null
           email?: string
           full_name?: string | null
@@ -316,6 +732,168 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      ignored_senders: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          match_type: string
+          note: string | null
+          pattern: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          match_type: string
+          note?: string | null
+          pattern: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          match_type?: string
+          note?: string | null
+          pattern?: string
+        }
+        Relationships: []
+      }
+      inbound_emails: {
+        Row: {
+          body_text: string | null
+          business_id: string | null
+          classification: string
+          extracted_url: string | null
+          from_email: string
+          from_name: string | null
+          handled_at: string | null
+          id: string
+          is_priority: boolean
+          message_id: string
+          received_at: string
+          subject: string | null
+        }
+        Insert: {
+          body_text?: string | null
+          business_id?: string | null
+          classification?: string
+          extracted_url?: string | null
+          from_email: string
+          from_name?: string | null
+          handled_at?: string | null
+          id?: string
+          is_priority?: boolean
+          message_id: string
+          received_at?: string
+          subject?: string | null
+        }
+        Update: {
+          body_text?: string | null
+          business_id?: string | null
+          classification?: string
+          extracted_url?: string | null
+          from_email?: string
+          from_name?: string | null
+          handled_at?: string | null
+          id?: string
+          is_priority?: boolean
+          message_id?: string
+          received_at?: string
+          subject?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inbound_emails_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbound_emails_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "public_business_listings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ingest_queue: {
+        Row: {
+          archive_reason: string | null
+          archived_at: string | null
+          archived_by: string | null
+          business_id: string | null
+          business_name: string
+          city: string | null
+          classification: string | null
+          created_at: string
+          id: string
+          license_number: string | null
+          phone: string | null
+          processed_at: string | null
+          raw: Json
+          skip_reason: string | null
+          source: string
+          status: string
+          vertical_slug: string | null
+        }
+        Insert: {
+          archive_reason?: string | null
+          archived_at?: string | null
+          archived_by?: string | null
+          business_id?: string | null
+          business_name: string
+          city?: string | null
+          classification?: string | null
+          created_at?: string
+          id?: string
+          license_number?: string | null
+          phone?: string | null
+          processed_at?: string | null
+          raw?: Json
+          skip_reason?: string | null
+          source?: string
+          status?: string
+          vertical_slug?: string | null
+        }
+        Update: {
+          archive_reason?: string | null
+          archived_at?: string | null
+          archived_by?: string | null
+          business_id?: string | null
+          business_name?: string
+          city?: string | null
+          classification?: string | null
+          created_at?: string
+          id?: string
+          license_number?: string | null
+          phone?: string | null
+          processed_at?: string | null
+          raw?: Json
+          skip_reason?: string | null
+          source?: string
+          status?: string
+          vertical_slug?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ingest_queue_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ingest_queue_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "public_business_listings"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       job_run_logs: {
         Row: {
@@ -468,6 +1046,9 @@ export type Database = {
         Row: {
           ai_authenticity_reason: string | null
           ai_authenticity_score: number | null
+          archive_reason: string | null
+          archived_at: string | null
+          archived_by: string | null
           assigned_buyer_id: string | null
           city: string | null
           consent_to_contact: boolean
@@ -503,6 +1084,9 @@ export type Database = {
         Insert: {
           ai_authenticity_reason?: string | null
           ai_authenticity_score?: number | null
+          archive_reason?: string | null
+          archived_at?: string | null
+          archived_by?: string | null
           assigned_buyer_id?: string | null
           city?: string | null
           consent_to_contact?: boolean
@@ -538,6 +1122,9 @@ export type Database = {
         Update: {
           ai_authenticity_reason?: string | null
           ai_authenticity_score?: number | null
+          archive_reason?: string | null
+          archived_at?: string | null
+          archived_by?: string | null
           assigned_buyer_id?: string | null
           city?: string | null
           consent_to_contact?: boolean
@@ -583,6 +1170,9 @@ export type Database = {
       media_assets: {
         Row: {
           alt_text: string | null
+          archive_reason: string | null
+          archived_at: string | null
+          archived_by: string | null
           created_at: string | null
           id: string
           metadata: Json | null
@@ -593,6 +1183,9 @@ export type Database = {
         }
         Insert: {
           alt_text?: string | null
+          archive_reason?: string | null
+          archived_at?: string | null
+          archived_by?: string | null
           created_at?: string | null
           id?: string
           metadata?: Json | null
@@ -603,6 +1196,9 @@ export type Database = {
         }
         Update: {
           alt_text?: string | null
+          archive_reason?: string | null
+          archived_at?: string | null
+          archived_by?: string | null
           created_at?: string | null
           id?: string
           metadata?: Json | null
@@ -610,6 +1206,81 @@ export type Database = {
           title?: string | null
           type?: string
           url?: string
+        }
+        Relationships: []
+      }
+      outreach_sends: {
+        Row: {
+          business_id: string | null
+          email_type: string
+          id: string
+          sent_at: string
+          variant_key: string
+        }
+        Insert: {
+          business_id?: string | null
+          email_type: string
+          id?: string
+          sent_at?: string
+          variant_key: string
+        }
+        Update: {
+          business_id?: string | null
+          email_type?: string
+          id?: string
+          sent_at?: string
+          variant_key?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outreach_sends_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outreach_sends_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "public_business_listings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      outreach_template_variants: {
+        Row: {
+          body: string
+          created_at: string
+          email_type: string
+          id: string
+          is_active: boolean
+          subject: string
+          updated_at: string
+          variant_key: string
+          weight: number
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          email_type: string
+          id?: string
+          is_active?: boolean
+          subject: string
+          updated_at?: string
+          variant_key: string
+          weight?: number
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          email_type?: string
+          id?: string
+          is_active?: boolean
+          subject?: string
+          updated_at?: string
+          variant_key?: string
+          weight?: number
         }
         Relationships: []
       }
@@ -700,6 +1371,9 @@ export type Database = {
       }
       posts: {
         Row: {
+          archive_reason: string | null
+          archived_at: string | null
+          archived_by: string | null
           canonical_url: string | null
           category: string | null
           content: string
@@ -723,6 +1397,9 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          archive_reason?: string | null
+          archived_at?: string | null
+          archived_by?: string | null
           canonical_url?: string | null
           category?: string | null
           content: string
@@ -746,6 +1423,9 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          archive_reason?: string | null
+          archived_at?: string | null
+          archived_by?: string | null
           canonical_url?: string | null
           category?: string | null
           content?: string
@@ -772,6 +1452,9 @@ export type Database = {
       }
       reviews: {
         Row: {
+          archive_reason: string | null
+          archived_at: string | null
+          archived_by: string | null
           buyer_id: string | null
           buyer_responded_at: string | null
           buyer_response: string | null
@@ -784,6 +1467,9 @@ export type Database = {
           reviewer_user_id: string
         }
         Insert: {
+          archive_reason?: string | null
+          archived_at?: string | null
+          archived_by?: string | null
           buyer_id?: string | null
           buyer_responded_at?: string | null
           buyer_response?: string | null
@@ -796,6 +1482,9 @@ export type Database = {
           reviewer_user_id: string
         }
         Update: {
+          archive_reason?: string | null
+          archived_at?: string | null
+          archived_by?: string | null
           buyer_id?: string | null
           buyer_responded_at?: string | null
           buyer_response?: string | null
@@ -960,10 +1649,109 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      public_business_listings: {
+        Row: {
+          business_name: string | null
+          city: string | null
+          city_slug: string | null
+          created_at: string | null
+          id: string | null
+          is_claimed: boolean | null
+          listing_tier: string | null
+          owner_name: string | null
+          phone: string | null
+          scraped_context: string | null
+          services: Json | null
+          slug: string | null
+          tier_rank: number | null
+          vertical_slug: string | null
+          website_url: string | null
+        }
+        Insert: {
+          business_name?: string | null
+          city?: string | null
+          city_slug?: string | null
+          created_at?: string | null
+          id?: string | null
+          is_claimed?: boolean | null
+          listing_tier?: never
+          owner_name?: string | null
+          phone?: string | null
+          scraped_context?: string | null
+          services?: Json | null
+          slug?: string | null
+          tier_rank?: never
+          vertical_slug?: string | null
+          website_url?: string | null
+        }
+        Update: {
+          business_name?: string | null
+          city?: string | null
+          city_slug?: string | null
+          created_at?: string | null
+          id?: string | null
+          is_claimed?: boolean | null
+          listing_tier?: never
+          owner_name?: string | null
+          phone?: string | null
+          scraped_context?: string | null
+          services?: Json | null
+          slug?: string | null
+          tier_rank?: never
+          vertical_slug?: string | null
+          website_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "businesses_vertical_slug_fkey"
+            columns: ["vertical_slug"]
+            isOneToOne: false
+            referencedRelation: "verticals"
+            referencedColumns: ["slug"]
+          },
+        ]
+      }
+      public_directory_cities: {
+        Row: {
+          city: string | null
+          city_slug: string | null
+          listing_count: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
+      add_ignored_sender_internal: {
+        Args: { p_match_type: string; p_note?: string; p_pattern: string }
+        Returns: number
+      }
+      admin_add_ignored_sender: {
+        Args: { p_match_type: string; p_note?: string; p_pattern: string }
+        Returns: number
+      }
+      admin_archive_row: {
+        Args: { p_id: string; p_reason?: string; p_table: string }
+        Returns: Json
+      }
+      admin_archived_summary: {
+        Args: never
+        Returns: {
+          archived_count: number
+          table_name: string
+        }[]
+      }
       admin_database_diagnostics: { Args: never; Returns: Json }
+      admin_list_archived: {
+        Args: { p_limit?: number; p_offset?: number; p_table: string }
+        Returns: {
+          archive_reason: string
+          archived_at: string
+          archived_by: string
+          id: string
+          label: string
+          row_data: Json
+        }[]
+      }
       admin_list_cron_jobs: {
         Args: never
         Returns: {
@@ -974,7 +1762,42 @@ export type Database = {
           schedule: string
         }[]
       }
+      admin_outreach_variant_stats: {
+        Args: never
+        Returns: {
+          claimed_count: number
+          email_type: string
+          last_sent_at: string
+          replied_count: number
+          sent_count: number
+          variant_key: string
+        }[]
+      }
       admin_prune_internal_job_logs: { Args: never; Returns: Json }
+      admin_purge_archived: {
+        Args: { p_archived_before: string; p_limit?: number; p_table: string }
+        Returns: Json
+      }
+      admin_purge_by_ids: {
+        Args: { p_ids: string[]; p_table: string }
+        Returns: Json
+      }
+      admin_purgeable_refs: {
+        Args: { p_before: string; p_limit?: number; p_table: string }
+        Returns: {
+          id: string
+          storage_refs: string[]
+        }[]
+      }
+      admin_recent_alarms: {
+        Args: { p_since?: string }
+        Returns: {
+          created_at: string
+          error_message: string
+          id: string
+          metadata: Json
+        }[]
+      }
       admin_recent_job_runs: {
         Args: { p_limit?: number }
         Returns: {
@@ -988,14 +1811,28 @@ export type Database = {
           status: string
         }[]
       }
+      admin_remove_ignored_sender: {
+        Args: { p_id: string }
+        Returns: undefined
+      }
+      admin_restore_row: {
+        Args: { p_id: string; p_table: string }
+        Returns: Json
+      }
       admin_toggle_cron_job: {
         Args: { p_enable: boolean; p_jobname: string }
         Returns: Json
       }
+      archivable_tables: { Args: never; Returns: string[] }
       is_admin: { Args: never; Returns: boolean }
       purge_analytics_by_ip_or_visitor: {
         Args: { p_ip?: string; p_visitor_id?: string }
         Returns: number
+      }
+      run_enrich_business_email: { Args: never; Returns: number }
+      sender_matches_pattern: {
+        Args: { p_email: string; p_match_type: string; p_pattern: string }
+        Returns: boolean
       }
     }
     Enums: {

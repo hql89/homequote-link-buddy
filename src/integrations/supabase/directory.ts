@@ -618,7 +618,7 @@ export async function saveOutreachVariant(
   id: string,
   values: Pick<OutreachVariantRow, "subject" | "body" | "weight" | "is_active">,
 ): Promise<{ message: string } | null> {
-  const { error } = await directoryDb
+  const { error } = await supabase
     .from("outreach_template_variants")
     .update({ ...values, updated_at: new Date().toISOString() })
     .eq("id", id);
@@ -630,7 +630,7 @@ export async function createOutreachVariant(
   values: Pick<OutreachVariantRow, "email_type" | "variant_key" | "subject" | "body"> &
     Partial<Pick<OutreachVariantRow, "weight" | "is_active">>,
 ): Promise<{ message: string } | null> {
-  const { error } = await directoryDb.from("outreach_template_variants").insert({
+  const { error } = await supabase.from("outreach_template_variants").insert({
     weight: 1,
     // New variants start switched off. Adding one is an editing step, not a
     // decision to start mailing it — that's the active toggle, made once the
