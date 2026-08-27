@@ -27,8 +27,15 @@ function sentBody(): Record<string, unknown> {
   return opts.body;
 }
 
-function setLocation(path: string) {
-  window.history.replaceState({}, "", path);
+/**
+ * A URL object exposes every property the service reads from window.location
+ * (hostname, pathname, search, href), so it stands in directly. Stubbed rather
+ * than driven through history.replaceState because jsdom serves pages from
+ * localhost, which the service now deliberately refuses to track.
+ */
+const ORIGIN = "https://homequotelink.com";
+function setLocation(pathOrUrl: string) {
+  vi.stubGlobal("location", new URL(pathOrUrl, ORIGIN));
 }
 
 describe("analyticsService", () => {
@@ -143,14 +150,26 @@ describe("analyticsService", () => {
   });
 
   it("sends nothing from a Lovable preview host", async () => {
-    vi.stubGlobal("location", {
-      hostname: "preview.lovable.app",
-      pathname: "/",
-      search: "",
-      href: "https://preview.lovable.app/",
-    });
+    setLocation("https://preview.lovable.app/");
 
     await trackPageView("/");
+
+    expect(invoke).not.toHaveBeenCalled();
+    expect(window.gtag).not.toHaveBeenCalled();
+  });
+
+  // Local dev shares the production Supabase project, so an untracked
+  // localhost would file real page views against the live table and read as
+  // visitor traffic on the admin dashboard.
+  it.each([
+    "http://localhost:5199/faq",
+    "http://127.0.0.1:5199/faq",
+    "http://app.localhost:5199/faq",
+    "http://macbook.local:5199/faq",
+  ])("sends nothing from local development (%s)", async (url) => {
+    setLocation(url);
+
+    await trackPageView("/faq");
 
     expect(invoke).not.toHaveBeenCalled();
     expect(window.gtag).not.toHaveBeenCalled();

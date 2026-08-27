@@ -39,6 +39,20 @@ function getSessionId(): string {
   return id;
 }
 
+/** Hosts whose traffic is ours, not a visitor's, and must never be recorded. */
+function isNonProductionHost(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname.endsWith(".localhost") ||
+    hostname === "127.0.0.1" ||
+    hostname === "[::1]" ||
+    hostname === "::1" ||
+    hostname.endsWith(".local") ||
+    hostname.includes("lovableproject.com") ||
+    hostname.includes("lovable.app")
+  );
+}
+
 const REDACTED = "redacted";
 
 /** Query params whose value is a credential, not a label. */
@@ -168,9 +182,12 @@ export async function trackEvent(options: TrackEventOptions) {
     return;
   }
 
-  // Skip tracking for Lovable preview environments
-  const hostname = window.location.hostname;
-  if (hostname.includes("lovableproject.com") || hostname.includes("lovable.app")) {
+  // Skip preview and local development. The Lovable hosts were already
+  // excluded; localhost was not, and only escaped notice while trackEvent had
+  // no server-side sink to write to. Restoring that sink means every
+  // `npm run dev` session would otherwise file real page views against the
+  // production table and show up as traffic on the admin dashboard.
+  if (isNonProductionHost(window.location.hostname)) {
     return;
   }
 
