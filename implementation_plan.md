@@ -73,12 +73,27 @@ mocked-supabase-client convention used across `tests/unit`.
 Revert the single source file. No schema change, no deploy dependency.
 
 ### Acceptance criteria
-- [ ] A page view on a non-admin route inserts a row into `analytics_events`
-- [ ] No `analytics_events` row ever contains a claim token
-- [ ] GA4 continues to receive the same events it does today
-- [ ] Either sink failing leaves the other working and the page unbroken
-- [ ] Admin analytics dashboard shows live data again
-- [ ] Full test suite passes with no new failures
+- [x] A page view on a non-admin route inserts a row into `analytics_events` — verified twice:
+      against the dev server, then against production after deploy
+      (`https://www.homequotelink.com/faq`, 2026-08-27 20:50 UTC, the first new row since
+      2026-03-22)
+- [x] No `analytics_events` row ever contains a claim token — verified in a real browser with a
+      canary token: stored `page_url` came back `...claim?token=redacted&city=encino`, with the
+      non-secret `city` param intact
+- [x] GA4 continues to receive the same events it does today
+- [x] Either sink failing leaves the other working and the page unbroken
+- [x] Admin analytics dashboard shows live data again — established by the data, not by opening
+      the page: `SiteAnalytics.tsx` reads `analytics_events`, which is now being written. The
+      route is admin-gated, so its rendering stays covered by `SiteAnalytics.test.tsx`.
+- [x] Full test suite passes with no new failures — 67 files / 627 tests. The 34 `tsc` errors
+      are pre-existing stale-generated-types debt in five admin files, none of them touched
+      here; `npm run build` is clean.
+
+### Found while verifying, fixed in the same phase
+Restoring the server-side sink meant local development began filing real page views into the
+production table — the host check skipped Lovable preview domains but not localhost, which was
+harmless only while there was no sink to write to. Loopback, `*.localhost` and `*.local` now
+skip, and migration `20260827030000` removed the three rows that landed first.
 
 ---
 
@@ -118,10 +133,19 @@ reviewed before it can send. Activation is a one-line SQL update, called out in 
 the rows are inactive, so there is no partial-campaign state to unwind.
 
 ### Acceptance criteria
-- [ ] Two B rows exist, both inactive
-- [ ] Placeholders used by B are a subset of those A already uses
-- [ ] No send path can select an inactive variant (proven by reading the selection code)
-- [ ] The exact copy is surfaced to the user for approval before activation
+- [x] Two B rows exist, both inactive — confirmed in `outreach_template_variants`
+- [x] Placeholders used by B are within what each stage's `vars` map builds — now enforced by
+      `tests/unit/outreachVariantPlaceholders.test.ts`, which also covers the existing A copy
+- [x] No send path can select an inactive variant — `pickOutreachVariant` filters with
+      `.eq("is_active", true)` and `pickVariant` filters again; both already covered by
+      `outreachVariants.test.ts`
+- [x] The exact copy is surfaced to the user for approval before activation
+
+### Note added during implementation
+`renderTemplate` substitutes an unknown placeholder with an empty string, so a placeholder that
+a stage does not build is neither a build error nor a runtime error — it is a blank space in an
+email already delivered to a real business owner. Email 1 has no `claim_url`. That is what the
+new test exists to prevent.
 
 ---
 
@@ -156,11 +180,21 @@ proportionally. The chosen limit is stated explicitly in the handoff rather than
 `admin_settings` remains an independent kill switch that needs no deploy.
 
 ### Acceptance criteria
-- [ ] Cron entry exists, is active, and is proven to authenticate (a real run logged in
-      `job_run_logs`, not merely a scheduled entry)
-- [ ] `daily_limit` raised, new value recorded here and in the handoff
-- [ ] A manual invocation produces a `job_run_logs` row with a non-zero `considered`
-- [ ] Enrichment writes emails only; it cannot itself send anything to a business
+- [x] Cron entry exists and is active — `enrich-business-email-daily`, `0 13 * * *`
+- [x] `daily_limit` raised 5 → 20, from measured run times rather than estimate
+- [x] Enrichment writes addresses only; it cannot itself send anything to a business
+- [x] The trigger function is not callable by `anon` or `authenticated`
+      (`postgres=X | service_role=X`)
+- [ ] **BLOCKED — proven to authenticate.** `isPrivilegedCaller` requires the secret key, and
+      `vault.secrets` is empty, so the job cannot yet reach the function. Until the secret
+      exists each run logs a `failure` row naming it. This is the one step that needs the
+      user: add the project's secret (service role) API key in the Supabase dashboard under
+      Project Settings → Vault, named exactly `supabase_secret_key`. It must not be committed,
+      which is why it is not in a migration.
+- [ ] **BLOCKED by the above** — a real run producing a `job_run_logs` row with non-zero
+      `considered`. Cannot be verified from here for a second, independent reason: the
+      Supabase MCP connection is read-only, so invoking a function that writes fails for the
+      connection's reason rather than the function's.
 
 ---
 
