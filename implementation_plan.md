@@ -1,111 +1,176 @@
-# Implementation Plan: Skip lead-notification emails to known-dead business addresses, and show it
+# Implementation Plan: Restore measurement, add an email B variant, schedule enrichment
 
-## Objective
-`submit-directory-lead` (the edge function that emails a business every time a homeowner
-requests a quote through their listing) sends to `business.email` unconditionally. It never
-checks `businesses.email_undeliverable_at` or `businesses.outreach_suppressed_at` — the two
-flags that `send-outreach-drip` already respects. So a business already proven dead (auto-
-detected from a real bounce) or manually suppressed from the Replies screen still gets pinged
-every time a new lead comes in.
+## Context
 
-This plan closes that gap, and — per explicit request — makes the skip **visible**, not a
-silent behavior change: a badge on the bounce row that caused the suppression, and a running
-counter on the admin Overview dashboard, so the mechanism is verifiable at a glance instead of
-something you have to take on faith.
+20 businesses have been emailed. 3 unsubscribed (15%), 1 hard-bounced, 0 claimed their
+listing, 0 replied with interest. The drip has ~6 sends of runway left before it starves.
 
-## Acceptance Criteria
-- [x] `submit-directory-lead` does not attempt to send when `business.email_undeliverable_at`
-      or `business.outreach_suppressed_at` is set; the lead itself is still saved either way.
-- [x] The skip is recorded on the `directory_leads` row in a field distinct from a genuine SMTP
-      failure (`notify_error`), so "we knew not to try" and "we tried and it broke" never look
-      the same in the data.
-- [x] The skip is recorded in `job_run_logs` metadata (status `"partial"`), matching how
-      `send-outreach-drip` already logs skip reasons.
-- [x] Replies.tsx: a bounce row whose matched business has `email_undeliverable_at` set shows
-      an explicit "Auto-suppressed since <date>" badge (emerald, ShieldOff icon), so looking at
-      the exact row from the screenshot proves the mechanism fired.
-- [x] Admin Overview dashboard shows a count of lead notifications skipped for a dead/suppressed
-      email in the selected date range, so the mechanism's effect is visible on an ongoing basis,
-      not just per-row.
-- [x] No change to `send-outreach-drip`, `unsubscribe`, or `receive-inbound-email` — those paths
-      already work correctly and are out of scope.
+The temptation is to open the enrichment valve and refill the pool from the 472 queued
+businesses. That would send the same zero-converting message to 20x more people. This plan
+does the two things that make the next batch informative first, and only then refills.
 
-## Component Discovery
-### Reused Existing
-- `businesses.email_undeliverable_at` / `outreach_suppressed_at` — already the source of truth;
-  no new suppression concept is introduced.
-- `directory_leads.notify_error` — kept as-is for genuine send failures; a new column is added
-  alongside it rather than overloading its meaning (see Database Migrations).
-- `logRun()` (`supabase/functions/_shared/directory.ts:332`) — reused as-is for job-run logging.
-- `Badge` (`src/components/ui/badge.tsx` via shadcn) — reused for the new Replies.tsx indicator,
-  same component already used for "Handled" / "Looks like a question" badges on the same row.
-- `KpiCard` (`src/components/admin/analytics/KpiCard.tsx`) — reused on Overview.tsx for the new
-  skipped-notifications count, matching how every other Overview metric is presented.
+Executed in three ordered phases. Each phase is independently shippable.
 
-### New (Justified)
-- None. This is a gap-closing fix using the existing suppression columns and existing UI
-  primitives; no new component, hook, or table is needed.
+---
 
-## Files Changed
-| File | Change Type | Reason |
-|------|-------------|--------|
-| `supabase/migrations/20260824010000_directory_lead_skip_reason.sql` | new | Adds `directory_leads.notify_skipped_reason text` so a deliberate skip is distinguishable from a delivery failure. |
-| `supabase/functions/submit-directory-lead/index.ts` | modify | Select `email_undeliverable_at, outreach_suppressed_at` on the business lookup (~line 176); before the send block (~line 222), check both flags and skip the send, writing `notify_skipped_reason` instead of attempting `sendOutreachEmail`; include the skip reason in the `logRun` metadata (~line 265). |
-| `src/pages/admin/Replies.tsx` | modify | Extend `BusinessInfo` (line 22) and both business `select()` calls (lines ~103, ~121) to include `email_undeliverable_at`; render an "Auto-suppressed" badge next to the existing business name span (~line 344) when it's set. |
-| `src/pages/admin/Overview.tsx` | modify | Add one more count query (skipped lead notifications, `directory_leads.notify_skipped_reason not null` within the selected range, with a `*Prev` counterpart for the trend arrow) alongside the existing `Promise.all` batch (~line 76); add one `KpiCard` to the metrics grid. |
+## Phase 1 — Restore site analytics
 
-## Database Migrations
-`supabase/migrations/20260824010000_directory_lead_skip_reason.sql`:
+### Root cause (verified, not assumed)
 
-```sql
--- Distinguishes "we deliberately didn't try to email this business" from a
--- genuine send failure (notify_error). Read by submit-directory-lead (write)
--- and the admin Overview dashboard (read, for the skipped-notifications count).
-alter table public.directory_leads
-  add column if not exists notify_skipped_reason text;
+Commit `922bf81` ("feat: refactor admin settings and integrate GA4 tracking") rewrote
+`trackEvent()` in `src/services/analyticsService.ts` to send events to Google Analytics via
+`gtag` **instead of** the Supabase `analytics_events` table. The Supabase write was removed
+entirely. That is the sole reason the table has been empty since 2026-03-22.
 
-comment on column public.directory_leads.notify_skipped_reason is
-  'Set when the business notification email was deliberately not sent '
-  '(e.g. business.email_undeliverable_at or outreach_suppressed_at was set '
-  'at submit time). Null means either it was sent, or it failed and '
-  'notify_error explains why — never both columns at once.';
-```
+Things that are NOT the cause, checked and ruled out:
+- Page-view tracking IS wired: `App.tsx` renders `<PageTracker />` → `usePageTracking()` →
+  `trackPageView()` on every route change. This has been correct the whole time.
+- The `track-event` edge function is deployed and ACTIVE, takes `verify_jwt: false`, and
+  inserts with the service-role key, so there is no RLS or auth obstacle.
+- `VITE_GA_MEASUREMENT_ID` is set in local `.env` and `gtag` is loaded in `index.html`.
 
-Rollback:
-```sql
-alter table public.directory_leads
-  drop column if exists notify_skipped_reason;
-```
+Consequence beyond the missing data: `src/pages/admin/SiteAnalytics.tsx` reads
+`analytics_events` and has been rendering a dashboard built on a table frozen in March.
 
-No backfill: existing rows predate this check and were never skipped by it, so leaving them
-`null` is correct, not a data gap.
+### Why restore the Supabase write rather than lean on GA4
 
-## Test Strategy
-- Unit tests for `submit-directory-lead` (add to its existing test file if one exists, else new
-  `supabase/functions/submit-directory-lead/index.test.ts` following the pattern used elsewhere
-  in `supabase/functions/_shared`/other function tests):
-  - business with `email_undeliverable_at` set → no `sendOutreachEmail` call, lead row gets
-    `notify_skipped_reason` set, `notified_at` stays null, response is still `{ success: true }`.
-  - business with `outreach_suppressed_at` set → same behavior.
-  - business with neither flag set and a valid email → unchanged existing behavior (send
-    attempted, `notified_at`/`notify_error` set from the real result).
-  - business with no email at all → unchanged existing "Business has no email on file." path.
-- Integration/manual verification:
-  - Re-run the Thynk Remodeling scenario: business already has `email_undeliverable_at` set
-    (confirmed live in this session) — submit a test lead against that business id and confirm
-    no outbound email attempt in `email_send_log`, and `directory_leads.notify_skipped_reason`
-    is populated.
-  - Load `/admin/replies`, confirm the Thynk Remodeling bounce row now shows the
-    "Auto-suppressed" badge without clicking anything.
-  - Load `/admin` (Overview), confirm the new KPI count is non-zero after the test lead above,
-    and updates when the date range changes.
-- Regression check: `send-outreach-drip`'s existing filters and `Overview.tsx`'s existing
-  `eligible`/`pausedWithEmail` counts are untouched — diff should show only additive changes to
-  those files.
+The question this is meant to answer is "did the outreach emails bring anyone to the site."
+Answering it from GA4 means a human opening a console. Answering it from `analytics_events`
+means a SQL query, which is checkable directly and can be joined against `outreach_sends`.
+The claim links in Email 2 carry `?token=<claim_token>`, which uniquely identifies a business,
+so a server-side record can attribute a visit to the exact business that was emailed.
 
-## Rollback
-- Revert the four changed files via `git revert`.
-- Run the migration rollback SQL above to drop `notify_skipped_reason` (safe: nothing else
-  depends on it, and dropping it is non-destructive to any other column).
-- No cron jobs, edge function schedules, or external config reference this column, so no other
-  cleanup is required.
+GA4 stays — this is a dual write, not a revert.
+
+### Files changed
+| File | Change |
+| --- | --- |
+| `src/services/analyticsService.ts` | Restore the `track-event` invoke alongside the existing `gtag` call. Redact secrets from the recorded URL (see below). Neither sink may break the other or the page. |
+| `tests/unit/analyticsService.test.ts` | New. Covers dual-write, token redaction, opt-out paths, and failure isolation. |
+
+### Security constraint on this phase
+
+`page_url` currently records `window.location.href` verbatim. The claim URL is
+`/directory/:city/:slug/claim?token=<claim_token>` and that token is the credential that
+authorizes claiming a listing. Writing it into an analytics table widens exposure of a live
+secret. **`token` and any `*_token` query parameter must be redacted before the event is
+sent**, in both `page_url` and `page_path`. Attribution is preserved by recording that a
+token was present, not its value.
+
+### Test strategy
+Vitest + jsdom (`vitest.config.ts` already includes `tests/**`), mocking
+`@/integrations/supabase/client` and `window.gtag`, matching the existing
+mocked-supabase-client convention used across `tests/unit`.
+
+- page_view invokes `track-event` with the expected payload shape
+- `?token=` is redacted from `page_url` and `page_path`; non-secret params survive
+- `hql_ignore_tracking` opt-out suppresses both sinks
+- a Lovable preview hostname suppresses both sinks
+- a throwing/rejecting supabase invoke does not prevent the `gtag` call and does not throw
+- a missing `window.gtag` does not prevent the supabase invoke
+
+### Rollback
+Revert the single source file. No schema change, no deploy dependency.
+
+### Acceptance criteria
+- [ ] A page view on a non-admin route inserts a row into `analytics_events`
+- [ ] No `analytics_events` row ever contains a claim token
+- [ ] GA4 continues to receive the same events it does today
+- [ ] Either sink failing leaves the other working and the page unbroken
+- [ ] Admin analytics dashboard shows live data again
+- [ ] Full test suite passes with no new failures
+
+---
+
+## Phase 2 — Write a B variant for both outreach emails
+
+### Problem
+`outreach_template_variants` holds exactly one row per email type, both `variant_key = 'A'`.
+The A/B selection machinery in `send-outreach-drip` runs on every send and has never had a
+second variant to choose between — every email ever sent has been variant A by default. The
+15% unsubscribe rate therefore has no comparison point.
+
+### Approach
+Add a `B` row for `outreach_verify` (Email 1) and `outreach_preview` (Email 2), written to
+test a specific hypothesis rather than to be arbitrarily different.
+
+Hypothesis: variant A leads with what *we* built ("Your listing is ready for preview",
+"Quick question about {{business_name}}") and asks a stranger to act on an unsolicited
+listing. Variant B leads with the concrete thing the contractor gets — a named homeowner
+request in their own city — and asks for a yes/no rather than a click into a claim flow.
+
+**Inserted with `is_active = false`.** The copy goes to real local business owners; it is
+reviewed before it can send. Activation is a one-line SQL update, called out in the handoff.
+
+### Files changed
+| File | Change |
+| --- | --- |
+| `supabase/migrations/<ts>_outreach_variant_b.sql` | Insert two inactive B rows |
+| `tests/unit/OutreachVariants.test.tsx` | Assert the admin Outreach screen renders multiple variants and marks inactive ones as inactive |
+
+### Verification before writing the migration
+- Read `send-outreach-drip` variant selection to confirm `is_active = false` is genuinely
+  excluded from the pool (if it is not, this phase is unsafe as designed and must change)
+- Confirm the exact column set and placeholder syntax of the existing A rows
+
+### Rollback
+`delete from outreach_template_variants where variant_key = 'B'`. Nothing has been sent while
+the rows are inactive, so there is no partial-campaign state to unwind.
+
+### Acceptance criteria
+- [ ] Two B rows exist, both inactive
+- [ ] Placeholders used by B are a subset of those A already uses
+- [ ] No send path can select an inactive variant (proven by reading the selection code)
+- [ ] The exact copy is surfaced to the user for approval before activation
+
+---
+
+## Phase 3 — Put enrichment on a schedule
+
+### Problem
+`enrich-business-email` is enabled (`{"enabled": true, "daily_limit": 5}`), has a working
+Perplexity key, and has no cron entry. `cron.job` holds only `email-canary-check`,
+`prune-internal-job-logs-daily`, and `send-outreach-drip-daily`. It runs only when someone
+clicks the admin button, which last happened 2026-08-20. 472 published businesses are
+un-enriched.
+
+### Throughput
+64 enriched so far have yielded 20 usable emails — a ~31% hit rate. At 5/day that is ~1.5
+new emails/day against a drip that wants 5/day, and ~94 days to clear the queue. The limit
+needs to rise for the drip to stay fed.
+
+### Approach
+1. Add a `pg_cron` entry. `enrich-business-email` has `verify_jwt: true`, unlike the two
+   functions already on cron — the existing `email-canary-check` command is the reference for
+   how the Authorization header is passed. Confirm before writing, do not assume.
+2. Raise `daily_limit` from 5 to a value that feeds the drip without running far ahead of it.
+3. Schedule it earlier than the 15:00 UTC drip so a day's findings are available to that same
+   day's send.
+
+### Cost note
+Each enrichment attempt is a Perplexity API call. Raising the limit raises spend
+proportionally. The chosen limit is stated explicitly in the handoff rather than buried.
+
+### Rollback
+`select cron.unschedule('<jobname>')` and restore `daily_limit` to 5. The `enabled` flag in
+`admin_settings` remains an independent kill switch that needs no deploy.
+
+### Acceptance criteria
+- [ ] Cron entry exists, is active, and is proven to authenticate (a real run logged in
+      `job_run_logs`, not merely a scheduled entry)
+- [ ] `daily_limit` raised, new value recorded here and in the handoff
+- [ ] A manual invocation produces a `job_run_logs` row with a non-zero `considered`
+- [ ] Enrichment writes emails only; it cannot itself send anything to a business
+
+---
+
+## Cross-cutting
+
+### Concurrent session hazard
+A second worktree exists at `.claude/worktrees/focused-swirles-e3d0d6` (detached HEAD at
+`608ae5b`). Another session may be editing this repo. Every commit must name explicit
+pathspecs — never `git add -A` or `git commit -a`.
+
+### Out of scope, surfaced separately
+The SMTP password is stored as plaintext in `admin_settings.smtp_config`. Readable by anyone
+with database access. Not urgent, not part of this plan, tracked as its own task.
