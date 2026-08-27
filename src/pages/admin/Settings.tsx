@@ -18,7 +18,6 @@ const DEFAULT_CONFIG: SmtpConfig = {
   smtpHost: "",
   smtpPort: 587,
   smtpUsername: "",
-  smtpPassword: "",
   fromEmail: "",
   fromName: "Valley Home Pros",
   adminNotificationEmail: "",
@@ -51,7 +50,15 @@ export default function SettingsPage() {
       ]);
 
       if (!smtpResult.error && smtpResult.data?.setting_value) {
-        setConfig({ ...DEFAULT_CONFIG, ...(smtpResult.data.setting_value as unknown as SmtpConfig) });
+        // Drop `smtpPassword` before it reaches React state. The password now
+        // lives in Supabase Vault, but this row can still carry the old
+        // plaintext key until the drop-plaintext migration has run — and a
+        // credential that is merely *scheduled* for removal is still a
+        // credential sitting in the browser. Strip it here rather than relying
+        // on the column being gone.
+        const { smtpPassword: _discarded, ...safe } =
+          smtpResult.data.setting_value as unknown as SmtpConfig & { smtpPassword?: string };
+        setConfig({ ...DEFAULT_CONFIG, ...safe });
       }
       if (!templateData.error && templateData.data?.setting_value) {
         setTemplates({ ...DEFAULT_EMAIL_TEMPLATES, ...(templateData.data.setting_value as unknown as Record<string, { subject: string; body: string }>) });

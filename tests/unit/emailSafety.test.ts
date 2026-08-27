@@ -177,14 +177,19 @@ describe("checkVolumeCircuitBreaker", () => {
 
   it("merges into the existing smtp_config rather than replacing it", async () => {
     // A real bug caught during review: writing {enabled: false} directly
-    // would have silently destroyed smtpHost/Password/fromEmail/etc.
+    // would have silently destroyed smtpHost/Username/fromEmail/etc.
+    //
+    // The fixture carries no smtpPassword because the row no longer has one —
+    // the password moved to Supabase Vault. This used to assert the password
+    // survived the merge; that assertion was retired with the field rather
+    // than kept pointing at something the row must never contain again.
     const { client, updateCalls } = fakeClient({
       sendCount: 300,
       existingSmtpConfig: {
         smtpHost: "sv20.byethost20.org",
         smtpPort: 465,
         smtpUsername: "admin@homequotelink.com",
-        smtpPassword: "correct-horse-battery-staple",
+        smtpPasswordHint: "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022aple",
         fromEmail: "admin@homequotelink.com",
         fromName: "Home Quote Link",
         adminNotificationEmail: "dgarcia89@gmail.com",
@@ -199,9 +204,12 @@ describe("checkVolumeCircuitBreaker", () => {
     expect(written.enabled).toBe(false);
     // Every other field must survive the write untouched.
     expect(written.smtpHost).toBe("sv20.byethost20.org");
-    expect(written.smtpPassword).toBe("correct-horse-battery-staple");
+    expect(written.smtpUsername).toBe("admin@homequotelink.com");
+    expect(written.smtpPasswordHint).toBe("\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022aple");
     expect(written.fromEmail).toBe("admin@homequotelink.com");
     expect(written.adminNotificationEmail).toBe("dgarcia89@gmail.com");
+    // The breaker must never resurrect a plaintext password into the row.
+    expect(written).not.toHaveProperty("smtpPassword");
   });
 
   it("does not throw when the disable write itself fails", async () => {
