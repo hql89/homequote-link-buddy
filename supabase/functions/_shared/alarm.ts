@@ -45,7 +45,9 @@ export type AlarmKind =
   /** A delivery-canary probe was unconfirmed past its grace period, or could not be sent at all. */
   | "delivery_canary_failed"
   /** A well-formed unsubscribe token repeatedly matched no business — links may be broken. */
-  | "unsubscribe_token_misses";
+  | "unsubscribe_token_misses"
+  /** Outreach halted itself: too many of the recent sends bounced. */
+  | "outreach_bounce_rate";
 
 /**
  * Records an alarm. Never throws.

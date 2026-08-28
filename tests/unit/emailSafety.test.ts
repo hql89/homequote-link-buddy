@@ -4,6 +4,9 @@ import {
   checkVolumeCircuitBreaker,
   resolveBccCopy,
   buildUnsubscribeHeaders,
+  evaluateBounceCircuit,
+  resolveBounceCircuitSettings,
+  BOUNCE_CIRCUIT_DEFAULTS,
 } from "../../supabase/functions/_shared/emailSafety";
 import { classifyReply } from "../../supabase/functions/_shared/inboundClassifier";
 
@@ -266,5 +269,110 @@ describe("buildUnsubscribeHeaders", () => {
     expect(mailtoMatch).not.toBeNull();
     const prefilledBody = decodeURIComponent(mailtoMatch![1]);
     expect(classifyReply(prefilledBody).classification).toBe("unsubscribe");
+  });
+});
+
+// ── Bounce-rate circuit breaker ─────────────────────────────────────────────
+//
+// The threshold was 0.5 until 2026-08-27: sending only stopped once HALF of
+// recent mail bounced, by which point the domain's reputation is already
+// spent. These pin the tightened behaviour, and — more importantly — pin that
+// a bad config value can never quietly switch the breaker off.
+
+describe("resolveBounceCircuitSettings", () => {
+  it("uses the defaults when nothing is configured", () => {
+    expect(resolveBounceCircuitSettings()).toEqual(BOUNCE_CIRCUIT_DEFAULTS);
+    expect(resolveBounceCircuitSettings({})).toEqual(BOUNCE_CIRCUIT_DEFAULTS);
+  });
+
+  it("halts well below the rate a mailbox provider would act on", () => {
+    expect(BOUNCE_CIRCUIT_DEFAULTS.threshold).toBeLessThanOrEqual(0.2);
+  });
+
+  it("applies operator overrides", () => {
+    expect(
+      resolveBounceCircuitSettings({
+        bounce_window_days: 14,
+        bounce_min_sample: 50,
+        bounce_threshold: 0.05,
+      }),
+    ).toEqual({ windowDays: 14, minSample: 50, threshold: 0.05 });
+  });
+
+  it("accepts numeric strings, since config is hand-edited JSON", () => {
+    expect(resolveBounceCircuitSettings({ bounce_threshold: "0.25" }).threshold).toBe(0.25);
+  });
+
+  it.each([
+    ["not a number", "abc"],
+    ["null", null],
+    ["NaN", Number.NaN],
+    ["negative", -1],
+    ["zero threshold, which would halt sending forever", 0],
+    ["above 100%, which could never be met", 5],
+  ])("falls back to the default threshold for %s", (_label, value) => {
+    // The NaN case is the dangerous one: `rate >= NaN` is always false, so a
+    // single bad value would leave the breaker looking configured while never
+    // firing again.
+    expect(resolveBounceCircuitSettings({ bounce_threshold: value }).threshold).toBe(
+      BOUNCE_CIRCUIT_DEFAULTS.threshold,
+    );
+  });
+
+  it("falls back per-field rather than discarding the whole config", () => {
+    const settings = resolveBounceCircuitSettings({
+      bounce_min_sample: 40,
+      bounce_threshold: "nonsense",
+    });
+    expect(settings.minSample).toBe(40);
+    expect(settings.threshold).toBe(BOUNCE_CIRCUIT_DEFAULTS.threshold);
+  });
+});
+
+describe("evaluateBounceCircuit", () => {
+  const settings = BOUNCE_CIRCUIT_DEFAULTS;
+
+  it("does not trip below the sample floor, however bad the rate", () => {
+    // 5 of 5 is a 100% bounce rate, but five sends is not evidence of a
+    // campaign-wide problem — and stopping on it would make the breaker fire
+    // on the first day of any new push.
+    expect(evaluateBounceCircuit(5, 5, settings).tripped).toBe(false);
+  });
+
+  it("trips once the sample is large enough and the rate is over", () => {
+    const decision = evaluateBounceCircuit(20, 3, settings);
+    expect(decision.tripped).toBe(true);
+    expect(decision.rate).toBeCloseTo(0.15);
+    expect(decision.reason).toMatch(/3 of the last 20/);
+    expect(decision.reason).toMatch(/15\.0%/);
+  });
+
+  it("does not trip just under the threshold", () => {
+    expect(evaluateBounceCircuit(100, 14, settings).tripped).toBe(false);
+  });
+
+  it("leaves today's real numbers well clear", () => {
+    // 1 bounce in 31 sends, 2026-08-27. The breaker must not be trained so
+    // tight that ordinary address staleness stops the campaign.
+    expect(evaluateBounceCircuit(31, 1, settings).tripped).toBe(false);
+  });
+
+  it("handles zero sends without dividing by zero", () => {
+    const decision = evaluateBounceCircuit(0, 0, settings);
+    expect(decision.tripped).toBe(false);
+    expect(decision.rate).toBe(0);
+  });
+
+  it("treats negative or non-finite counts as zero rather than tripping", () => {
+    expect(evaluateBounceCircuit(Number.NaN, Number.NaN, settings).tripped).toBe(false);
+    expect(evaluateBounceCircuit(-5, -2, settings).tripped).toBe(false);
+  });
+
+  it("would have tripped where the old 50% threshold did not", () => {
+    // The regression this change exists for: a campaign bouncing a fifth of
+    // its mail used to sail straight through.
+    const old = { windowDays: 7, minSample: 10, threshold: 0.5 };
+    expect(evaluateBounceCircuit(40, 8, old).tripped).toBe(false);
+    expect(evaluateBounceCircuit(40, 8, BOUNCE_CIRCUIT_DEFAULTS).tripped).toBe(true);
   });
 });
