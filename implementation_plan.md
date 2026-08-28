@@ -63,11 +63,14 @@ false and would silently disable the breaker).
 Revert the source files. No schema change. Config keys, if written, are ignored by the old code.
 
 ### Acceptance criteria
-- [ ] Breaker halts at 15% over a 20-send sample, by default
-- [ ] Thresholds overridable from `outreach_config`; absent/garbage config uses defaults
-- [ ] Tripping raises an alarm visible to `AlarmBanner`, in addition to the existing log row
-- [ ] A bad config value can never silently disable the breaker
-- [ ] Full suite passes
+- [x] Breaker halts at 15% over a 20-send sample, by default
+- [x] Thresholds overridable from `outreach_config`; absent/garbage config uses defaults
+- [x] Tripping raises an alarm visible to `AlarmBanner`, in addition to the existing log row
+- [x] A bad config value can never silently disable the breaker — every value range-checked,
+      with a regression test for the `NaN` case specifically
+- [x] Full suite passes — 68 files / 671 tests, and `deno check` is clean on the function
+- [x] Also fixed while in here: the gate discarded both query errors, so an unreadable count
+      became `0 sends` and skipped the check entirely. It now fails closed.
 
 ---
 
@@ -137,11 +140,19 @@ Revert the source; drop the column. The check is additive — removing it return
 without a pre-check.
 
 ### Acceptance criteria
-- [ ] Every row of the decision table is covered by a test
-- [ ] An inconclusive lookup never writes `email_undeliverable_at`
-- [ ] A DoH outage degrades to "skip this run", never to "mark everything dead"
-- [ ] The new column is readable by the admin screens that show undeliverable state
-- [ ] Full suite passes
+- [x] Every row of the decision table is covered by a test
+- [x] An inconclusive lookup never writes `email_undeliverable_at`
+- [x] A DoH outage degrades to "skip this run", never to "mark everything dead"
+- [x] The new column is readable by the admin screens — `authenticated` holds table-level
+      SELECT, and an `UPDATE` column grant was added to match every sibling column, since
+      `authenticated` has no table-level UPDATE on `businesses`
+- [x] Full suite passes
+
+### Caught during implementation
+`AbortSignal.timeout` is undefined under vitest. It threw inside the lookup's own catch, so
+every check returned "inconclusive" — failing safe, but silently doing nothing while looking
+like it worked. Exactly the failure this module's tests exist to catch, and it would have gone
+unnoticed without them. The timeout now falls back to `AbortController` + `setTimeout`.
 
 ---
 
@@ -152,3 +163,39 @@ The enrichment batch (20/day) sends nothing — it reads websites.
 
 Another session may be editing this repo (a second worktree exists). Commit by explicit
 pathspec, never `git add -A`.
+
+
+---
+
+## Deployment status — READ BEFORE DEPLOYING
+
+Code is committed and pushed (`5eb1e90`). The edge function is **deliberately not deployed
+yet**, and deploying it right now would break live email.
+
+A concurrent session moved the SMTP password into Vault. Its database migrations are applied
+and its edge functions are deployed, but its code sits on branch
+`claude/keen-mccarthy-db6207` and is **not on `main`**:
+
+- `admin_settings.smtp_config` no longer contains `smtpPassword`.
+- The deployed `mailer.ts` reads it from Vault via a new `_shared/smtpSecret.ts`.
+- `main`'s `mailer.ts` still reads `config.smtpPassword` directly, and `smtpSecret.ts` does
+  not exist on `main` at all.
+
+`supabase functions deploy send-outreach-drip` bundles `_shared/` from the working tree, so
+deploying from `main` would ship the old mailer and overwrite the working one — sending would
+start failing on a password that is no longer stored anywhere it looks.
+
+**Deploy only once `claude/keen-mccarthy-db6207` is merged into `main`.** Then:
+
+```
+supabase functions deploy send-outreach-drip
+```
+
+Sending is currently healthy — the 15:00 UTC run on 2026-08-28 delivered 5 emails and the
+canary passed at 14:00 — so there is no urgency and nothing is broken. Until the deploy, the
+live function keeps the old 50% bounce threshold and does no domain pre-check.
+
+Unrelated but worth recording: the enrichment cron fired for the first time at 13:00 UTC on
+2026-08-28 and logged exactly the intended row — `reason: missing_vault_secret`. The cron
+entry, the SECURITY DEFINER function, the guarded Vault read and the `job_run_logs` write are
+therefore all confirmed working end to end. It still needs the `supabase_secret_key` secret.
