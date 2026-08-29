@@ -1,14 +1,18 @@
 /**
  * Outreach mailer: SMTP primary → Resend fallback.
  *
- * SMTP credentials are read from the existing `admin_settings.smtp_config` row
+ * SMTP settings are read from the existing `admin_settings.smtp_config` row
  * (the same source `notify-admin-email` uses) so there is a single place to
- * configure email for the whole project. Resend is only used when SMTP fails,
- * and is configured via the RESEND_API_KEY / RESEND_SENDER_EMAIL secrets.
+ * configure email for the whole project. The PASSWORD is the one exception:
+ * it lives in Supabase Vault and is fetched separately via loadSmtpPassword,
+ * so the settings row no longer carries the credential. Resend is only used
+ * when SMTP fails, and is configured via the RESEND_API_KEY /
+ * RESEND_SENDER_EMAIL secrets.
  */
 import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 import { logEmailSend } from "./emailLog.ts";
+import { loadSmtpPassword, type RpcCaller } from "./smtpSecret.ts";
 
 const SMTP_TIMEOUT_MS = 10_000;
 const IMAP_PORTS = [993, 995];
@@ -74,11 +78,42 @@ export async function loadSmtpConfig(
   if (error) return { config: null, error: `Failed to read SMTP settings: ${error.message}` };
   if (!data) return { config: null, error: "SMTP not configured. Go to Admin → Settings to set up email." };
 
-  return { config: data.setting_value as SmtpConfig, error: null };
+  // `setting_value` no longer carries smtpPassword — it is read from Vault.
+  // The row's own value is passed as the migration-window fallback and is
+  // undefined once the drop-plaintext migration has run.
+  const stored = data.setting_value as Partial<SmtpConfig>;
+  const { password, error: passwordError } = await loadSmtpPassword(
+    supabase as unknown as RpcCaller,
+    stored.smtpPassword,
+  );
+
+  // A missing password does NOT null the config. Two callers here read only
+  // identity fields — receive-inbound-email's self-addressed mail-loop guard
+  // and email-canary's recipient lookup — and neither should be disarmed by a
+  // credential problem. Letting a Vault outage switch off a loop guard would
+  // trade a fixable send failure for the 2026-08-01 feedback-loop incident.
+  //
+  // The password error is still returned, and sendViaSmtp refuses to open a
+  // connection without a credential, so a send fails loudly (and falls through
+  // to Resend) rather than silently authenticating with an empty string.
+  return {
+    config: { ...stored, smtpPassword: password ?? "" } as SmtpConfig,
+    error: passwordError,
+  };
 }
 
 async function sendViaSmtp(config: SmtpConfig, email: OutreachEmail): Promise<void> {
   if (!config.enabled) throw new Error("SMTP is disabled in admin settings.");
+  // loadSmtpConfig deliberately returns a config with an empty password when
+  // the Vault read fails, so identity-only callers keep working. This is where
+  // that becomes a refusal: authenticating with a blank password would produce
+  // a misleading "incorrect authentication data" from the mail server instead
+  // of naming the real cause.
+  if (!config.smtpPassword) {
+    throw new Error(
+      "No SMTP password available — the Vault secret 'smtp_password' could not be read.",
+    );
+  }
   if (IMAP_PORTS.includes(config.smtpPort)) {
     throw new Error(
       `Port ${config.smtpPort} is an IMAP/POP3 port. Use 465 (SSL) or 587 (STARTTLS) for sending.`,

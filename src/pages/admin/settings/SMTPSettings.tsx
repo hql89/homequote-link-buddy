@@ -6,17 +6,28 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
-import { Loader2, Eye, EyeOff, Save, SendHorizonal, CheckCircle2, Wifi, RadioTower } from "lucide-react";
+import { Loader2, Save, SendHorizonal, CheckCircle2, AlertCircle, Wifi, RadioTower } from "lucide-react";
 
+/**
+ * The SMTP settings that live in `admin_settings.smtp_config`.
+ *
+ * Deliberately has NO `smtpPassword`. The password lives in Supabase Vault and
+ * is written through the `admin_set_smtp_password` RPC; it is never read back
+ * into the browser, so there is no field here to hold it. Only the masked hint
+ * comes back — see PerplexitySettings.tsx, the same shape for the same reason.
+ */
 export interface SmtpConfig {
   smtpHost: string;
   smtpPort: number;
   smtpUsername: string;
-  smtpPassword: string;
   fromEmail: string;
   fromName: string;
   adminNotificationEmail: string;
   enabled: boolean;
+  /** Last 4 characters of the stored password, e.g. "••••••••ab12". Display only. */
+  smtpPasswordHint?: string;
+  /** Passthrough so saving the rest of the form doesn't drop what the RPC wrote. */
+  smtpPasswordUpdatedAt?: string;
 }
 
 interface SMTPSettingsProps {
@@ -30,7 +41,11 @@ const TIMEOUT_MS = 15_000;
 export function SMTPSettings({ config, setConfig, addLog }: SMTPSettingsProps) {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  // Local to this component and cleared the moment it is saved — the password
+  // never lives in `config`, so it cannot be written back to admin_settings,
+  // captured in a screenshot of the form, or read out of a devtools dump.
+  const [passwordInput, setPasswordInput] = useState("");
+  const [savingPassword, setSavingPassword] = useState(false);
   // Set once a test has been dispatched, so "I received it" only appears when
   // there is actually something to have received.
   const [testDispatched, setTestDispatched] = useState(false);
@@ -123,6 +138,44 @@ export function SMTPSettings({ config, setConfig, addLog }: SMTPSettingsProps) {
       toast({ title: "Couldn't turn it on", description: error.message, variant: "destructive" });
     } finally {
       setEnablingCanary(false);
+    }
+  }
+
+  /**
+   * Stores the password in Supabase Vault via `admin_set_smtp_password`.
+   *
+   * A separate RPC rather than part of the settings upsert, because the two
+   * have different security properties: the settings row is readable by any
+   * admin session (and by every service-role caller), whereas the Vault secret
+   * is readable only through `get_smtp_password()`, which is granted to
+   * service_role alone. The RPC returns just the masked hint.
+   */
+  async function handleSavePassword() {
+    const next = passwordInput.trim();
+    if (!next) return;
+
+    setSavingPassword(true);
+    try {
+      const { data, error } = await supabase.rpc("admin_set_smtp_password", { p_password: next });
+      if (error) throw error;
+
+      setPasswordInput(""); // never leave the raw password sitting in the field
+      setConfig((prev) => ({
+        ...prev,
+        smtpPasswordHint: typeof data === "string" ? data : prev.smtpPasswordHint,
+        smtpPasswordUpdatedAt: new Date().toISOString(),
+      }));
+      addLog("success", "SMTP password saved to Vault.");
+      toast({
+        title: "Password saved",
+        description: "Stored in Supabase Vault. It is never sent back to this page.",
+      });
+    } catch (err) {
+      const error = err as Error;
+      addLog("error", `Could not save the SMTP password: ${error.message}`);
+      toast({ title: "Couldn't save the password", description: error.message, variant: "destructive" });
+    } finally {
+      setSavingPassword(false);
     }
   }
 
@@ -265,26 +318,51 @@ export function SMTPSettings({ config, setConfig, addLog }: SMTPSettingsProps) {
             <Label className="text-xs text-muted-foreground">SMTP Username</Label>
             <Input value={config.smtpUsername} onChange={(e) => updateField("smtpUsername", e.target.value)} placeholder="user@example.com" />
           </div>
-          <div>
-            <Label className="text-xs text-muted-foreground">SMTP Password</Label>
-            <div className="relative">
-              <Input
-                type={showPassword ? "text" : "password"}
-                value={config.smtpPassword}
-                onChange={(e) => updateField("smtpPassword", e.target.value)}
-                className="pr-10"
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="absolute right-0 top-0 h-full px-3"
-                onClick={() => setShowPassword(!showPassword)}
-              >
-                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </Button>
-            </div>
+        </div>
+
+        {/*
+          Write-only, like the Perplexity key. There is deliberately no reveal
+          toggle: the stored password is never sent to this page, so there is
+          nothing to reveal. It used to be bound straight to the config blob,
+          which put the live mail credential into React state — and so into any
+          screenshot, devtools dump, or error report of this screen.
+        */}
+        <div>
+          <Label className="text-xs text-muted-foreground" htmlFor="smtp-password">SMTP Password</Label>
+          <div className="mt-1 flex gap-2">
+            <Input
+              id="smtp-password"
+              type="password"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              placeholder={config.smtpPasswordHint ? "Enter a new password to replace the stored one" : "Enter the mail account password"}
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <Button onClick={handleSavePassword} disabled={savingPassword || passwordInput.trim().length === 0}>
+              {savingPassword ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : "Save"}
+            </Button>
           </div>
+          <div className="mt-2 flex items-center gap-2 text-sm">
+            {config.smtpPasswordHint ? (
+              <>
+                <CheckCircle2 className="h-4 w-4 text-green-600" aria-hidden="true" />
+                <span>
+                  Password stored <span className="font-mono text-muted-foreground">{config.smtpPasswordHint}</span>
+                </span>
+              </>
+            ) : (
+              <>
+                <AlertCircle className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                <span className="text-muted-foreground">No password configured</span>
+              </>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Write-only: the password is kept in Supabase Vault and is never sent back to this page.
+            Replace it by entering a new one. Saving it takes effect immediately — the
+            &ldquo;Save Settings&rdquo; button below is for the other fields.
+          </p>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">

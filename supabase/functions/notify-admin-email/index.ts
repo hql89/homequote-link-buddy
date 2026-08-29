@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.98.0";
 import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 import { logEmailSend } from "../_shared/emailLog.ts";
 import { isSelfAddressed, checkVolumeCircuitBreaker } from "../_shared/mailer.ts";
+import { loadSmtpPassword, type RpcCaller } from "../_shared/smtpSecret.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -273,10 +274,32 @@ Deno.serve(async (req) => {
       );
     }
 
-    const config = settingsRow.setting_value as {
-      smtpHost: string; smtpPort: number; smtpUsername: string; smtpPassword: string;
+    const storedConfig = settingsRow.setting_value as {
+      smtpHost: string; smtpPort: number; smtpUsername: string; smtpPassword?: string;
       fromEmail: string; fromName: string; adminNotificationEmail: string; enabled: boolean;
     };
+
+    // The password is no longer part of this row — it lives in Supabase Vault,
+    // reachable only through get_smtp_password(), which is granted to
+    // service_role alone. `storedConfig.smtpPassword` is the migration-window
+    // fallback and is undefined once the plaintext key has been dropped.
+    //
+    // This function is a duplicate of the _shared/mailer.ts read path rather
+    // than a caller of it; both had to be changed, and this one matters most
+    // for the admin UI, since the "Send Test Email" button lands here.
+    const { password: smtpPassword, error: smtpPasswordError } = await loadSmtpPassword(
+      supabase as unknown as RpcCaller,
+      storedConfig.smtpPassword,
+    );
+
+    if (smtpPasswordError) {
+      return new Response(
+        JSON.stringify({ success: false, error: smtpPasswordError }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const config = { ...storedConfig, smtpPassword: smtpPassword as string };
 
     if (!config.enabled) {
       return new Response(
