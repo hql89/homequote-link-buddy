@@ -10,7 +10,32 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.17"
+    PostgrestVersion: "14.5"
+  }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -264,6 +289,7 @@ export type Database = {
           email_source_phone: string | null
           email_source_url: string | null
           email_undeliverable_at: string | null
+          email_undeliverable_reason: string | null
           enriched_at: string | null
           featured_until: string | null
           id: string
@@ -309,6 +335,7 @@ export type Database = {
           email_source_phone?: string | null
           email_source_url?: string | null
           email_undeliverable_at?: string | null
+          email_undeliverable_reason?: string | null
           enriched_at?: string | null
           featured_until?: string | null
           id?: string
@@ -354,6 +381,7 @@ export type Database = {
           email_source_phone?: string | null
           email_source_url?: string | null
           email_undeliverable_at?: string | null
+          email_undeliverable_reason?: string | null
           enriched_at?: string | null
           featured_until?: string | null
           id?: string
@@ -1819,11 +1847,13 @@ export type Database = {
         Args: { p_id: string; p_table: string }
         Returns: Json
       }
+      admin_set_smtp_password: { Args: { p_password: string }; Returns: string }
       admin_toggle_cron_job: {
         Args: { p_enable: boolean; p_jobname: string }
         Returns: Json
       }
       archivable_tables: { Args: never; Returns: string[] }
+      get_smtp_password: { Args: never; Returns: string }
       is_admin: { Args: never; Returns: boolean }
       purge_analytics_by_ip_or_visitor: {
         Args: { p_ip?: string; p_visitor_id?: string }
@@ -1962,6 +1992,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },
