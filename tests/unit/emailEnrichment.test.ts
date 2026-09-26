@@ -6,7 +6,7 @@ import {
   extractAddressFromHtml,
   phoneMatchesPage,
   isDisallowedByRobots,
-  resolveConfidence,
+  resolveConfidence, summariseEnrichmentRun,
 } from "../../supabase/functions/_shared/emailEnrichment";
 
 describe("extractUrlFromModelText", () => {
@@ -156,5 +156,68 @@ describe("isDisallowedByRobots", () => {
 
   it("treats empty robots.txt as fully allowed", () => {
     expect(isDisallowedByRobots("", "/contact", "ValleyHomeProsBot")).toBe(false);
+  });
+});
+
+/**
+ * On 2026-09-26 a manual enrichment run had all 20 rows rejected by an
+ * expired Perplexity key (HTTP 401). It was recorded `status: "success"`,
+ * rendered on the admin page as "0 verified", and tripped no alarm — because
+ * the function only called a run failed if the whole thing threw. It read as
+ * a quiet day. That is what these pin.
+ */
+describe("summariseEnrichmentRun", () => {
+  it("records a run where every row failed as a failure", () => {
+    const outcome = summariseEnrichmentRun(
+      { considered: 20, failed: 20 },
+      Array(20).fill("Perplexity API returned 401"),
+    );
+
+    expect(outcome.status).toBe("failure");
+    // One reason, said once — not twenty copies.
+    expect(outcome.errorMessage).toBe(
+      "20 of 20 lookups failed. Reason: Perplexity API returned 401",
+    );
+  });
+
+  it("records a clean run as a success with nothing to report", () => {
+    expect(summariseEnrichmentRun({ considered: 20, failed: 0 }, [])).toEqual({
+      status: "success",
+      errorMessage: null,
+    });
+  });
+
+  it("treats a run with nothing to do as a success, not a failure", () => {
+    // An empty queue is the normal end state, not a fault.
+    expect(summariseEnrichmentRun({ considered: 0, failed: 0 }, []).status).toBe("success");
+  });
+
+  it("calls a partly-failed run partial, not broken", () => {
+    const outcome = summariseEnrichmentRun({ considered: 20, failed: 3 }, ["timeout"]);
+    expect(outcome.status).toBe("partial");
+    expect(outcome.errorMessage).toContain("3 of 20");
+  });
+
+  it("does not treat businesses with no website as failures", () => {
+    // no_url / no_email / fetch_failed are findings about a business, not
+    // faults on our side. Plenty of small contractors simply have no site,
+    // and a run full of those is working correctly.
+    expect(summariseEnrichmentRun({ considered: 20, failed: 0 }, []).status).toBe("success");
+  });
+
+  it("lists several distinct reasons, capped", () => {
+    const outcome = summariseEnrichmentRun(
+      { considered: 5, failed: 5 },
+      ["401", "401", "timeout", "bad json", "rate limited"],
+    );
+    expect(outcome.errorMessage).toContain("Reasons:");
+    expect(outcome.errorMessage).toContain("401 | timeout | bad json");
+    expect(outcome.errorMessage).not.toContain("rate limited");
+  });
+
+  it("still reports a failure when nothing recorded a reason", () => {
+    const outcome = summariseEnrichmentRun({ considered: 4, failed: 4 }, []);
+    expect(outcome.status).toBe("failure");
+    expect(outcome.errorMessage).toContain("(not recorded)");
   });
 });

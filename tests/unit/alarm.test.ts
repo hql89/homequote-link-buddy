@@ -7,7 +7,15 @@ import { raiseAlarm } from "../../supabase/functions/_shared/alarm";
  * watch for, and that raising one can never take down the request that was
  * trying to report a problem.
  */
-function fakeClient(behaviour: { error?: { message: string }; throws?: boolean } = {}) {
+function fakeClient(
+  behaviour: {
+    error?: { message: string };
+    throws?: boolean;
+    /** Alarms of this kind already inside the email cooldown window. The row
+     *  raiseAlarm itself just wrote counts, so 1 means "only this one". */
+    recentSameKind?: number;
+  } = {},
+) {
   const rows: Record<string, unknown>[] = [];
   const client = {
     from(table: string) {
@@ -18,6 +26,14 @@ function fakeClient(behaviour: { error?: { message: string }; throws?: boolean }
           rows.push(row);
           return Promise.resolve({ error: behaviour.error ?? null });
         },
+        // The cooldown read in emailAlarm.
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              gte: () => Promise.resolve({ count: behaviour.recentSameKind ?? 1, error: null }),
+            }),
+          }),
+        }),
       };
     },
   };
@@ -81,5 +97,73 @@ describe("raiseAlarm", () => {
       .join(" ");
     expect(logged).toMatch(/suppression_spike/);
     expect(logged).toMatch(/40 suppressions/);
+  });
+});
+
+
+/**
+ * The push half. Recording an alarm was never the problem — being told about
+ * it was. enrich-business-email failed 30 mornings in a row with the reason
+ * sitting in the database the whole time.
+ */
+describe("raiseAlarm — emailing", () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    fetchMock = vi.fn(() => Promise.resolve({ ok: true } as Response));
+    vi.stubGlobal("fetch", fetchMock);
+    // Deno does not exist under vitest; without this the env read throws and
+    // the email path silently no-ops, which would make these tests vacuous.
+    vi.stubGlobal("Deno", { env: { get: () => "https://test.supabase.co" } });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("emails the admin the first time a kind fires", async () => {
+    const { client } = fakeClient({ recentSameKind: 1 });
+    await raiseAlarm(client, "job_failing_repeatedly", "enrichment has failed 30 runs in a row");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain("/functions/v1/notify-admin-email");
+    const body = JSON.parse(String(init.body));
+    expect(body.notificationType).toBe("alarm");
+    expect(body.alarmData.kind).toBe("job_failing_repeatedly");
+    expect(body.alarmData.summary).toContain("30 runs in a row");
+  });
+
+  it("goes quiet when the same kind already fired recently", async () => {
+    // The delivery canary re-fired hourly for a week in August. An inbox that
+    // gets that becomes the thing that is ignored.
+    const { client } = fakeClient({ recentSameKind: 4 });
+    await raiseAlarm(client, "delivery_canary_failed", "probe unconfirmed");
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("still records the alarm when the email cannot be sent", async () => {
+    fetchMock.mockRejectedValue(new Error("mail host unreachable"));
+    const { client, rows } = fakeClient({ recentSameKind: 1 });
+
+    await expect(
+      raiseAlarm(client, "email_circuit_breaker", "sending disabled"),
+    ).resolves.toBeUndefined();
+
+    // The database record is the durable part and must not depend on the push.
+    expect(rows).toHaveLength(1);
+    expect(rows[0].error_message).toBe("sending disabled");
+  });
+
+  it("does not email when the alarm could not be recorded", async () => {
+    // A push implying a record that does not exist sends someone looking for
+    // something they will not find.
+    const { client } = fakeClient({ error: { message: "insert failed" } });
+    await raiseAlarm(client, "action_write_failed", "write failed");
+
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

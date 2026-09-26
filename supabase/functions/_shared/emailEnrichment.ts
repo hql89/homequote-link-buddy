@@ -152,3 +152,54 @@ export type EmailConfidence = "verified" | "needs_review";
 export function resolveConfidence(phoneMatched: boolean): EmailConfidence {
   return phoneMatched ? "verified" : "needs_review";
 }
+
+/** Outcome counts from one enrichment run, as written to job_run_logs.metadata. */
+export interface EnrichmentSummary {
+  considered: number;
+  failed: number;
+}
+
+export interface EnrichmentRunOutcome {
+  status: "success" | "partial" | "failure";
+  errorMessage: string | null;
+}
+
+/**
+ * Decides how an enrichment run should be recorded.
+ *
+ * Pure and separated from the function for the same reason pickVariant and
+ * remainingDailyBudget are: the rule deciding whether a run counts as broken
+ * should be directly testable.
+ *
+ * `failed` is the catch-all for a row that threw. It is deliberately distinct
+ * from no_url / no_email / fetch_failed, which are ordinary findings about a
+ * business — plenty of small contractors have no website — and must never
+ * make a run look broken.
+ *
+ * Every row throwing means the run achieved nothing, and recording that as a
+ * success is exactly how an expired Perplexity key looked like a quiet day
+ * for a month: 20 of 20 rows failing on a 401 was logged `status: success`,
+ * rendered as "0 verified", and never tripped the repeated-failure alarm.
+ */
+export function summariseEnrichmentRun(
+  summary: EnrichmentSummary,
+  errors: string[],
+): EnrichmentRunOutcome {
+  const considered = Number.isFinite(summary.considered) ? Math.max(0, summary.considered) : 0;
+  const failed = Number.isFinite(summary.failed) ? Math.max(0, summary.failed) : 0;
+
+  if (failed === 0) return { status: "success", errorMessage: null };
+
+  // Deduplicated: twenty rows failing for one reason should read as one
+  // reason, not twenty copies of the same sentence.
+  const distinct = [...new Set(errors)];
+  const errorMessage =
+    `${failed} of ${considered} lookups failed. ` +
+    `${distinct.length === 1 ? "Reason" : "Reasons"}: ` +
+    `${distinct.length > 0 ? distinct.slice(0, 3).join(" | ") : "(not recorded)"}`;
+
+  return {
+    status: considered > 0 && failed >= considered ? "failure" : "partial",
+    errorMessage,
+  };
+}

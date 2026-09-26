@@ -34,6 +34,7 @@ import {
   phoneMatchesPage,
   isDisallowedByRobots,
   resolveConfidence,
+  summariseEnrichmentRun,
 } from "../_shared/emailEnrichment.ts";
 import {
   buildAssessmentPrompt,
@@ -184,6 +185,8 @@ async function enrichOne(
   supabase: SupabaseClient,
   apiKey: string,
   row: CandidateRow,
+  /** Collects the reason for any `failed` row, so the run can report why. */
+  errors: string[],
 ): Promise<"verified" | "needs_review" | "no_url" | "no_email" | "fetch_failed" | "failed"> {
   try {
     const candidateUrl = await discoverUrl(apiKey, row.business_name, row.city);
@@ -254,7 +257,14 @@ async function enrichOne(
 
     return confidence;
   } catch (err) {
-    console.error(`[${JOB_NAME}] row ${row.id} failed:`, err instanceof Error ? err.message : err);
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[${JOB_NAME}] row ${row.id} failed:`, message);
+    // Recorded, not just logged. A run where every row threw the same thing
+    // (an expired Perplexity key returning 401, say) previously showed up as
+    // a clean "0 verified" — indistinguishable from a day when there was
+    // genuinely nothing to find, with the real reason visible only in the
+    // function logs nobody reads.
+    errors.push(message);
     return "failed";
   }
 }
@@ -304,14 +314,21 @@ Deno.serve(async (req) => {
     const rows = (candidates ?? []) as CandidateRow[];
     summary.considered = rows.length;
 
+    const rowErrors: string[] = [];
+
     for (let i = 0; i < rows.length; i++) {
-      const outcome = await enrichOne(supabase, perplexity.api_key, rows[i]);
+      const outcome = await enrichOne(supabase, perplexity.api_key, rows[i], rowErrors);
       summary[outcome]++;
       if (i < rows.length - 1) await sleep(BETWEEN_FETCHES_MS);
     }
 
-    await logRun(supabase, JOB_NAME, "success", Date.now() - startedAt, null, summary);
-    return json({ success: true, ...summary });
+    // Decided in emailEnrichment.ts so the rule is unit-testable — see
+    // summariseEnrichmentRun for why "every row failed" must not be a success.
+    const { status, errorMessage } = summariseEnrichmentRun(summary, rowErrors);
+    const allFailed = status === "failure";
+
+    await logRun(supabase, JOB_NAME, status, Date.now() - startedAt, errorMessage, summary);
+    return json({ success: !allFailed, ...summary, ...(errorMessage ? { error: errorMessage } : {}) });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[${JOB_NAME}]`, message);
