@@ -238,6 +238,27 @@ function normaliseCity(value: string): string {
   return value.toLowerCase().replace(/[^a-z\s]/g, "").replace(/\s+/g, " ").trim();
 }
 
+/**
+ * Places that are not the service area but are not a red flag either.
+ *
+ * Every city this directory covers is a neighbourhood of the City of Los
+ * Angeles, so a site whose address reads "Los Angeles, CA" is entirely
+ * consistent with a Tarzana business — the first run of the new rule flagged
+ * exactly that as "outside the service area", which is wrong and would have
+ * mis-flagged a large share of the 452 still queued. The rest are San
+ * Fernando Valley and immediately adjacent communities: near enough that a
+ * contractor being based there says nothing suspicious, far enough that it
+ * is not proof they serve our cities either.
+ */
+const NEARBY_PLACES = new Set([
+  "los angeles", "van nuys", "north hollywood", "woodland hills", "reseda",
+  "canoga park", "northridge", "west hills", "winnetka", "lake balboa",
+  "panorama city", "north hills", "valley glen", "sun valley", "shadow hills",
+  "granada hills", "mission hills", "chatsworth", "arleta", "pacoima",
+  "sylmar", "tujunga", "sunland", "burbank", "glendale", "calabasas",
+  "hidden hills", "universal city",
+]);
+
 export interface PageLocation {
   /** An address-shaped snippet, for a reviewer to read. Null when none found. */
   snippet: string | null;
@@ -248,6 +269,11 @@ export interface PageLocation {
   addressCity: string | null;
   /** Whether that address city is one the directory covers. */
   addressInArea: boolean;
+  /**
+   * The address is not in a covered city, but is somewhere that raises no
+   * suspicion — greater Los Angeles or the Valley. Neither proof nor a flag.
+   */
+  addressNearby: boolean;
   /** Service-area cities named anywhere, address or not. Marketing-grade evidence. */
   mentioned: string[];
 }
@@ -276,31 +302,40 @@ export function findPageLocation(html: string, serviceArea: string[]): PageLocat
   let snippet: string | null = null;
   let addressCity: string | null = null;
   let addressInArea = false;
+  let addressNearby = false;
 
   for (const match of text.matchAll(addressRe)) {
     const words = match[1].trim().split(" ");
     const tail = normaliseCity(words.slice(-3).join(" "));
-    const hit = area.find((c) => tail.endsWith(c));
 
-    // First address wins, except that an in-area one is preferred: a page may
-    // print a corporate address and a local branch, and the local branch is
-    // the relevant fact.
-    if (hit) {
-      if (!addressInArea) {
-        addressCity = hit;
-        addressInArea = true;
-        snippet = match[0].trim();
-      }
-    } else if (addressCity === null) {
-      addressCity = words.slice(-2).join(" ").trim();
-      snippet = match[0].trim();
+    // Longest name first, so "north hollywood" is not read as "hollywood"
+    // and "los angeles" is preferred over a shorter accidental suffix.
+    const known = [...area, ...NEARBY_PLACES].sort((a, b) => b.length - a.length);
+    const hit = known.find((c) => tail.endsWith(c));
+    const city = hit ?? normaliseCity(words.slice(-2).join(" "));
+    const inArea = hit !== undefined && area.includes(hit);
+    const nearby = hit !== undefined && !inArea;
+
+    // An in-area address wins outright; a page may print a corporate address
+    // and a local branch, and the branch is the relevant fact.
+    if (inArea && !addressInArea) {
+      addressCity = city;
+      addressInArea = true;
+      addressNearby = false;
+      snippet = `${city}, CA`;
+    } else if (!addressInArea && addressCity === null) {
+      addressCity = city;
+      addressNearby = nearby;
+      // Rebuilt rather than using the raw match, which trails back into the
+      // preceding sentence ("Andrew Chang Sherman Oaks, CA").
+      snippet = `${city}, CA`;
     }
   }
 
   const normalisedText = normaliseCity(text);
   const mentioned = area.filter((c) => normalisedText.includes(c));
 
-  return { snippet, addressCity, addressInArea, mentioned };
+  return { snippet, addressCity, addressInArea, addressNearby, mentioned };
 }
 
 export interface ConfidenceEvidence {
@@ -340,7 +375,7 @@ export function resolveConfidence(evidence: ConfidenceEvidence): ConfidenceDecis
   // An address outside the area dominates everything, including a phone
   // match and any number of in-area mentions. Nearly every contractor site
   // lists cities it will travel to; only one says where it is.
-  if (location.addressCity && !location.addressInArea) {
+  if (location.addressCity && !location.addressInArea && !location.addressNearby) {
     return {
       confidence: "needs_review",
       reason:

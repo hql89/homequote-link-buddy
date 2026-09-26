@@ -246,13 +246,43 @@ describe("findPageLocation", () => {
   it("records an out-of-area address as such", () => {
     const loc = findPageLocation("<p>Main office: Fresno, CA 93721</p>", AREA);
     expect(loc.addressInArea).toBe(false);
-    expect(loc.addressCity).toContain("Fresno");
+    expect(loc.addressCity).toBe("fresno");
   });
 
   it("prefers a local branch address over a corporate one elsewhere", () => {
     const loc = findPageLocation("<p>HQ: Fresno, CA 93721. Branch: Encino, CA 91316</p>", AREA);
     expect(loc.addressInArea).toBe(true);
     expect(loc.addressCity).toBe("encino");
+  });
+
+  it("does not treat Los Angeles as outside the area", () => {
+    // Every covered city is a neighbourhood of the City of Los Angeles, so
+    // "Los Angeles, CA" is entirely consistent with a Tarzana business. The
+    // first cut of this rule flagged exactly that as out-of-area — found by
+    // re-running four real businesses through it.
+    const loc = findPageLocation("<p>Los Angeles, CA 90015</p>", AREA);
+    expect(loc.addressInArea).toBe(false);
+    expect(loc.addressNearby).toBe(true);
+  });
+
+  it("treats the wider Valley as unremarkable rather than suspicious", () => {
+    for (const place of ["Van Nuys", "Woodland Hills", "Burbank", "North Hollywood"]) {
+      const loc = findPageLocation(`<p>${place}, CA 91000</p>`, AREA);
+      expect(loc.addressNearby, place).toBe(true);
+      expect(loc.addressInArea, place).toBe(false);
+    }
+  });
+
+  it("keeps a genuinely distant address a red flag", () => {
+    const loc = findPageLocation("<p>Fresno, CA 93721</p>", AREA);
+    expect(loc.addressNearby).toBe(false);
+    expect(loc.addressInArea).toBe(false);
+  });
+
+  it("gives a clean snippet rather than trailing back into the sentence", () => {
+    // Was "Andrew Chang Sherman Oaks, CA" on a real page.
+    const loc = findPageLocation("<p>Contact Andrew Chang Sherman Oaks, CA 91403</p>", AREA);
+    expect(loc.snippet).toBe("sherman oaks, CA");
   });
 
   it("finds nothing when the page says nothing", () => {
@@ -264,7 +294,7 @@ describe("findPageLocation", () => {
 
 describe("resolveConfidence", () => {
   const AREA = ["Sherman Oaks", "Encino", "Studio City", "Tarzana", "Valley Village", "Toluca Lake"];
-  const nowhere = { snippet: null, addressCity: null, addressInArea: false, mentioned: [] };
+  const nowhere = { snippet: null, addressCity: null, addressInArea: false, addressNearby: false, mentioned: [] };
 
   it("verifies when the site's address is the licence's own city", () => {
     const loc = findPageLocation("<p>Encino, CA 91316</p>", AREA);
@@ -303,6 +333,19 @@ describe("resolveConfidence", () => {
     const d = resolveConfidence({ phoneMatched: false, location: loc, expectedCity: "Encino" });
     expect(d.confidence).toBe("needs_review");
     expect(d.reason).toMatch(/only as somewhere it works/i);
+  });
+
+  it("does not flag a nearby address, but does not verify on it either", () => {
+    const loc = findPageLocation("<p>Los Angeles, CA 90015</p>", AREA);
+    const d = resolveConfidence({ phoneMatched: false, location: loc, expectedCity: "Tarzana" });
+    expect(d.confidence).toBe("needs_review");
+    expect(d.reason).not.toMatch(/outside the service area/i);
+  });
+
+  it("verifies a nearby address when the phone also matches", () => {
+    const loc = findPageLocation("<p>Van Nuys, CA 91401</p>", AREA);
+    expect(resolveConfidence({ phoneMatched: true, location: loc, expectedCity: "Encino" }).confidence)
+      .toBe("verified");
   });
 
   it("still verifies on a phone match when no address can be read", () => {
