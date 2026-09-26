@@ -384,7 +384,23 @@ describe("Enrichment — failed scheduled run", () => {
     jobRuns.rows = [FAILURE];
     renderPage();
 
-    await waitFor(() => expect(screen.getByText(/last scheduled run failed/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/last run failed/i)).toBeInTheDocument());
+  });
+
+  it("explains a rejected Perplexity key in terms of what to do", async () => {
+    // The real 2026-09-26 failure: 20 of 20 rows refused with HTTP 401.
+    jobRuns.rows = [{
+      ...FAILURE,
+      error_message: "20 of 20 lookups failed. Reason: Perplexity API returned 401",
+      metadata: { considered: 20, failed: 20, verified: 0 },
+    }];
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByText(/expired, revoked, or the account has lapsed/i)).toBeInTheDocument(),
+    );
+    // And reassures that nothing was lost, which is the first thing you'd ask.
+    expect(screen.getByText(/every business is still\s+queued/i)).toBeInTheDocument();
   });
 
   it("shows what to do about it, not just that it broke", async () => {
@@ -407,7 +423,7 @@ describe("Enrichment — failed scheduled run", () => {
     await waitFor(() =>
       expect(screen.getByText("Something nobody has written help for.")).toBeInTheDocument(),
     );
-    expect(screen.getByText(/last scheduled run failed/i)).toBeInTheDocument();
+    expect(screen.getByText(/last run failed/i)).toBeInTheDocument();
   });
 
   it("reports a failure that recorded no reason at all, rather than going quiet again", async () => {
@@ -429,6 +445,6 @@ describe("Enrichment — failed scheduled run", () => {
     renderPage();
 
     await waitFor(() => expect(screen.getByText(/Last run:/i)).toBeInTheDocument());
-    expect(screen.queryByText(/last scheduled run failed/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/last run failed/i)).not.toBeInTheDocument();
   });
 });

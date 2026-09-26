@@ -187,7 +187,6 @@ export default function EnrichmentPage() {
         throw new Error(data?.error ?? error?.message ?? "Run failed.");
       }
       toast({ title: "Search complete" });
-      await load();
     } catch (err) {
       toast({
         title: "Run failed",
@@ -195,6 +194,10 @@ export default function EnrichmentPage() {
         variant: "destructive",
       });
     } finally {
+      // Reloaded either way. A failed run is exactly when the panel most
+      // needs to update: previously the reason appeared only in a toast that
+      // disappears, leaving the page showing the state from before the run.
+      await load();
       setRunning(false);
     }
   }
@@ -335,7 +338,7 @@ export default function EnrichmentPage() {
                   className="mt-3 rounded-md border border-destructive/40 bg-destructive/5 p-3"
                 >
                   <p className="text-sm font-medium text-destructive">
-                    The last scheduled run failed
+                    The last run failed
                   </p>
                   {lastRunError.help && (
                     <p className="mt-1 text-sm text-foreground">{lastRunError.help}</p>
