@@ -92,3 +92,39 @@ No data migration, no schema change.
 The sweep will raise one alarm, for `enrich-business-email`. That is the intended outcome, not
 a new fault — the job has genuinely been failing since 2026-08-28 for want of the
 `supabase_secret_key` Vault secret.
+
+---
+
+# Follow-up shipped 2026-09-26: B copy live, removal requests caught
+
+Both done, deployed and verified.
+
+## Why not the A/B split that was planned
+At the observed ~31% enrichment hit rate there are roughly 145 usable addresses left in the
+entire directory. A 50/50 split gives ~70 per arm — too few to separate a real difference in
+opt-out rate from noise. A has already had its trial: 31 sends, 3 unsubscribes, 1 bounce, 0
+replies expressing interest, 0 claims. So B is now the only active variant and A is
+deactivated (not deleted — `outreach_sends` references `variant_key`). The migration raises
+rather than leave a stage with no active variant, which would silently halt half the campaign.
+
+## Removal requests
+The B copy invites "reply and I'll take it down". That reply previously matched no rule and
+landed as `unclassified`. It is now its own classification: suppressed automatically on the
+same footing as an unsubscribe, always priority, destructive badge in /admin/replies. The
+listing takedown itself stays human — nothing here publishes or unpublishes.
+
+Checked before unsubscribe, which preserves the existing guarantee rather than weakening it
+(both suppress). "remove me from your list" deliberately stays an unsubscribe.
+
+## Context worth carrying forward
+Copy is unlikely to be the binding constraint. In the month since analytics was restored the
+site had ~34 visitors, 5 of whom viewed the directory, and there have been **0** homeowner
+quote requests through a listing, ever. The email promises contractors that homeowner requests
+will arrive; today that offer has nothing behind it. Judge the next batch on replies, not
+claims.
+
+## Verified
+- 70 test files / 708 tests, 0 type errors, `deno check` clean, frontend deploy confirmed live
+  by bundle hash change, `receive-inbound-email` redeployed
+- Both sync tests (alarm kinds, inbound classifications) confirmed to fail by mutation, not
+  just to pass
