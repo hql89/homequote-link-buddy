@@ -422,10 +422,16 @@ Deno.serve(async (req) => {
       .ilike("email", escapeIlike(fromEmail))
       .maybeSingle();
 
-    // Unsubscribe is the one classification that acts automatically.
-    // Everything else — applying a URL, or just reading an inquiry — is a
-    // human decision made in /admin/replies.
-    if (classification === "unsubscribe" && business) {
+    // Suppression is the only automatic action. Everything else — applying a
+    // URL, taking a listing down, reading an inquiry — is a human decision
+    // made in /admin/replies.
+    //
+    // A removal request suppresses on exactly the same footing as an
+    // unsubscribe: someone asking for their listing to come down plainly does
+    // not want more mail, and making them say "stop" separately to get that
+    // is the kind of technicality this whole path exists to avoid. Taking the
+    // listing down itself stays human.
+    if ((classification === "unsubscribe" || classification === "removal_request") && business) {
       // Checked, unlike before: an unchecked write here means someone who
       // said STOP is NOT actually suppressed while this returns success —
       // and they keep receiving mail. Of every silent write failure in this
@@ -439,7 +445,8 @@ Deno.serve(async (req) => {
         await raiseAlarm(
           supabase,
           "action_write_failed",
-          `Unsubscribe from ${fromEmail} was NOT applied — business ${business.id} is still receiving outreach.`,
+          `${classification === "removal_request" ? "Removal request" : "Unsubscribe"} from ${fromEmail} ` +
+            `was NOT applied — business ${business.id} is still receiving outreach.`,
           { business_id: business.id, from_email: fromEmail, error: suppressError.message },
         );
       } else {

@@ -242,3 +242,67 @@ describe("classifyReply — bounces must not be mistaken for replies", () => {
     expect(isBounce("MAILER-DAEMON@x.com", "Undeliverable", bounce)).toBe(true);
   });
 });
+
+describe("classifyReply — removal_request", () => {
+  /**
+   * The outreach copy now says "If you'd rather not be listed, reply and
+   * I'll take it down." Before this classification existed those replies
+   * matched no rule and landed as `unclassified` — the bucket nobody reads —
+   * so the email made a promise the system silently dropped.
+   */
+  it.each([
+    "Please take it down.",
+    "take my listing down please",
+    "Can you take that page down? Thanks",
+    "Please remove my listing.",
+    "delete our profile from your site",
+    "Remove the listing for my business please",
+    "I don't want to be listed, thanks",
+    "do not want to be listed on your directory",
+    "We'd rather not be listed.",
+    "unlist my page",
+  ])("catches %j", (body) => {
+    expect(classifyReply(body).classification).toBe("removal_request");
+  });
+
+  it("is always priority — it is the one class that needs a person to act", () => {
+    // No question mark, no "interested", none of the usual priority cues.
+    const reply = classifyReply("Please take it down.");
+    expect(reply.isPriority).toBe(true);
+  });
+
+  it("wins over unsubscribe when a reply asks for both", () => {
+    // Deliberate: receive-inbound-email suppresses on removal_request exactly
+    // as it does on unsubscribe, so nothing that would have been stopped is
+    // stopped less — the reply just also gets flagged for the listing to
+    // come down.
+    const reply = classifyReply("Please remove my listing and stop emailing me.");
+    expect(reply.classification).toBe("removal_request");
+  });
+
+  it("leaves a plain unsubscribe alone", () => {
+    // "remove me from your list" is an opt-out, not a listing takedown. If
+    // this regressed, every unsubscribe would be flagged as needing manual
+    // work that isn't there.
+    for (const body of ["remove me from your list", "STOP", "please unsubscribe me", "take me off this list"]) {
+      expect(classifyReply(body).classification, body).toBe("unsubscribe");
+    }
+  });
+
+  it("does not fire on ordinary replies that merely mention the listing", () => {
+    for (const body of [
+      "Thanks for the listing, looks good!",
+      "Yes, that number is right.",
+      "Can you update the phone on my listing?",
+      "Who put this business listing together?",
+    ]) {
+      expect(classifyReply(body).classification, body).not.toBe("removal_request");
+    }
+  });
+
+  it("does not swallow a confirmation that happens to say 'down'", () => {
+    // "down the road" must not read as a takedown request.
+    expect(classifyReply("Yes that's right, we're just down the road from there.").classification)
+      .toBe("confirm");
+  });
+});

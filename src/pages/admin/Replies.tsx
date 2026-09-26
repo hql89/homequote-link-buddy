@@ -42,6 +42,7 @@ interface ReplyRow extends InboundEmailRow {
  * here unlabelled until 2026-08-23.
  */
 const CLASSIFICATION_LABEL: Record<InboundEmailRow["classification"], string> = {
+  removal_request: "Wants listing removed",
   unsubscribe: "Unsubscribed",
   confirm: "Confirmed phone",
   website: "Sent a website",
@@ -356,7 +357,14 @@ export default function RepliesPage() {
             {replies.map((reply) => (
               <li key={reply.id} className="rounded-lg border border-border bg-card p-4">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={reply.classification === "unsubscribe" ? "destructive" : "secondary"}>
+                  <Badge
+                    variant={
+                      reply.classification === "unsubscribe" ||
+                      reply.classification === "removal_request"
+                        ? "destructive"
+                        : "secondary"
+                    }
+                  >
                     {CLASSIFICATION_LABEL[reply.classification]}
                   </Badge>
                   {reply.handled_at && (

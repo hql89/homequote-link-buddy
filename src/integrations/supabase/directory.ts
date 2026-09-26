@@ -123,13 +123,15 @@ export interface BusinessPhotoRow {
  * Every value the `inbound_emails.classification` CHECK constraint accepts.
  *
  * Kept in step with the migrations that widen it (bounce: 20260801280000,
- * self_sent: 20260803220000, ignored: 20260823230000). This union having
+ * self_sent: 20260803220000, ignored: 20260823230000,
+ * removal_request: 20260926020000). This union having
  * drifted behind the constraint is not a hypothetical cost: it is typed as a
  * Record key in /admin/replies, so a value missing here renders an EMPTY
  * badge rather than failing to compile — which is exactly what the one
  * production `bounce` row was doing.
  */
 export type InboundClassification =
+  | "removal_request"
   | "unsubscribe"
   | "confirm"
   | "website"

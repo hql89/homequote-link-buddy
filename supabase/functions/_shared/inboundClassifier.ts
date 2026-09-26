@@ -15,7 +15,12 @@
  * Free of Deno APIs and remote imports so the unit tests import it directly.
  */
 
-export type ReplyClassification = "unsubscribe" | "confirm" | "website" | "unclassified";
+export type ReplyClassification =
+  | "removal_request"
+  | "unsubscribe"
+  | "confirm"
+  | "website"
+  | "unclassified";
 
 export interface ClassifiedReply {
   classification: ReplyClassification;
@@ -140,6 +145,39 @@ export function extractBouncedRecipient(bodyText: string, ourDomain: string): st
 }
 
 const UNSUBSCRIBE_RE = /\b(stop|unsubscribe|remove me|opt[\s-]?out|take me off)\b/i;
+
+/**
+ * "Take my listing down" — a stronger request than an unsubscribe, and one
+ * the outreach copy now explicitly invites ("If you'd rather not be listed,
+ * reply and I'll take it down").
+ *
+ * Distinct from unsubscribe because the two need different things done.
+ * Suppressing email is automatic; unpublishing a listing is a content
+ * decision and stays human. Previously these replies matched nothing at all
+ * and landed as `unclassified`, which is the queue nobody reads — a promise
+ * the email makes and the system then quietly drops.
+ *
+ * The noun list deliberately excludes "me"/"us": "remove me from your list"
+ * is an ordinary unsubscribe and must keep classifying as one, or every
+ * opt-out would be flagged as needing a listing taken down.
+ *
+ * Quoted text is NOT stripped before matching, so an auto-reply quoting our
+ * own email can trip this. That is the same exposure UNSUBSCRIBE_RE already
+ * has (our copy contains the word "unsubscribe"), and the outcome is the
+ * safer one either way: the sender is suppressed and a human reads the
+ * message. Stripping quotes would risk missing a genuine "stop" written
+ * below one, which is the failure that actually matters.
+ */
+const REMOVAL_RE = new RegExp(
+  [
+    // "take it down", "take my listing down", "take that page down"
+    /\btake\b[^.!?]{0,30}?\bdown\b/.source,
+    /\b(remove|delete|unlist|take off)\b[^.!?]{0,30}?\b(listing|page|profile|entry|business|company)\b/.source,
+    /\b(don'?t|do not)\b[^.!?]{0,40}?\bbe listed\b/.source,
+    /\bnot\s+(be\s+)?listed\b/.source,
+  ].join("|"),
+  "i",
+);
 const CONFIRM_RE = /\byes\b/i;
 const URL_RE = /https?:\/\/[^\s<>")\]]+|(?:www\.)[a-z0-9-]+\.[a-z]{2,}[^\s<>")\]]*/i;
 const PRIORITY_RE = /\?|(\binterested\b)|(\bcall me\b)|(\bprice\b)|(\bcost\b)/i;
@@ -157,6 +195,16 @@ const PRIORITY_RE = /\?|(\binterested\b)|(\bcall me\b)|(\bprice\b)|(\bcost\b)/i;
 export function classifyReply(bodyText: string): ClassifiedReply {
   const body = bodyText ?? "";
   const isPriority = PRIORITY_RE.test(body);
+
+  // Checked BEFORE unsubscribe, and that ordering preserves rather than
+  // weakens the existing guarantee: a removal request suppresses outreach in
+  // receive-inbound-email exactly as an unsubscribe does, so a message
+  // matching both is still stopped — it just also gets flagged for the
+  // listing to come down. Always priority: it is the one classification that
+  // needs a person to do something.
+  if (REMOVAL_RE.test(body)) {
+    return { classification: "removal_request", extractedUrl: null, isPriority: true };
+  }
 
   if (UNSUBSCRIBE_RE.test(body)) {
     return { classification: "unsubscribe", extractedUrl: null, isPriority };
