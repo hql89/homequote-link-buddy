@@ -71,10 +71,24 @@ Revert the source files; `cron.unschedule('alarm-failing-jobs-daily')` and drop 
 No data migration, no schema change.
 
 ## Acceptance criteria
-- [ ] A failed enrichment run renders an explicit error on the Enrichment page, with the
-      instructions, instead of a blank
-- [ ] A successful run still renders its normal summary
-- [ ] 3 consecutive failures raise a banner alarm; 2 do not
-- [ ] A still-failing job does not re-alarm daily
-- [ ] Every `AlarmKind` has a real title, proven by a test that fails when one is missing
-- [ ] Full suite passes
+- [x] A failed enrichment run renders an explicit error on the Enrichment page, with the
+      instructions, instead of a blank — five jsdom tests, including a failure with no
+      recorded reason and one with no catalogued explanation
+- [x] A successful run still renders its normal summary
+- [x] Every `AlarmKind` has a real title, proven by a test that fails when one is missing —
+      confirmed by mutation: removing one entry makes the test fail and name it
+- [x] Full suite passes — 69 files / 690 tests, zero type errors, deployed and live
+- [~] **3 consecutive failures raise a banner alarm; 2 do not.** The detection half is
+      verified against real production data read-only: it selects `enrich-business-email`
+      (29 failures, live) and correctly excludes `unsubscribe` (3 failures, 28 days stale).
+      The insert half is not yet observed — the Supabase MCP connection is read-only, so
+      calling the function fails for the connection's reason rather than the function's, and
+      invoking things to "check they work" is what caused the accidental send on 2026-08-29.
+      It fires on its own at 16:00 UTC.
+- [~] **A still-failing job does not re-alarm daily.** Implemented as a `NOT EXISTS` guard on
+      an alarm for the same job within 3 days; unobserved until the second run, 2026-09-27.
+
+## Expected on first run
+The sweep will raise one alarm, for `enrich-business-email`. That is the intended outcome, not
+a new fault — the job has genuinely been failing since 2026-08-28 for want of the
+`supabase_secret_key` Vault secret.
