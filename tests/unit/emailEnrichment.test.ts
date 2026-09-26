@@ -3,7 +3,8 @@ import {
   extractUrlFromModelText,
   extractEmailsFromHtml,
   extractPhonesFromHtml,
-  extractAddressFromHtml,
+  findPageLocation,
+  isPlausibleUsPhone,
   phoneMatchesPage,
   isDisallowedByRobots,
   resolveConfidence, summariseEnrichmentRun,
@@ -83,58 +84,6 @@ describe("extractPhonesFromHtml", () => {
 
   it("returns empty when no phone-shaped text exists", () => {
     expect(extractPhonesFromHtml("<p>No phone listed.</p>")).toEqual([]);
-  });
-});
-
-describe("extractAddressFromHtml", () => {
-  it("finds a City, CA zip snippet in page content", () => {
-    const html = "<p>Visit us at 123 Main St, Burbank, CA 91504</p>";
-    expect(extractAddressFromHtml(html)).toBe("Burbank, CA 91504");
-  });
-
-  it("finds a snippet split across HTML tags", () => {
-    const html = "<span>Sherman Oaks</span>, <span>CA</span> <span>91403</span>";
-    expect(extractAddressFromHtml(html)).toBe("Sherman Oaks, CA 91403");
-  });
-
-  it("handles a zip+4", () => {
-    expect(extractAddressFromHtml("<p>Van Nuys, CA 91401-1234</p>")).toBe("Van Nuys, CA 91401-1234");
-  });
-
-  it("returns null when no City, CA zip pattern exists", () => {
-    expect(extractAddressFromHtml("<p>We serve the whole valley!</p>")).toBeNull();
-  });
-
-  it("returns null for an out-of-state mention with no zip", () => {
-    expect(extractAddressFromHtml("<p>Our sister company is based in Reno, NV.</p>")).toBeNull();
-  });
-});
-
-describe("phoneMatchesPage", () => {
-  it("matches when the CSLB phone normalises to one found on the page", () => {
-    expect(phoneMatchesPage("(818) 555-0142", ["+18185550142"])).toBe(true);
-  });
-
-  it("does not match a different number", () => {
-    expect(phoneMatchesPage("(818) 555-0142", ["+13105559999"])).toBe(false);
-  });
-
-  it("does not match when the CSLB phone itself is unparseable", () => {
-    expect(phoneMatchesPage("not a phone", ["+18185550142"])).toBe(false);
-  });
-
-  it("does not match against an empty page-phone list", () => {
-    expect(phoneMatchesPage("(818) 555-0142", [])).toBe(false);
-  });
-});
-
-describe("resolveConfidence", () => {
-  it("is 'verified' only when the phone matched", () => {
-    expect(resolveConfidence(true)).toBe("verified");
-  });
-
-  it("is 'needs_review' when it did not", () => {
-    expect(resolveConfidence(false)).toBe("needs_review");
   });
 });
 
@@ -219,5 +168,158 @@ describe("summariseEnrichmentRun", () => {
     const outcome = summariseEnrichmentRun({ considered: 4, failed: 4 }, []);
     expect(outcome.status).toBe("failure");
     expect(outcome.errorMessage).toContain("(not recorded)");
+  });
+});
+
+// ── Phone plausibility ──────────────────────────────────────────────────────
+// Real values pulled off contractor sites on 2026-09-26. Each was shown to a
+// reviewer beside the genuine licence number, making an honest business look
+// like the wrong one.
+
+describe("isPlausibleUsPhone", () => {
+  it.each([
+    ["+15294117647", "529 is not an area code in service, and 411 can never be an exchange"],
+    ["+19429384556", "942 is not an area code in service"],
+    ["+15322729582", "532 is not an area code in service"],
+    ["+11234567890", "area code may not start with 1"],
+    ["+14999384556", "499 is not an assigned area code"],
+    ["+12110001234", "N11 area code"],
+    ["+13239110000", "N11 exchange"],
+    ["+11111111111", "a single repeated digit"],
+  ])("rejects %s — %s", (number) => {
+    expect(isPlausibleUsPhone(number)).toBe(false);
+  });
+
+  it.each([
+    "+18186267440", // Alpha Builders, from CSLB
+    "+18006681123", // the toll-free number genuinely on their site
+    "+13233258101",
+    "+13239633603",
+  ])("accepts the real number %s", (number) => {
+    expect(isPlausibleUsPhone(number)).toBe(true);
+  });
+});
+
+describe("extractPhonesFromHtml", () => {
+  it("keeps a real number and drops an implausible one on the same page", () => {
+    const html = "<p>Call (818) 626-7440</p><p>ref (529) 411-7647</p>";
+    expect(extractPhonesFromHtml(html)).toEqual(["+18186267440"]);
+  });
+
+  it("does not carve a phone out of a longer run of digits", () => {
+    // An order id or timestamp used to donate its first ten digits.
+    expect(extractPhonesFromHtml("<p>Order 83231234567890123</p>")).toEqual([]);
+  });
+
+  it("still reads the usual written formats", () => {
+    expect(extractPhonesFromHtml("<p>+1 (323) 325-8101</p>")).toEqual(["+13233258101"]);
+    expect(extractPhonesFromHtml("<p>323.325.8101</p>")).toEqual(["+13233258101"]);
+  });
+});
+
+// ── Location ────────────────────────────────────────────────────────────────
+
+describe("findPageLocation", () => {
+  const AREA = ["Sherman Oaks", "Encino", "Studio City", "Tarzana", "Valley Village", "Toluca Lake"];
+
+  it("reads a full postal address in the service area", () => {
+    const loc = findPageLocation("<p>15250 Ventura Blvd, Sherman Oaks, CA 91403</p>", AREA);
+    expect(loc.addressCity).toBe("sherman oaks");
+    expect(loc.addressInArea).toBe(true);
+  });
+
+  it("accepts California spelled out, and no zip", () => {
+    // The old regex demanded '<City>, CA <zip>' exactly and so found a
+    // location on only 8 of 27 businesses.
+    const loc = findPageLocation("<p>Encino, California</p>", AREA);
+    expect(loc.addressInArea).toBe(true);
+  });
+
+  it("separates a city merely named from one in an address", () => {
+    // The distinction the whole decision rests on.
+    const loc = findPageLocation("<p>Proudly serving Tarzana and the valley</p>", AREA);
+    expect(loc.mentioned).toContain("tarzana");
+    expect(loc.addressCity).toBeNull();
+    expect(loc.addressInArea).toBe(false);
+  });
+
+  it("records an out-of-area address as such", () => {
+    const loc = findPageLocation("<p>Main office: Fresno, CA 93721</p>", AREA);
+    expect(loc.addressInArea).toBe(false);
+    expect(loc.addressCity).toContain("Fresno");
+  });
+
+  it("prefers a local branch address over a corporate one elsewhere", () => {
+    const loc = findPageLocation("<p>HQ: Fresno, CA 93721. Branch: Encino, CA 91316</p>", AREA);
+    expect(loc.addressInArea).toBe(true);
+    expect(loc.addressCity).toBe("encino");
+  });
+
+  it("finds nothing when the page says nothing", () => {
+    const loc = findPageLocation("<p>We serve the whole valley!</p>", AREA);
+    expect(loc.addressCity).toBeNull();
+    expect(loc.mentioned).toEqual([]);
+  });
+});
+
+describe("resolveConfidence", () => {
+  const AREA = ["Sherman Oaks", "Encino", "Studio City", "Tarzana", "Valley Village", "Toluca Lake"];
+  const nowhere = { snippet: null, addressCity: null, addressInArea: false, mentioned: [] };
+
+  it("verifies when the site's address is the licence's own city", () => {
+    const loc = findPageLocation("<p>Encino, CA 91316</p>", AREA);
+    const d = resolveConfidence({ phoneMatched: false, location: loc, expectedCity: "Encino" });
+    expect(d.confidence).toBe("verified");
+  });
+
+  it("verifies an address in a different covered city", () => {
+    const loc = findPageLocation("<p>Tarzana, CA 91356</p>", AREA);
+    expect(resolveConfidence({ phoneMatched: false, location: loc, expectedCity: "Encino" }).confidence)
+      .toBe("verified");
+  });
+
+  it("sends an out-of-area address to review even when the phone matches", () => {
+    // The operator's steer: a phone mismatch says little; a site placing the
+    // business in another county says a great deal. Location outranks.
+    const loc = findPageLocation("<p>Fresno, CA 93721</p>", AREA);
+    const d = resolveConfidence({ phoneMatched: true, location: loc, expectedCity: "Encino" });
+    expect(d.confidence).toBe("needs_review");
+    expect(d.reason).toMatch(/outside the service area/i);
+  });
+
+  it("is not fooled by an out-of-area business listing our cities as places it travels", () => {
+    // The case this rewrite exists for. Nearly every contractor site carries
+    // a long service-area footer; treating that as proof of location would
+    // verify a Fresno company that happens to mention Sherman Oaks.
+    const html = "<p>Fresno, CA 93721</p><p>Serving Sherman Oaks, Encino and Tarzana</p>";
+    const loc = findPageLocation(html, AREA);
+    expect(loc.mentioned.length).toBeGreaterThan(0);
+    expect(resolveConfidence({ phoneMatched: false, location: loc, expectedCity: "Encino" }).confidence)
+      .toBe("needs_review");
+  });
+
+  it("does not verify on a service-area mention alone", () => {
+    const loc = findPageLocation("<p>We serve Encino!</p>", AREA);
+    const d = resolveConfidence({ phoneMatched: false, location: loc, expectedCity: "Encino" });
+    expect(d.confidence).toBe("needs_review");
+    expect(d.reason).toMatch(/only as somewhere it works/i);
+  });
+
+  it("still verifies on a phone match when no address can be read", () => {
+    const d = resolveConfidence({ phoneMatched: true, location: nowhere, expectedCity: "Encino" });
+    expect(d.confidence).toBe("verified");
+    expect(d.reason).toMatch(/phone number matches/i);
+  });
+
+  it("sends a row with neither signal to review", () => {
+    expect(resolveConfidence({ phoneMatched: false, location: nowhere, expectedCity: "Encino" }).confidence)
+      .toBe("needs_review");
+  });
+
+  it("always gives the reviewer a reason", () => {
+    for (const phoneMatched of [true, false]) {
+      const d = resolveConfidence({ phoneMatched, location: nowhere, expectedCity: "Encino" });
+      expect(d.reason.length).toBeGreaterThan(20);
+    }
   });
 });
