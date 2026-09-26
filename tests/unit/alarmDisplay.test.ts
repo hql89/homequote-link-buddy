@@ -41,11 +41,19 @@ describe("toDisplayAlarm", () => {
     const kinds = [...block.matchAll(/^\s*\|\s*"([a-z_]+)"/gm)].map((m) => m[1]);
     expect(kinds.length).toBeGreaterThan(0);
 
+    // The assertion has to prove the title came from the display map, not from
+    // the errorMessage fallback. Asserting only "non-empty and not the slug"
+    // let outreach_bounce_rate ship with no entry at all: the fallback title
+    // satisfied both, so a kind the banner could not name still passed.
+    const FALLBACK = "RAW DEVELOPER MESSAGE — should never be a title";
+    const missing: string[] = [];
+
     for (const kind of kinds) {
-      const d = toDisplayAlarm(record({ metadata: { alarm_kind: kind } }));
-      expect(d.title).not.toBe(kind);
-      expect(d.title.length).toBeGreaterThan(0);
+      const d = toDisplayAlarm(record({ metadata: { alarm_kind: kind }, errorMessage: FALLBACK }));
+      if (d.title === FALLBACK || d.title === kind || d.title.length === 0) missing.push(kind);
     }
+
+    expect(missing, "AlarmKind(s) with no entry in alarmDisplay's TITLES map").toEqual([]);
   });
 
   it("falls back to the recorded message for an unrecognised kind, rather than dropping it", () => {

@@ -28,6 +28,7 @@ import {
 } from "@/integrations/supabase/directory";
 import { HelpTip } from "@/components/admin/HelpTip";
 import { summariseRun } from "@/lib/jobRunSummary";
+import { explainRunError } from "@/lib/jobRunErrorHelp";
 import { Loader2, Play, Check, X, Mail, ExternalLink, Send } from "lucide-react";
 
 const SETTING_KEY = "enrichment_config";
@@ -84,6 +85,13 @@ export default function EnrichmentPage() {
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
   const [lastRun, setLastRun] = useState<string | null>(null);
+  /**
+   * The latest run's failure, if it failed. Kept apart from `lastRun`: a run
+   * that never started has no counts for summariseRun to describe, so it
+   * returned null and the page rendered nothing at all — a job that had failed
+   * 29 mornings running looked exactly like one that had never run.
+   */
+  const [lastRunError, setLastRunError] = useState<{ message: string; help: string | null } | null>(null);
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [bulkRunning, setBulkRunning] = useState(false);
@@ -130,11 +138,24 @@ export default function EnrichmentPage() {
       setOutreachReady((outreachRes.data ?? []) as OutreachReadyRow[]);
     }
 
-    const runs = (runsRes.data ?? []) as { job_name: string; metadata: Record<string, unknown> }[];
+    const runs = (runsRes.data ?? []) as {
+      job_name: string;
+      status: string;
+      error_message: string | null;
+      metadata: Record<string, unknown>;
+    }[];
     const latest = runs.find((r) => r.job_name === "enrich-business-email");
     if (latest) {
       const { text } = summariseRun(latest.job_name, latest.metadata);
       setLastRun(text);
+      setLastRunError(
+        latest.status === "failure" || latest.status === "partial"
+          ? {
+              message: latest.error_message ?? "The last run failed without recording a reason.",
+              help: explainRunError(latest.job_name, latest.error_message),
+            }
+          : null,
+      );
     }
 
     setLoading(false);
@@ -308,7 +329,24 @@ export default function EnrichmentPage() {
                   )}
                 </Button>
               </div>
-              {lastRun && <p className="mt-3 text-xs text-muted-foreground">Last run: {lastRun}</p>}
+              {lastRunError ? (
+                <div
+                  role="status"
+                  className="mt-3 rounded-md border border-destructive/40 bg-destructive/5 p-3"
+                >
+                  <p className="text-sm font-medium text-destructive">
+                    The last scheduled run failed
+                  </p>
+                  {lastRunError.help && (
+                    <p className="mt-1 text-sm text-foreground">{lastRunError.help}</p>
+                  )}
+                  <p className="mt-1 text-xs font-mono break-all text-muted-foreground">
+                    {lastRunError.message}
+                  </p>
+                </div>
+              ) : (
+                lastRun && <p className="mt-3 text-xs text-muted-foreground">Last run: {lastRun}</p>
+              )}
             </div>
 
             <div className="mt-8">

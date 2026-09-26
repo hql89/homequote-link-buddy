@@ -96,6 +96,13 @@ function makeBusinessChain() {
   return chain;
 }
 
+/**
+ * admin_recent_job_runs rows for the page to read. Mutable so a test can put
+ * a failed run in front of the page; empty by default, which is what every
+ * pre-existing test in this file expects.
+ */
+const jobRuns: { rows: Record<string, unknown>[] } = { rows: [] };
+
 vi.mock("../../src/integrations/supabase/client", () => ({
   supabase: {
     from: () => ({
@@ -105,7 +112,7 @@ vi.mock("../../src/integrations/supabase/client", () => ({
         }),
       }),
     }),
-    rpc: () => Promise.resolve({ data: [], error: null }),
+    rpc: () => Promise.resolve({ data: jobRuns.rows, error: null }),
   },
 }));
 
@@ -348,5 +355,80 @@ describe("EnrichmentPage — Ready for outreach", () => {
 
     // Everything is now enabled, so "Enable all" has nothing left to do.
     await waitFor(() => expect(screen.getByRole("button", { name: "Enable all (0)" })).toBeDisabled());
+  });
+});
+
+
+/**
+ * The regression this locks in. `summariseEnrichment` returns no text when the
+ * run has no `considered` count — which is always true of a run that never
+ * started — and the page rendered `{lastRun && ...}`. So a job that failed 29
+ * mornings in a row rendered nothing whatsoever, indistinguishable from a job
+ * that had never run, while the fix sat in its error_message the whole time.
+ */
+describe("Enrichment — failed scheduled run", () => {
+  const FAILURE = {
+    job_name: "enrich-business-email",
+    status: "failure",
+    error_message:
+      'Scheduled enrichment could not start: no Vault secret named "supabase_secret_key". ' +
+      "Add the project's secret (service role) API key under Project Settings -> Vault.",
+    metadata: { reason: "missing_vault_secret", trigger: "cron" },
+  };
+
+  beforeEach(() => {
+    jobRuns.rows = [];
+  });
+
+  it("says the run failed instead of rendering nothing", async () => {
+    jobRuns.rows = [FAILURE];
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText(/last scheduled run failed/i)).toBeInTheDocument());
+  });
+
+  it("shows what to do about it, not just that it broke", async () => {
+    jobRuns.rows = [FAILURE];
+    renderPage();
+
+    // The catalogued explanation, not the raw developer message.
+    await waitFor(() =>
+      expect(screen.getByText(/Project Settings → Vault, named exactly supabase_secret_key/i)).toBeInTheDocument(),
+    );
+    // And it tells them the manual button still works, which is the thing
+    // that actually unblocks them today.
+    expect(screen.getByText(/Run now.*uses your own admin login/is)).toBeInTheDocument();
+  });
+
+  it("still shows the raw message, for a failure nobody has catalogued", async () => {
+    jobRuns.rows = [{ ...FAILURE, error_message: "Something nobody has written help for." }];
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByText("Something nobody has written help for.")).toBeInTheDocument(),
+    );
+    expect(screen.getByText(/last scheduled run failed/i)).toBeInTheDocument();
+  });
+
+  it("reports a failure that recorded no reason at all, rather than going quiet again", async () => {
+    jobRuns.rows = [{ ...FAILURE, error_message: null }];
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByText(/failed without recording a reason/i)).toBeInTheDocument(),
+    );
+  });
+
+  it("does not cry failure over a successful run", async () => {
+    jobRuns.rows = [{
+      job_name: "enrich-business-email",
+      status: "success",
+      error_message: null,
+      metadata: { considered: 20, verified: 6, needs_review: 2, no_url: 12 },
+    }];
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText(/Last run:/i)).toBeInTheDocument());
+    expect(screen.queryByText(/last scheduled run failed/i)).not.toBeInTheDocument();
   });
 });

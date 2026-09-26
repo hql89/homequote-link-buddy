@@ -47,7 +47,9 @@ export type AlarmKind =
   /** A well-formed unsubscribe token repeatedly matched no business — links may be broken. */
   | "unsubscribe_token_misses"
   /** Outreach halted itself: too many of the recent sends bounced. */
-  | "outreach_bounce_rate";
+  | "outreach_bounce_rate"
+  /** A scheduled job has failed several runs in a row and nobody has noticed. */
+  | "job_failing_repeatedly";
 
 /**
  * Records an alarm. Never throws.
