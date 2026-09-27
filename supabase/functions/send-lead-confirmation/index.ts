@@ -96,47 +96,100 @@ Deno.serve(async (req) => {
       token: feedbackToken,
     });
 
-    // 2. Schedule nurture emails
     const now = new Date();
     const followUpAt = new Date(now.getTime() + FOLLOW_UP_DELAY_HOURS * 3600_000);
     const feedbackAt = new Date(now.getTime() + FEEDBACK_DELAY_HOURS * 3600_000);
 
+    // 2. Send the confirmation BEFORE recording it.
+    //
+    // This used to run the other way round: the confirmation row was inserted
+    // with status 'sent' and a sent_at timestamp, then the send was fired with
+    // `await fetch(...)` and its response discarded. So a notify-admin-email
+    // failure — SMTP down, the volume circuit breaker tripped, a self-address
+    // refusal, any 500 — left the homeowner with no email while the database
+    // said it had been sent, lead_events said "Confirmation sent", and the
+    // caller got success: true. Nothing anywhere recorded the failure.
+    //
+    // send-nurture-emails, which sends the follow-up and feedback mails of
+    // this same sequence through this same endpoint, already gets this right:
+    // it checks res.ok and only then writes status 'sent'. This is that
+    // pattern, applied to the first email in the sequence.
+    const confirmationHtml = buildConfirmationHtml(leadName, buyerName, lead.service_type || "plumbing");
+
+    const notifyUrl = `${supabaseUrl}/functions/v1/notify-admin-email`;
+    let confirmationSent = false;
+    let confirmationError: string | null = null;
+    try {
+      const res = await fetch(notifyUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${serviceRoleKey}`,
+        },
+        body: JSON.stringify({
+          notificationType: "lead_nurture",
+          nurtureData: {
+            toEmail: lead.email,
+            subject: `We've shared your request with ${buyerName}`,
+            html: confirmationHtml,
+          },
+        }),
+      });
+      confirmationSent = res.ok;
+      if (!res.ok) {
+        confirmationError = `HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`;
+      }
+    } catch (sendErr) {
+      confirmationError = sendErr instanceof Error ? sendErr.message : String(sendErr);
+    }
+    if (confirmationError) {
+      console.error(`send-lead-confirmation: confirmation to ${lead.email} failed:`, confirmationError);
+    }
+
+    // 3. Record the sequence, with the confirmation's real outcome.
+    //
+    // The follow-up and feedback rows are scheduled either way: they are
+    // future sends that send-nurture-emails will attempt on its own, and a
+    // failed confirmation is no reason to cancel them.
+    //
+    // On failure the confirmation row is left at the column default,
+    // 'scheduled', rather than marked 'failed'. That is deliberate and is
+    // what makes the failure self-healing: send-nurture-emails selects
+    // `status = 'scheduled' AND scheduled_at <= now()`, so a confirmation
+    // left scheduled with scheduled_at of now is picked up and retried on
+    // its next run. A terminal 'failed' would be recorded honestly and then
+    // never sent — the homeowner still gets nothing. This is also exactly
+    // how send-nurture-emails treats its own failures: it leaves the row
+    // scheduled rather than closing it out.
     await supabase.from("lead_nurture_emails").insert([
-      { lead_id: leadId, email_type: "confirmation", scheduled_at: now.toISOString(), status: "sent", sent_at: now.toISOString() },
+      {
+        lead_id: leadId,
+        email_type: "confirmation",
+        scheduled_at: now.toISOString(),
+        ...(confirmationSent ? { status: "sent", sent_at: new Date().toISOString() } : {}),
+      },
       { lead_id: leadId, email_type: "follow_up", scheduled_at: followUpAt.toISOString() },
       { lead_id: leadId, email_type: "feedback_request", scheduled_at: feedbackAt.toISOString() },
     ]);
 
-    // 3. Send immediate confirmation email via notify-admin-email pattern
-    const confirmationHtml = buildConfirmationHtml(leadName, buyerName, lead.service_type || "plumbing");
-
-    const notifyUrl = `${supabaseUrl}/functions/v1/notify-admin-email`;
-    await fetch(notifyUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${serviceRoleKey}`,
-      },
-      body: JSON.stringify({
-        notificationType: "lead_nurture",
-        nurtureData: {
-          toEmail: lead.email,
-          subject: `We've shared your request with ${buyerName}`,
-          html: confirmationHtml,
-        },
-      }),
-    });
-
-    // 4. Log event
+    // 4. Log event — saying which of the two things actually happened.
     await supabase.from("lead_events").insert({
       lead_id: leadId,
       event_type: "nurture_started",
-      event_detail: `Confirmation sent, follow-up scheduled for ${followUpAt.toISOString()}, feedback for ${feedbackAt.toISOString()}`,
+      event_detail: confirmationSent
+        ? `Confirmation sent, follow-up scheduled for ${followUpAt.toISOString()}, feedback for ${feedbackAt.toISOString()}`
+        : `Confirmation FAILED (${confirmationError}); follow-up still scheduled for ${followUpAt.toISOString()}, feedback for ${feedbackAt.toISOString()}`,
       created_by_user_id: userData.user.id,
     });
 
+    // The nurture sequence is scheduled either way, so this is not a 500 —
+    // but `success` must not claim the confirmation went out when it didn't.
     return new Response(
-      JSON.stringify({ success: true, feedbackToken }),
+      JSON.stringify({
+        success: confirmationSent,
+        feedbackToken,
+        ...(confirmationError ? { confirmationError } : {}),
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
