@@ -7,6 +7,7 @@ import {
   evaluateBounceCircuit,
   resolveBounceCircuitSettings,
   BOUNCE_CIRCUIT_DEFAULTS,
+  resolveResendSender,
 } from "../../supabase/functions/_shared/emailSafety";
 import { classifyReply } from "../../supabase/functions/_shared/inboundClassifier";
 
@@ -382,5 +383,57 @@ describe("evaluateBounceCircuit", () => {
     const old = { windowDays: 7, minSample: 10, threshold: 0.5 };
     expect(evaluateBounceCircuit(40, 8, old).tripped).toBe(false);
     expect(evaluateBounceCircuit(40, 8, BOUNCE_CIRCUIT_DEFAULTS).tripped).toBe(true);
+  });
+});
+
+/**
+ * The failure this guards against was found by reading DNS, not the code:
+ * homequotelink.com publishes SPF ending in `-all` with no Resend include,
+ * a single `default._domainkey` DKIM record, and DMARC `p=quarantine`. A
+ * Resend send using the SMTP identity therefore fails SPF, fails DKIM, and
+ * is quarantined — while Resend returns 2xx and the mailer recorded it as a
+ * successful send, letting send-outreach-drip stamp the business as
+ * contacted and never retry it.
+ */
+describe("resolveResendSender", () => {
+  const smtpFrom = "Home Quote Link <admin@homequotelink.com>";
+
+  it("refuses the fallback when RESEND_SENDER_EMAIL is unset, rather than sending as the SMTP domain", () => {
+    const decision = resolveResendSender(undefined, smtpFrom);
+    expect(decision.from).toBeNull();
+    expect(decision.refused).toContain("RESEND_SENDER_EMAIL is not set");
+  });
+
+  it("names the address it would otherwise have spoofed, so the refusal is diagnosable", () => {
+    expect(resolveResendSender("", smtpFrom).refused).toContain("admin@homequotelink.com");
+  });
+
+  it("treats a whitespace-only setting as unset", () => {
+    expect(resolveResendSender("   ", smtpFrom).from).toBeNull();
+    expect(resolveResendSender(null, smtpFrom).from).toBeNull();
+  });
+
+  it("allows a bare address on a domain the operator has verified in Resend", () => {
+    expect(resolveResendSender("outreach@mail.homequotelink.com", smtpFrom))
+      .toEqual({ from: "outreach@mail.homequotelink.com" });
+  });
+
+  it("allows the `Name <addr>` display form, which Resend also accepts", () => {
+    const configured = "Home Quote Link <outreach@mail.homequotelink.com>";
+    expect(resolveResendSender(configured, smtpFrom)).toEqual({ from: configured });
+  });
+
+  it("refuses a malformed sender instead of handing it to Resend", () => {
+    expect(resolveResendSender("not-an-address", smtpFrom).from).toBeNull();
+    expect(resolveResendSender("Broken <also-not-an-address>", smtpFrom).from).toBeNull();
+    expect(resolveResendSender("not-an-address", smtpFrom).refused).toContain("not a valid email address");
+  });
+
+  it("does not fall back to the SMTP identity even when one is available", () => {
+    // The whole point: a present, plausible-looking smtpFallbackFrom must
+    // never become the sender. It is context for the error message only.
+    const decision = resolveResendSender(undefined, smtpFrom);
+    expect(decision.from).not.toBe(smtpFrom);
+    expect(decision.from).toBeNull();
   });
 });

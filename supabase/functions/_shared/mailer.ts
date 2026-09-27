@@ -40,8 +40,18 @@ export interface SendResult {
 // because SMTPClient below is a real network import. Re-exported here so
 // existing call sites (`import { isSelfAddressed } from "../_shared/mailer.ts"`)
 // don't need to know about the split.
-export { isSelfAddressed, checkVolumeCircuitBreaker, resolveBccCopy } from "./emailSafety.ts";
-import { isSelfAddressed, checkVolumeCircuitBreaker, resolveBccCopy } from "./emailSafety.ts";
+export {
+  isSelfAddressed,
+  checkVolumeCircuitBreaker,
+  resolveBccCopy,
+  resolveResendSender,
+} from "./emailSafety.ts";
+import {
+  isSelfAddressed,
+  checkVolumeCircuitBreaker,
+  resolveBccCopy,
+  resolveResendSender,
+} from "./emailSafety.ts";
 
 export interface OutreachEmail {
   to: string;
@@ -152,11 +162,9 @@ async function sendViaSmtp(config: SmtpConfig, email: OutreachEmail): Promise<vo
   await Promise.race([sendPromise, timeoutPromise]);
 }
 
-async function sendViaResend(email: OutreachEmail, fallbackFrom: string): Promise<void> {
+async function sendViaResend(email: OutreachEmail, from: string): Promise<void> {
   const apiKey = Deno.env.get("RESEND_API_KEY");
   if (!apiKey) throw new Error("RESEND_API_KEY is not set — no fallback available.");
-
-  const from = Deno.env.get("RESEND_SENDER_EMAIL") || fallbackFrom;
 
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -276,11 +284,23 @@ async function attemptSend(
     smtpError = "No SMTP config available.";
   }
 
+  // Resolved BEFORE the attempt, not inside it: an unauthorised fallback must
+  // fail as a refusal the caller can see, not as a 2xx from Resend that the
+  // drip job would then treat as proof of contact. See resolveResendSender.
+  const smtpFallbackFrom = config ? `${config.fromName} <${config.fromEmail}>` : "";
+  const sender = resolveResendSender(Deno.env.get("RESEND_SENDER_EMAIL"), smtpFallbackFrom);
+  if (!sender.from) {
+    console.error(`[mailer] ${sender.refused}`);
+    return {
+      success: false,
+      method: "none",
+      smtpError,
+      error: `SMTP: ${smtpError ?? "n/a"} | Resend: ${sender.refused}`,
+    };
+  }
+
   try {
-    const fallbackFrom = config
-      ? `${config.fromName} <${config.fromEmail}>`
-      : "Local Pros Directory <onboarding@resend.dev>";
-    await sendViaResend(email, fallbackFrom);
+    await sendViaResend(email, sender.from);
     return { success: true, method: "resend", smtpError };
   } catch (err) {
     const resendError = err instanceof Error ? err.message : String(err);

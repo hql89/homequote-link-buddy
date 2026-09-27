@@ -140,6 +140,80 @@ export function buildUnsubscribeHeaders(
   };
 }
 
+export interface ResendSenderDecision {
+  /** The `from` to hand Resend, or null to refuse the fallback entirely. */
+  from: string | null;
+  /** Set when the fallback was deliberately refused. Never silent. */
+  refused?: string;
+}
+
+/**
+ * Decides whether the Resend fallback is safe to use at all.
+ *
+ * This exists because "Resend accepted the message" is not delivery, in
+ * exactly the way send-outreach-drip's DELIVERY_PROOF gate already says SMTP
+ * acceptance is not delivery — one layer further down.
+ *
+ * The trap this closes: sendViaResend used to compute its sender as
+ * `RESEND_SENDER_EMAIL || fallbackFrom`, where fallbackFrom is the SMTP
+ * identity (today `Home Quote Link <admin@homequotelink.com>`). With
+ * RESEND_SENDER_EMAIL unset, every fallback send therefore went out as
+ * homequotelink.com *through Resend* — a sender the domain does not
+ * authorise. As of 2026-09 the domain publishes:
+ *
+ *   SPF    v=spf1 ... include:relay.mailchannels.net ... -all   (no Resend)
+ *   DKIM   default._domainkey only                             (no Resend key)
+ *   DMARC  p=quarantine
+ *
+ * So the message fails SPF, fails DKIM, and is quarantined by the domain's
+ * own policy. Resend still returns 2xx, so the mailer recorded `success:
+ * true, method: "resend"`, and send-outreach-drip then stamped
+ * outreach_email_1_sent_at — permanently marking a business as contacted on
+ * the strength of a message nobody received. That business is never retried.
+ *
+ * Refusing is strictly better than that: a refusal leaves the stamp unwritten
+ * and the business eligible for the next run, and surfaces the misconfig in
+ * email_send_log instead of hiding it behind a false success.
+ *
+ * Requiring RESEND_SENDER_EMAIL to be set explicitly is the whole guard. It
+ * is not a DNS check — nothing here can verify SPF or DKIM at send time — but
+ * it forces a human to name the address Resend is actually authorised to send
+ * as, which is the decision that was being made silently and wrongly.
+ */
+export function resolveResendSender(
+  configuredSender: string | null | undefined,
+  smtpFallbackFrom: string,
+): ResendSenderDecision {
+  const candidate = (configuredSender ?? "").trim();
+
+  if (!candidate) {
+    return {
+      from: null,
+      refused:
+        `Resend fallback refused: RESEND_SENDER_EMAIL is not set. Falling back to the SMTP ` +
+        `identity (${smtpFallbackFrom || "unknown"}) would send as a domain Resend is not ` +
+        `authorised for — it fails SPF and DKIM and is quarantined by the domain's own DMARC ` +
+        `policy, while Resend still reports success. Set RESEND_SENDER_EMAIL to an address on ` +
+        `a domain verified in Resend, or leave the fallback off.`,
+    };
+  }
+
+  // Accepts both a bare address and a `Name <addr>` display form, since
+  // Resend takes either and an operator may reasonably configure either.
+  const bare = candidate.match(/<([^>]+)>\s*$/)?.[1]?.trim() ?? candidate;
+
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(bare)) {
+    return {
+      from: null,
+      refused:
+        `Resend fallback refused: RESEND_SENDER_EMAIL ("${candidate}") is not a valid email ` +
+        `address. Refusing rather than sending from a malformed identity.`,
+    };
+  }
+
+  return { from: candidate };
+}
+
 export interface CircuitBreakerResult {
   tripped: boolean;
   reason?: string;
