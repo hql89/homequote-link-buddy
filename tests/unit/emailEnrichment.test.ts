@@ -400,12 +400,12 @@ describe("selectBusinessEmail", () => {
     const emails = ["micah@micahrich.com", "office@capitolplumbing.com"];
     expect(selectBusinessEmail(emails, site)).toEqual({
       email: "office@capitolplumbing.com",
-      onDomain: true,
+      origin: "own",
     });
   });
 
   it("matches an address on a subdomain of the site", () => {
-    expect(selectBusinessEmail(["info@mail.capitolplumbing.com"], site).onDomain).toBe(true);
+    expect(selectBusinessEmail(["info@mail.capitolplumbing.com"], site).origin).toBe("own");
   });
 
   it("keeps document order among several on-domain addresses", () => {
@@ -413,61 +413,102 @@ describe("selectBusinessEmail", () => {
     expect(selectBusinessEmail(emails, site).email).toBe("info@capitolplumbing.com");
   });
 
-  it("still surfaces an off-domain address for a human, but flags it as unrelated", () => {
+  it("names a foreign domain as such, while still surfacing it for a human", () => {
     // Not discarded: /admin/enrichment should show what was actually found.
-    // The flag is what stops it reaching 'verified' and going into outreach.
+    // The origin is what stops it reaching 'verified' and going into outreach.
     expect(selectBusinessEmail(["micah@micahrich.com"], site)).toEqual({
       email: "micah@micahrich.com",
-      onDomain: false,
+      origin: "foreign",
     });
+  });
+
+  // Every one of these is a real production row. All four were sitting in the
+  // off-domain bucket under the first cut of this change, and all four are
+  // plainly the business's own address.
+  it.each([
+    ["toptechbuilders@gmail.com", "https://toptechbuildersinc.com/"],
+    ["skypowerco@yahoo.com", "https://skypowercompany.com/"],
+    ["platinumhomecenter@gmail.com", "https://platinum-homebuilders.com/"],
+    ["tgibbsconstruction@gmail.com", "https://tgibbsconstruction.com/"],
+  ])("calls %s shared, not foreign", (email, url) => {
+    expect(selectBusinessEmail([email], url).origin).toBe("shared");
+  });
+
+  it("prefers a shared-provider address over a foreign one", () => {
+    // Neither is on the site's domain, but a contractor's Gmail is far likelier
+    // to be theirs than an unrelated company's domain is — and document order
+    // would have picked the wrong one here.
+    const emails = ["micah@micahrich.com", "toptechbuilders@gmail.com"];
+    expect(selectBusinessEmail(emails, site)).toEqual({
+      email: "toptechbuilders@gmail.com",
+      origin: "shared",
+    });
+  });
+
+  it("still prefers the site's own domain over a shared provider", () => {
+    const emails = ["office@gmail.com", "office@capitolplumbing.com"];
+    expect(selectBusinessEmail(emails, site).origin).toBe("own");
   });
 
   it("reports nothing found rather than an empty address", () => {
-    expect(selectBusinessEmail([], site)).toEqual({ email: null, onDomain: false });
+    expect(selectBusinessEmail([], site)).toEqual({ email: null, origin: "foreign" });
   });
 });
 
-// The off-domain gate, which sits IN FRONT of the location reasoning above
+// The foreign-domain gate, which sits IN FRONT of the location reasoning above
 // rather than inside it. These pin that separation: the page checking out is
 // not the same claim as the address belonging to the business.
-describe("resolveConfidence — off-domain address gate", () => {
+describe("resolveConfidence — foreign-domain gate", () => {
   const AREA_CITIES = ["Encino", "Tarzana", "Sherman Oaks"];
+  const encino = () => findPageLocation("<p>Encino, CA 91316</p>", AREA_CITIES);
 
-  it("refuses an off-domain address even when the address places the business in the covered city", () => {
+  it("refuses a foreign address even when the address places the business in the covered city", () => {
     // The Capitol Plumbing shape, and the reason this is a gate: every
     // page-level signal is as good as it gets. Without the gate this is
     // 'verified' and goes straight into outreach — to a stranger.
-    const loc = findPageLocation("<p>Encino, CA 91316</p>", AREA_CITIES);
     const d = resolveConfidence({
       phoneMatched: true,
-      location: loc,
+      location: encino(),
       expectedCity: "Encino",
-      emailOnDomain: false,
+      emailOrigin: "foreign",
     });
     expect(d.confidence).toBe("needs_review");
-    expect(d.reason).toMatch(/not on the same domain/i);
+    expect(d.reason).toMatch(/different company's domain/i);
   });
 
   it("still verifies the same page when the address is the business's own", () => {
     // The control: without it the test above would pass on a function that
     // simply never verifies anything.
-    const loc = findPageLocation("<p>Encino, CA 91316</p>", AREA_CITIES);
     expect(
       resolveConfidence({
         phoneMatched: true,
-        location: loc,
+        location: encino(),
         expectedCity: "Encino",
-        emailOnDomain: true,
+        emailOrigin: "own",
       }).confidence,
     ).toBe("verified");
   });
 
-  it("leaves callers that pass no domain fact unchanged", () => {
-    // Absent must not mean "off-domain", or omitting the field would silently
-    // send every existing caller's rows to review.
-    const loc = findPageLocation("<p>Encino, CA 91316</p>", AREA_CITIES);
+  it("does NOT downgrade a shared-provider address", () => {
+    // The whole reason the gate is three-state. Production had 4 of these
+    // against 1 real foreign address; downgrading them would have made the
+    // review queue mostly noise.
     expect(
-      resolveConfidence({ phoneMatched: true, location: loc, expectedCity: "Encino" }).confidence,
+      resolveConfidence({
+        phoneMatched: true,
+        location: encino(),
+        expectedCity: "Encino",
+        emailOrigin: "shared",
+      }).confidence,
+    ).toBe("verified");
+  });
+
+  it("leaves callers that pass no origin unchanged", () => {
+    // Absent must not mean "foreign", or omitting the field would silently
+    // send every existing caller's rows to review.
+    expect(
+      resolveConfidence({ phoneMatched: true, location: encino(), expectedCity: "Encino" })
+        .confidence,
     ).toBe("verified");
   });
 
@@ -480,7 +521,7 @@ describe("resolveConfidence — off-domain address gate", () => {
         phoneMatched: true,
         location: loc,
         expectedCity: "Encino",
-        emailOnDomain: true,
+        emailOrigin: "own",
       }).confidence,
     ).toBe("needs_review");
   });

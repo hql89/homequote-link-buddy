@@ -364,11 +364,39 @@ export function registrableDomain(urlOrEmail: string): string | null {
   return labels.slice(-2).join(".");
 }
 
+/**
+ * Shared mailboxes — a domain that belongs to a mail provider, not to any
+ * business. An address here says nothing either way about whose it is, which
+ * is a different answer from "it belongs to someone else".
+ *
+ * Small contractors overwhelmingly use these: 5 of the 34 enriched businesses
+ * in production, and 4 of those were sitting in the off-domain bucket while
+ * being plainly the business's own address (toptechbuilders@gmail.com for Top
+ * Tech Builders Inc). Treating them as foreign would bury a real signal under
+ * false positives.
+ */
+const SHARED_MAIL_DOMAINS = new Set([
+  "gmail.com", "googlemail.com", "yahoo.com", "ymail.com", "hotmail.com",
+  "outlook.com", "live.com", "msn.com", "aol.com", "icloud.com", "me.com",
+  "mac.com", "comcast.net", "sbcglobal.net", "att.net", "verizon.net",
+  "pacbell.net", "earthlink.net", "protonmail.com", "proton.me", "gmx.com",
+  "zoho.com",
+]);
+
+/** Whose domain an address is published on, relative to the page it came from. */
+export type EmailDomainOrigin =
+  /** The page's own registrable domain — the strongest case. */
+  | "own"
+  /** A shared mail provider. Tells us nothing: neither proof nor a red flag. */
+  | "shared"
+  /** A different business's or person's domain — the Capitol Plumbing failure. */
+  | "foreign";
+
 export interface EmailSelection {
   /** The address to store, or null when the page yielded none. */
   email: string | null;
-  /** Whether it is published on the same domain as the page it came from. */
-  onDomain: boolean;
+  /** Whose domain it is published on — see {@link EmailDomainOrigin}. */
+  origin: EmailDomainOrigin;
 }
 
 /**
@@ -388,23 +416,30 @@ export interface EmailSelection {
  *
  * So: prefer an address on the same registrable domain as the page. Document
  * order still breaks ties among on-domain addresses, which preserves the
- * mailto-before-plain-sweep preference for the normal case.
+ * mailto-before-plain-sweep preference for the normal case. Failing that,
+ * prefer a shared-provider address over a foreign one — a contractor's Gmail
+ * is far likelier to be theirs than an unrelated company's domain is.
  */
 export function selectBusinessEmail(emails: string[], sourceUrl: string): EmailSelection {
-  if (emails.length === 0) return { email: null, onDomain: false };
+  if (emails.length === 0) return { email: null, origin: "foreign" };
 
   const siteDomain = registrableDomain(sourceUrl);
   if (siteDomain) {
-    const onDomain = emails.find((e) => registrableDomain(e) === siteDomain);
-    if (onDomain) return { email: onDomain, onDomain: true };
+    const own = emails.find((e) => registrableDomain(e) === siteDomain);
+    if (own) return { email: own, origin: "own" };
   }
 
-  // Nothing on-domain: keep the address so a human reviewer can see what was
-  // actually found, but flag it as unrelated so confidence can refuse it.
-  return { email: emails[0], onDomain: false };
-}
+  const shared = emails.find((e) => {
+    const d = registrableDomain(e);
+    return d !== null && SHARED_MAIL_DOMAINS.has(d);
+  });
+  if (shared) return { email: shared, origin: "shared" };
 
-export type EmailConfidence = "verified" | "needs_review";
+  // Nothing on-domain and nothing on a shared provider: keep the address so a
+  // human reviewer can see what was actually found, but flag it as belonging
+  // to someone else so confidence can refuse it.
+  return { email: emails[0], origin: "foreign" };
+}
 
 export interface ConfidenceEvidence {
   phoneMatched: boolean;
@@ -412,18 +447,20 @@ export interface ConfidenceEvidence {
   /** The city on the licence record. */
   expectedCity: string;
   /**
-   * Whether the address found is published on the same registrable domain as
-   * the page it came from — see {@link selectBusinessEmail}.
+   * Whose domain the address found is published on — see
+   * {@link selectBusinessEmail}.
    *
    * Separate from every other signal here on purpose. The rest of this
    * function answers "is this the right PAGE"; this answers "is this address
    * even the page's". A page can be unmistakably the right business and still
    * carry a web developer's address in its footer credit.
    *
-   * Optional so existing callers that only reason about the page keep
-   * compiling; absent is treated as on-domain, i.e. no downgrade.
+   * Only "foreign" downgrades. "shared" deliberately does not: a contractor's
+   * Gmail is neither proof nor a red flag, so it falls through to the page
+   * reasoning that decides today. Optional so a caller reasoning only about
+   * the page keeps compiling, and absent means no downgrade.
    */
-  emailOnDomain?: boolean;
+  emailOrigin?: EmailDomainOrigin;
 }
 
 export interface ConfidenceDecision {
@@ -450,11 +487,11 @@ export interface ConfidenceDecision {
  * reason for a person to look, not grounds to discard a business unattended.
  */
 export function resolveConfidence(evidence: ConfidenceEvidence): ConfidenceDecision {
-  const { phoneMatched, location, expectedCity, emailOnDomain } = evidence;
+  const { phoneMatched, location, expectedCity, emailOrigin } = evidence;
   const expected = normaliseCity(expectedCity ?? "");
 
-  // An off-domain address can never be `verified`, however well the page
-  // itself checks out.
+  // An address on someone else's domain can never be `verified`, however well
+  // the page itself checks out.
   //
   // This is deliberately a gate in front of the page reasoning below rather
   // than another signal mixed into it, because it answers a different
@@ -466,17 +503,25 @@ export function resolveConfidence(evidence: ConfidenceEvidence): ConfidenceDecis
   // personal address in the "site by" footer credit, which then received
   // cold outreach twice.
   //
-  // Strictly more conservative — it can only move a row from verified to
-  // needs_review, never the reverse — so nothing that was skipped before is
-  // sent now. The address is still stored by the caller so a human sees what
-  // was actually found; it just doesn't go straight into outreach.
-  if (emailOnDomain === false) {
+  // Only "foreign" is refused, and that precision is the point. Gating on
+  // "not the site's own domain" was the first cut, and production data showed
+  // it would have downgraded 7 of 28 verified rows to catch 1 real problem:
+  // the other 6 were the business's own address on Gmail or Yahoo, or on a
+  // near-variant of their own domain. Six false review items per real catch
+  // is how a check gets ignored. "shared" therefore falls through to the page
+  // reasoning, which is what decides those today.
+  //
+  // Can only move a row from verified to needs_review, never the reverse, so
+  // nothing that was skipped before is sent now. The address is still stored
+  // by the caller so a human sees what was actually found; it just doesn't go
+  // straight into outreach.
+  if (emailOrigin === "foreign") {
     return {
       confidence: "needs_review",
       reason:
-        "The address found is not on the same domain as the site it came from, so it may " +
-        "belong to someone else — a web designer or a listing service — rather than to this " +
-        "business.",
+        "The address found is on a different company's domain from the site it came from, so " +
+        "it may belong to someone else — a web designer or a listing service — rather than to " +
+        "this business.",
     };
   }
 
