@@ -547,6 +547,64 @@ export async function setBusinessSuppressed(
 }
 
 /**
+ * The address that bounced, for each of the businesses passed in.
+ *
+ * Recoverable without a new column because receive-inbound-email matches a
+ * bounce to its business by `businesses.email ILIKE recipient` — so the
+ * address on the `bounced` send-log row is exactly what the business had when
+ * it was knocked out of outreach. Comparing it against the CURRENT email is
+ * how "has anyone actually fixed this?" gets answered.
+ *
+ * Newest bounce wins: a business that bounced, was fixed, and bounced again
+ * must be judged against its latest failure, not its first.
+ */
+export async function listBouncedRecipients(businessIds: string[]): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  if (businessIds.length === 0) return map;
+
+  const { data } = await directoryDb
+    .from("email_send_log")
+    .select("related_business_id, recipient_email, bounced_at")
+    .in("related_business_id", businessIds)
+    .eq("status", "bounced")
+    .order("bounced_at", { ascending: false });
+
+  for (const row of data ?? []) {
+    // Rows arrive newest-first, so the first sighting of a business is its
+    // most recent bounce and anything after it must not overwrite that.
+    if (row.related_business_id && !map.has(row.related_business_id)) {
+      map.set(row.related_business_id, row.recipient_email);
+    }
+  }
+  return map;
+}
+
+/**
+ * Puts a business the bounce excluded back into the outreach pool.
+ *
+ * Clears `email_undeliverable_at` and nothing else. `outreach_bounced_at` and
+ * `outreach_bounce_kind` are the record of what happened, and the drip and
+ * emailSkipReason both gate on `email_undeliverable_at` alone — so clearing
+ * that one restores eligibility, while erasing the other two would destroy
+ * the evidence and buy nothing. Same posture as the rest of this bridge:
+ * nothing that happened gets unwritten.
+ *
+ * The column-level UPDATE grant this needs already exists — granted by
+ * 20260801270000_delivery_evidence.sql and confirmed live in production
+ * (`authenticated=w` on the column's ACL, 2026-09-27) rather than taken from
+ * the migration file, since a migration that never ran looks identical here.
+ * Without the grant this fails hard with "permission denied for table
+ * businesses" rather than silently doing nothing.
+ */
+export async function clearEmailUndeliverable(id: string): Promise<{ message: string } | null> {
+  const { error } = await directoryDb
+    .from("businesses")
+    .update({ email_undeliverable_at: null })
+    .eq("id", id);
+  return error;
+}
+
+/**
  * Turns cold outreach on or off for a single business. Every ingested row
  * starts paused (process-ingest-queue sets outreach_paused: true so a fresh
  * import is silent until reviewed) and nothing in the UI could flip it back

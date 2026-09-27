@@ -102,9 +102,26 @@ replyRows.push(ignoredRows[0]);
 // the badge-label map without changing the unhandled count the other tests
 // assert on.
 allReplyRows.push({
+  id: "reply-bounce-fixed",
+  message_id: "msg-bounce-fixed",
+  business_id: "biz-3",
+  from_email: "mailer-daemon@googlemail.com",
+  from_name: "Mail Delivery Subsystem",
+  subject: "Delivery Status Notification (Failure)",
+  body_text: "Address not found.",
+  classification: "bounce",
+  is_priority: false,
+  extracted_url: null,
+  handled_at: null,
+  received_at: "2026-07-28T03:00:00Z",
+});
+
+allReplyRows.push({
   id: "reply-bounce",
   message_id: "msg-bounce",
-  business_id: null,
+  // Matched to a business the bounce already knocked out of outreach: that is
+  // the row where "no action needed" has to be spelled out.
+  business_id: "biz-2",
   from_email: "mailer-daemon@googlemail.com",
   from_name: "Mail Delivery Subsystem",
   subject: "Delivery Status Notification (Failure)",
@@ -117,8 +134,43 @@ allReplyRows.push({
 });
 
 const businessRows = [
-  { id: "biz-1", business_name: "Lux Air HVAC", city: "Tarzana", outreach_suppressed_at: null },
+  {
+    id: "biz-1",
+    business_name: "Lux Air HVAC",
+    city: "Tarzana",
+    outreach_suppressed_at: null,
+    email_undeliverable_at: null,
+    email: "owner@luxairhvac.com",
+  },
+  // Never suppressed by anyone — the bounce alone took it out of the pool, and
+  // the page has to treat that as done rather than as still-to-do.
+  {
+    id: "biz-2",
+    business_name: "Thynk Remodeling",
+    city: "Sherman Oaks",
+    outreach_suppressed_at: null,
+    email_undeliverable_at: "2026-08-23T00:00:00Z",
+    // Still the address that bounced — nobody has fixed anything.
+    email: "contact@thynkremodeling.com",
+  },
+  {
+    id: "biz-3",
+    business_name: "Valley Roofing",
+    city: "Encino",
+    outreach_suppressed_at: null,
+    email_undeliverable_at: "2026-08-23T00:00:00Z",
+    // Same bounce, but someone has since put a different address on it.
+    email: "hello@valleyroofing.com",
+  },
 ];
+
+/** What listBouncedRecipients reports: both bounced at the OLD address. */
+const bouncedRecipients = new Map([
+  ["biz-2", "contact@thynkremodeling.com"],
+  ["biz-3", "old@valleyroofing.com"],
+]);
+
+const clearUndeliverableCalls: string[] = [];
 
 const addIgnoredCalls: { matchType: string; pattern: string }[] = [];
 const removeIgnoredCalls: string[] = [];
@@ -240,6 +292,11 @@ vi.mock("../../src/integrations/supabase/directory", () => ({
     applyUrlCalls.push({ businessId, url });
     return Promise.resolve(null);
   },
+  listBouncedRecipients: () => Promise.resolve(bouncedRecipients),
+  clearEmailUndeliverable: (id: string) => {
+    clearUndeliverableCalls.push(id);
+    return Promise.resolve(null);
+  },
   listIgnoredSenders: () => Promise.resolve({ rows: ignoredSenderRows, error: null }),
   addIgnoredSender: (matchType: string, pattern: string) => {
     addIgnoredCalls.push({ matchType, pattern });
@@ -264,6 +321,7 @@ function renderPage() {
 
 beforeEach(() => {
   suppressCalls.length = 0;
+  clearUndeliverableCalls.length = 0;
   applyUrlCalls.length = 0;
   markHandledCalls.length = 0;
   addIgnoredCalls.length = 0;
@@ -315,9 +373,83 @@ describe("RepliesPage", () => {
     await waitFor(() => expect(screen.getByText(/Lux Air HVAC — Tarzana/)).toBeInTheDocument());
 
     const card = screen.getByText(/Lux Air HVAC — Tarzana/).closest("li")!;
-    fireEvent.click(within(card).getByRole("button", { name: /suppress/i }));
+    fireEvent.click(within(card).getByRole("button", { name: /stop outreach to this business/i }));
 
     await waitFor(() => expect(suppressCalls).toContainEqual({ id: "biz-1", suppressed: true }));
+  });
+
+  it("offers no stop-outreach button on a business the bounce already excluded", async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText(/Lux Air HVAC — Tarzana/)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "all" }));
+
+    await waitFor(() => expect(screen.getByText(/Thynk Remodeling — Sherman Oaks/)).toBeInTheDocument());
+    const card = screen.getByText(/Thynk Remodeling — Sherman Oaks/).closest("li")!;
+
+    // Pressing it would set a second flag that changes nothing, while looking
+    // like the row had been waiting on a human all along.
+    expect(
+      within(card).queryByRole("button", { name: /stop outreach to this business/i }),
+    ).not.toBeInTheDocument();
+
+    const on = new Date("2026-08-23T00:00:00Z").toLocaleDateString();
+    expect(within(card).getByText(`Outreach stopped ${on} — address bounced`)).toBeInTheDocument();
+    // The note must not restate the date the badge already carries — it says
+    // what the badge cannot, namely why there is no button to press.
+    const note = within(card).getByText(/No action needed/);
+    expect(note).toHaveTextContent("the bounce did this on its own");
+    expect(note).not.toHaveTextContent(on);
+
+    // The inbox-side action is unrelated and must survive: this sender can
+    // still be ignored even though outreach already stopped.
+    expect(
+      within(card).getByRole("button", { name: /ignore mail from this sender/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("offers no resume until the bounced address has actually been replaced", async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText(/Lux Air HVAC — Tarzana/)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "all" }));
+
+    await waitFor(() => expect(screen.getByText(/Thynk Remodeling — Sherman Oaks/)).toBeInTheDocument());
+    const card = screen.getByText(/Thynk Remodeling — Sherman Oaks/).closest("li")!;
+
+    // Its email is still the mailbox that bounced. Resuming would send to the
+    // same dead address, bounce again, and re-stamp the flag — the whole point
+    // of the gate.
+    expect(within(card).queryByRole("button", { name: /resume outreach/i })).not.toBeInTheDocument();
+    expect(within(card).getByText(/Give this business a working address in Email Finder/)).toBeInTheDocument();
+  });
+
+  it("offers the resume once the address differs from the one that bounced", async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText(/Lux Air HVAC — Tarzana/)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "all" }));
+
+    await waitFor(() => expect(screen.getByText(/Valley Roofing — Encino/)).toBeInTheDocument());
+    const card = screen.getByText(/Valley Roofing — Encino/).closest("li")!;
+
+    // Names the address that failed, so the admin can see what changed.
+    expect(within(card).getByText(/old@valleyroofing\.com bounced/)).toBeInTheDocument();
+
+    fireEvent.click(within(card).getByRole("button", { name: /address fixed — resume outreach/i }));
+
+    await waitFor(() => expect(clearUndeliverableCalls).toContain("biz-3"));
+  });
+
+  it("still offers the stop-outreach button on a business nothing has excluded", async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText(/Lux Air HVAC — Tarzana/)).toBeInTheDocument());
+
+    const card = screen.getByText(/Lux Air HVAC — Tarzana/).closest("li")!;
+    expect(
+      within(card).getByRole("button", { name: /stop outreach to this business/i }),
+    ).toBeInTheDocument();
+    expect(within(card).queryByText(/No action needed/)).not.toBeInTheDocument();
   });
 
   it("shows each reply's received date/time", async () => {
@@ -359,7 +491,10 @@ describe("RepliesPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "all" }));
 
-    await waitFor(() => expect(screen.getByText("Delivery failed")).toBeInTheDocument());
+    // Two bounce fixtures now (one whose address was fixed, one not), so this
+    // asserts on all of them: the point is that the label renders at all,
+    // which is what regressed when `bounce` was missing from the label map.
+    await waitFor(() => expect(screen.getAllByText("Delivery failed").length).toBe(2));
   });
 
   it("keeps ignored mail out of the unhandled queue but reachable in its own view", async () => {
@@ -381,7 +516,7 @@ describe("RepliesPage", () => {
     await waitFor(() => expect(screen.getByText("No matching business")).toBeInTheDocument());
 
     const card = screen.getByText("No matching business").closest("li")!;
-    fireEvent.click(within(card).getByRole("button", { name: /ignore sender/i }));
+    fireEvent.click(within(card).getByRole("button", { name: /ignore mail from this sender/i }));
 
     // Both choices are spelled out — the domain rule is the broader hammer
     // and must never be applied without the admin seeing which domain.

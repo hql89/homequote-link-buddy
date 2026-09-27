@@ -14,10 +14,12 @@ import {
   listIgnoredSenders,
   addIgnoredSender,
   removeIgnoredSender,
+  listBouncedRecipients,
+  clearEmailUndeliverable,
   type InboundEmailRow,
   type IgnoredSenderRow,
 } from "@/integrations/supabase/directory";
-import { Loader2, Mail, AlertCircle, Check, Ban, Link2, ShieldOff, EyeOff, X } from "lucide-react";
+import { Loader2, Mail, AlertCircle, Check, Ban, Link2, ShieldOff, EyeOff, X, MailCheck } from "lucide-react";
 
 interface BusinessInfo {
   business_name: string;
@@ -29,6 +31,9 @@ interface BusinessInfo {
    *  flag); a bounce row can show this without anyone having clicked
    *  "Suppress" at all. */
   email_undeliverable_at: string | null;
+  /** Current address. Compared against the one that bounced to decide whether
+   *  anyone has actually fixed this — see outreachStop(). */
+  email: string | null;
 }
 
 interface ReplyRow extends InboundEmailRow {
@@ -58,6 +63,69 @@ function domainOf(email: string): string {
   return at === -1 ? "" : email.slice(at + 1).toLowerCase();
 }
 
+/** How the two "already stopped" timestamps read on screen. */
+function shortDate(iso: string): string {
+  return new Date(iso).toLocaleDateString();
+}
+
+/** The state of a business that is already out of the outreach pool. */
+interface OutreachStop {
+  /** Badge text. Past tense on purpose: this already happened. */
+  badge: string;
+  /**
+   * The line that replaces the button. The badge above it already carries the
+   * date and the cause, so this says what the badge cannot: why no button, and
+   * where the undo lives when there is one.
+   */
+  note: string;
+  /**
+   * True only for a bounce whose address has since been replaced. Resuming
+   * before that is the footgun this gate exists to prevent: the next send goes
+   * to the same dead mailbox, bounces again, re-stamps the flag, and costs
+   * sender reputation to end up exactly where it started.
+   */
+  canResume?: boolean;
+}
+
+/**
+ * Whether outreach to this business has already stopped, and how.
+ *
+ * Two independent flags do it, and either one is sufficient: send-outreach-drip
+ * filters on both (`.is("outreach_suppressed_at", null).is("email_undeliverable_at",
+ * null)`) and submit-directory-lead checks both through emailSkipReason. So once
+ * either is set there is nothing left for "Stop outreach" to change, and the row
+ * says so in words rather than offering a button whose only effect would be to
+ * make it look like the work got done. Suppression is reported first because it
+ * is the one a human can undo — see the list at the foot of the page.
+ */
+function outreachStop(business: BusinessInfo | null, bouncedAddress?: string): OutreachStop | null {
+  if (!business) return null;
+  if (business.outreach_suppressed_at) {
+    const on = shortDate(business.outreach_suppressed_at);
+    return {
+      badge: `Outreach stopped ${on} \u2014 opted out`,
+      note: "No action needed \u2014 undo it from the list at the foot of this page.",
+    };
+  }
+  if (business.email_undeliverable_at) {
+    const on = shortDate(business.email_undeliverable_at);
+    const current = business.email?.trim().toLowerCase();
+    const bounced = bouncedAddress?.trim().toLowerCase();
+    // Unknown bounced address (no send-log row survived) is treated as
+    // not-fixed: without it there is nothing to compare, and offering a resume
+    // that cannot be justified is worse than withholding one.
+    const fixed = Boolean(current && bounced && current !== bounced);
+    return {
+      badge: `Outreach stopped ${on} \u2014 address bounced`,
+      note: fixed
+        ? `${bouncedAddress} bounced; this business now has a different address.`
+        : "No action needed \u2014 the bounce did this on its own the moment it arrived. Give this business a working address in Email Finder to resume outreach.",
+      canResume: fixed,
+    };
+  }
+  return null;
+}
+
 /** Rows per page when viewing "All" — this table has no cap otherwise. */
 const REPLIES_PAGE_SIZE = 100;
 
@@ -75,6 +143,8 @@ export default function RepliesPage() {
    *  never means "gone" — every ignored message stays one click away. */
   const [view, setView] = useState<"unhandled" | "all" | "ignored">("unhandled");
   const [ignoredSenders, setIgnoredSenders] = useState<IgnoredSenderRow[]>([]);
+  /** business id -> the address that bounced for it. */
+  const [bouncedAddresses, setBouncedAddresses] = useState<Map<string, string>>(new Map());
   /** id of the reply whose inline "ignore which?" choices are open. */
   const [ignoringId, setIgnoringId] = useState<string | null>(null);
   const [newPattern, setNewPattern] = useState("");
@@ -107,7 +177,7 @@ export default function RepliesPage() {
       repliesQuery,
       directoryDb
         .from("businesses")
-        .select("id, business_name, city, outreach_suppressed_at, email_undeliverable_at")
+        .select("id, business_name, city, outreach_suppressed_at, email_undeliverable_at, email")
         .not("outreach_suppressed_at", "is", null),
       listIgnoredSenders(),
     ]);
@@ -125,7 +195,7 @@ export default function RepliesPage() {
     if (businessIds.length > 0) {
       const { data: bizRows } = await directoryDb
         .from("businesses")
-        .select("id, business_name, city, outreach_suppressed_at, email_undeliverable_at")
+        .select("id, business_name, city, outreach_suppressed_at, email_undeliverable_at, email")
         .in("id", businessIds);
       for (const b of (bizRows ?? []) as {
         id: string;
@@ -133,15 +203,27 @@ export default function RepliesPage() {
         city: string;
         outreach_suppressed_at: string | null;
         email_undeliverable_at: string | null;
+        email: string | null;
       }[]) {
         businessMap.set(b.id, {
           business_name: b.business_name,
           city: b.city,
           outreach_suppressed_at: b.outreach_suppressed_at,
           email_undeliverable_at: b.email_undeliverable_at,
+          email: b.email,
         });
       }
     }
+
+    // Only the bounce-excluded ones: every other row has nothing to compare,
+    // so asking about them would be a query for rows we would discard.
+    setBouncedAddresses(
+      await listBouncedRecipients(
+        [...businessMap.entries()]
+          .filter(([, b]) => b.email_undeliverable_at && !b.outreach_suppressed_at)
+          .map(([id]) => id),
+      ),
+    );
 
     // A failed read of the rules is surfaced, never rendered as "no rules" —
     // an empty list and an unreadable list look identical on screen and mean
@@ -164,6 +246,7 @@ export default function RepliesPage() {
           city: string;
           outreach_suppressed_at: string | null;
           email_undeliverable_at: string | null;
+          email: string | null;
         }[]
       ).map((b) => ({
         id: b.id,
@@ -171,6 +254,7 @@ export default function RepliesPage() {
         city: b.city,
         outreach_suppressed_at: b.outreach_suppressed_at,
         email_undeliverable_at: b.email_undeliverable_at,
+        email: b.email,
       })),
     );
     setLoading(false);
@@ -214,6 +298,28 @@ export default function RepliesPage() {
     if (error) {
       toast({ title: "Couldn't un-suppress", description: error.message, variant: "destructive" });
     } else {
+      await load();
+    }
+    setBusyId(null);
+  }
+
+  /**
+   * Puts a bounced business back in the outreach pool, once its address has
+   * actually changed. The button that calls this only renders when
+   * outreachStop() has established that; this is the second half of the same
+   * decision, not an independent one.
+   */
+  async function handleResumeAfterFix(reply: ReplyRow) {
+    if (!reply.business_id) return;
+    setBusyId(reply.id);
+    const error = await clearEmailUndeliverable(reply.business_id);
+    if (error) {
+      toast({ title: "Couldn't resume outreach", description: error.message, variant: "destructive" });
+    } else {
+      toast({
+        title: "Outreach resumed",
+        description: "The new address is back in the sending pool. The bounce itself stays on the record.",
+      });
       await load();
     }
     setBusyId(null);
@@ -348,13 +454,18 @@ export default function RepliesPage() {
               {view === "unhandled"
                 ? "No unhandled replies."
                 : view === "ignored"
-                  ? "No ignored mail yet. Use \u201cIgnore sender\u201d on anything that isn\u2019t a reply."
+                  ? "No ignored mail yet. Use \u201cIgnore mail from this sender\u201d on anything that isn\u2019t a reply."
                   : "No replies yet."}
             </p>
           </div>
         ) : (
           <ul className="mt-6 space-y-3">
-            {replies.map((reply) => (
+            {replies.map((reply) => {
+              const stop = outreachStop(
+                reply.business,
+                reply.business_id ? bouncedAddresses.get(reply.business_id) : undefined,
+              );
+              return (
               <li key={reply.id} className="rounded-lg border border-border bg-card p-4">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge
@@ -386,17 +497,17 @@ export default function RepliesPage() {
                   ) : (
                     <Badge variant="outline">No matching business</Badge>
                   )}
-                  {/* This bounce already did its job with zero clicks: the
-                      moment it arrived, receive-inbound-email stamped
-                      email_undeliverable_at on the business, and every
-                      outreach send since then has been filtering it out.
-                      Shown so the row proves that on its own — otherwise the
-                      only evidence is an unclicked "Suppress" button, which
-                      looks identical to nothing having happened. */}
-                  {reply.business?.email_undeliverable_at && (
+                  {/* An already-stopped row did its job with zero clicks: the
+                      moment the bounce arrived, receive-inbound-email stamped
+                      email_undeliverable_at, and every outreach send since has
+                      been filtering it out. Shown so the row proves that on
+                      its own — otherwise the only evidence is an unclicked
+                      "Stop outreach" button, which looks identical to nothing
+                      having happened. */}
+                  {stop && (
                     <Badge variant="outline" className="gap-1 border-emerald-500 text-emerald-700">
                       <ShieldOff className="h-3 w-3" aria-hidden="true" />
-                      {`Auto-suppressed since ${new Date(reply.business.email_undeliverable_at).toLocaleDateString()}`}
+                      {stop.badge}
                     </Badge>
                   )}
                   <span className="ml-auto text-xs text-muted-foreground">
@@ -428,7 +539,11 @@ export default function RepliesPage() {
                       Apply {reply.extracted_url}
                     </Button>
                   )}
-                  {reply.business_id && !reply.business?.outreach_suppressed_at && (
+                  {/* Hidden rather than disabled when outreach has already
+                      stopped: there is a note below saying what happened, and
+                      a greyed button would leave the admin guessing which of
+                      the two it was. */}
+                  {reply.business_id && !stop && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -437,12 +552,23 @@ export default function RepliesPage() {
                       onClick={() => handleSuppress(reply)}
                     >
                       <Ban className="h-3.5 w-3.5" aria-hidden="true" />
-                      Suppress
+                      Stop outreach to this business
+                    </Button>
+                  )}
+                  {stop?.canResume && reply.business_id && (
+                    <Button
+                      size="sm"
+                      className="gap-1"
+                      disabled={busyId === reply.id}
+                      onClick={() => handleResumeAfterFix(reply)}
+                    >
+                      <MailCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                      Address fixed — resume outreach
                     </Button>
                   )}
                   {ignoringId === reply.id ? (
                     <>
-                      <span className="self-center text-xs text-muted-foreground">Ignore:</span>
+                      <span className="self-center text-xs text-muted-foreground">Ignore mail from:</span>
                       <Button
                         size="sm"
                         variant="outline"
@@ -474,7 +600,7 @@ export default function RepliesPage() {
                       onClick={() => setIgnoringId(reply.id)}
                     >
                       <EyeOff className="h-3.5 w-3.5" aria-hidden="true" />
-                      Ignore sender
+                      Ignore mail from this sender
                     </Button>
                   )}
                   <Button
@@ -493,8 +619,18 @@ export default function RepliesPage() {
                   </Button>
                 </div>
                 )}
+                {/* Rendered whether or not the action row is — a handled reply
+                    on a bounced business should still say why no one ever
+                    pressed "Stop outreach" on it. */}
+                {stop && (
+                  <p className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
+                    <ShieldOff className="h-3 w-3 shrink-0" aria-hidden="true" />
+                    {stop.note}
+                  </p>
+                )}
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
 
@@ -571,7 +707,7 @@ export default function RepliesPage() {
           <div className="mt-10">
             <h2 className="flex items-center gap-2 text-lg font-semibold">
               <ShieldOff className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-              Suppressed businesses
+              Businesses we no longer email
               <Badge variant="secondary">{suppressed.length}</Badge>
             </h2>
             <p className="mt-1 text-xs text-muted-foreground">
