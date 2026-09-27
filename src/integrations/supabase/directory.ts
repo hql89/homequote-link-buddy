@@ -1,13 +1,19 @@
 /**
  * Typed access to the directory-engine tables.
  *
- * `types.ts` is auto-generated from the remote schema and must not be edited by
- * hand, so the directory tables are typed here and layered onto the existing
- * client. Reads go through the `public_business_listings` view, which omits the
- * claim token — all writes happen in edge functions under the service role.
+ * Every table and view here is described by the generated `types.ts`, so this
+ * file no longer layers a hand-rolled schema over the client — `directoryDb`
+ * is the ordinary generated client. What it still owns is the vocabulary the
+ * generator cannot express: the CHECK-constraint unions, and the two view Row
+ * types whose columns Postgres reports as nullable but which can never
+ * actually be null (see {@link toListings}).
+ *
+ * Reads for the public pages go through the `public_business_listings` view,
+ * which omits the claim token — all writes happen in edge functions under the
+ * service role, bar the handful of admin updates defined below.
  */
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "./client";
+import type { Database } from "./types";
 
 /** Paid listing tier. The view resolves expiry, so this is the effective tier. */
 export type ListingTier = "free" | "featured";
@@ -253,98 +259,103 @@ export interface DirectoryLeadRow {
   notify_skipped_reason: string | null;
 }
 
-interface DirectoryDatabase {
-  // supabase-js resolves its Insert/Update generics through this key; without
-  // it, writes to these tables type as `never`.
-  __InternalSupabase: { PostgrestVersion: "14.1" };
-  public: {
-    Tables: {
-      ingest_queue: {
-        Row: IngestQueueRow;
-        Insert: Partial<IngestQueueRow> & { business_name: string };
-        Update: Partial<IngestQueueRow>;
-        Relationships: [];
-      };
-      businesses: {
-        Row: AdminBusinessRow;
-        Insert: Partial<AdminBusinessRow> & { business_name: string };
-        Update: Partial<AdminBusinessRow>;
-        Relationships: [];
-      };
-      business_photos: {
-        Row: BusinessPhotoRow;
-        Insert: Partial<BusinessPhotoRow> & { business_id: string; storage_path: string };
-        Update: Partial<BusinessPhotoRow>;
-        Relationships: [];
-      };
-      inbound_emails: {
-        Row: InboundEmailRow;
-        Insert: Partial<InboundEmailRow> & { message_id: string; from_email: string };
-        Update: Partial<InboundEmailRow>;
-        Relationships: [];
-      };
-      ignored_senders: {
-        Row: IgnoredSenderRow;
-        Insert: Partial<IgnoredSenderRow> & { match_type: string; pattern: string };
-        Update: Partial<IgnoredSenderRow>;
-        Relationships: [];
-      };
-      outreach_template_variants: {
-        Row: OutreachVariantRow;
-        Insert: Partial<OutreachVariantRow> & {
-          email_type: OutreachEmailType;
-          variant_key: string;
-          subject: string;
-          body: string;
-        };
-        Update: Partial<OutreachVariantRow>;
-        Relationships: [];
-      };
-      email_send_log: {
-        Row: EmailSendLogRow;
-        // Read-only from the browser — every row is written server-side by
-        // the mailer, at send time.
-        Insert: never;
-        Update: never;
-        Relationships: [];
-      };
-      directory_leads: {
-        Row: DirectoryLeadRow;
-        // Read-only from the browser — written server-side by
-        // submit-directory-lead.
-        Insert: never;
-        Update: never;
-        Relationships: [];
-      };
-    };
-    Views: {
-      public_business_listings: {
-        Row: PublicBusinessListing;
-      };
-      public_directory_cities: {
-        Row: DirectoryCity;
-      };
-    };
-    Functions: Record<never, never>;
-    Enums: Record<never, never>;
-    CompositeTypes: Record<never, never>;
-  };
-}
-
-export const directoryDb = supabase as unknown as SupabaseClient<DirectoryDatabase>;
+/**
+ * The directory tables are read and written through the ordinary generated
+ * client — `types.ts` covers every one of them, so nothing is layered on top.
+ * Reads of the public pages go through the `public_business_listings` view,
+ * which omits the claim token; every other write happens in edge functions
+ * under the service role.
+ */
+export const directoryDb = supabase;
 
 /**
- * Minimal write surface for tables absent from the generated `types.ts`.
+ * Compile-time check that a hand-written Row type above still names only
+ * columns the generated schema actually has.
  *
- * supabase-js resolves its Update generic from the generated Database type, so
- * a hand-declared table types as `never` on write even when reads are fine.
- * Rather than scatter casts at call sites, the one narrow cast lives here.
+ * Those interfaces are asserted rather than derived — that is the point of
+ * them, since they say things Postgres cannot: that a view column is never
+ * null, or that a text column only ever holds one of four values. The cost is
+ * that a column renamed or dropped in a migration would go unnoticed until a
+ * page rendered `undefined`. This makes it fail the build instead. Columns
+ * *added* to the schema are deliberately fine: nothing breaks by not
+ * declaring one, and several of these types are intentional projections.
  */
-interface WritableTable {
-  update: (values: Record<string, unknown>) => {
-    eq: (column: string, value: string) => PromiseLike<{ error: { message: string } | null }>;
-    in: (column: string, values: string[]) => PromiseLike<{ error: { message: string } | null }>;
-  };
+type DeclaresOnlyRealColumns<Declared, Row> =
+  Exclude<keyof Declared, keyof Row> extends never
+    ? true
+    : { columnsNotInGeneratedSchema: Exclude<keyof Declared, keyof Row> };
+
+type Assert<T extends true> = T;
+
+type Tables = Database["public"]["Tables"];
+type Views = Database["public"]["Views"];
+
+/** The two public views, exactly as the generator writes them. */
+type ListingViewRow = Views["public_business_listings"]["Row"];
+type CityViewRow = Views["public_directory_cities"]["Row"];
+
+type _ListingColumns = Assert<DeclaresOnlyRealColumns<PublicBusinessListing, ListingViewRow>>;
+type _CityColumns = Assert<DeclaresOnlyRealColumns<DirectoryCity, CityViewRow>>;
+type _IngestColumns = Assert<DeclaresOnlyRealColumns<IngestQueueRow, Tables["ingest_queue"]["Row"]>>;
+type _BusinessColumns = Assert<DeclaresOnlyRealColumns<AdminBusinessRow, Tables["businesses"]["Row"]>>;
+type _PhotoColumns = Assert<
+  DeclaresOnlyRealColumns<BusinessPhotoRow, Tables["business_photos"]["Row"]>
+>;
+type _InboundColumns = Assert<
+  DeclaresOnlyRealColumns<InboundEmailRow, Tables["inbound_emails"]["Row"]>
+>;
+type _IgnoredColumns = Assert<
+  DeclaresOnlyRealColumns<IgnoredSenderRow, Tables["ignored_senders"]["Row"]>
+>;
+type _VariantColumns = Assert<
+  DeclaresOnlyRealColumns<OutreachVariantRow, Tables["outreach_template_variants"]["Row"]>
+>;
+type _SendLogColumns = Assert<
+  DeclaresOnlyRealColumns<EmailSendLogRow, Tables["email_send_log"]["Row"]>
+>;
+type _LeadColumns = Assert<
+  DeclaresOnlyRealColumns<DirectoryLeadRow, Tables["directory_leads"]["Row"]>
+>;
+
+/**
+ * Narrows a read of `public_business_listings` to {@link PublicBusinessListing}.
+ *
+ * Two things separate the generated view Row from what the view really returns:
+ *
+ * 1. Postgres cannot mark a view column NOT NULL, so the generator types all
+ *    fifteen as nullable even though nine can never be null — they are either
+ *    NOT NULL columns of `businesses` or total CASE expressions with no ELSE
+ *    NULL branch (see 20260801240000_public_views_exclude_archived.sql).
+ * 2. `listing_tier` and `services` are wider than the truth: the generator says
+ *    `string` and `Json`, the CASE emits only 'featured' or 'free', and the
+ *    column holds a JSONB array of service names.
+ *
+ * Only the second currently has teeth. This project compiles with
+ * `strict: false`, so `| null` is erased before it can be checked and point 1
+ * cannot produce an error either way — which is why retiring the hand-rolled
+ * schema shim caused no breakage at the read sites. The narrowing is kept
+ * because point 2 is real regardless of strictness, and because this is where
+ * point 1 should already be stated for the day strict mode is turned on:
+ * four pages read this view, and an unexplained cast in each is how one of
+ * them quietly stops matching the schema. The assumption belongs in one place,
+ * next to the migration that justifies it.
+ */
+export function toListings(rows: ListingViewRow[] | null): PublicBusinessListing[] {
+  return (rows ?? []) as PublicBusinessListing[];
+}
+
+/** Single-row form of {@link toListings}, for a listing page's `.maybeSingle()` read. */
+export function toListing(row: ListingViewRow | null): PublicBusinessListing | null {
+  return row as PublicBusinessListing | null;
+}
+
+/**
+ * Narrows a read of `public_directory_cities` to {@link DirectoryCity}, on the
+ * same reasoning as {@link toListings}: `city` and `city_slug` are NOT NULL on
+ * `businesses`, and `listing_count` is a `count(*)`, which is never null.
+ */
+export function toCities(rows: CityViewRow[] | null): DirectoryCity[] {
+  return (rows ?? []) as DirectoryCity[];
 }
 
 /**
@@ -355,8 +366,10 @@ export async function setBusinessPublished(
   id: string,
   published: boolean,
 ): Promise<{ message: string } | null> {
-  const table = directoryDb.from("businesses") as unknown as WritableTable;
-  const { error } = await table.update({ is_published: published }).eq("id", id);
+  const { error } = await directoryDb
+    .from("businesses")
+    .update({ is_published: published })
+    .eq("id", id);
   return error;
 }
 
@@ -376,7 +389,7 @@ export async function setBusinessesPublished(
   ids: string[],
   published: boolean,
 ): Promise<{ updated: number; error: { message: string } | null }> {
-  const table = directoryDb.from("businesses") as unknown as WritableTable;
+  const table = directoryDb.from("businesses");
   let updated = 0;
 
   for (let i = 0; i < ids.length; i += PUBLISH_CHUNK) {
@@ -398,8 +411,7 @@ export async function setBusinessPhotoStatus(
   id: string,
   status: "approved" | "rejected",
 ): Promise<{ message: string } | null> {
-  const table = directoryDb.from("business_photos") as unknown as WritableTable;
-  const { error } = await table.update({ status }).eq("id", id);
+  const { error } = await directoryDb.from("business_photos").update({ status }).eq("id", id);
   return error;
 }
 
@@ -415,19 +427,6 @@ export interface IgnoredSenderRow {
   pattern: string;
   note: string | null;
   created_at: string;
-}
-
-/**
- * The RPCs are absent from the generated `types.ts`, which would resolve
- * their argument type to `never`. One narrow cast here rather than a
- * scattering at call sites — the same approach `directoryDb` and
- * `src/lib/archive.ts` already take.
- */
-interface RpcClient {
-  rpc: (
-    fn: string,
-    args: Record<string, unknown>,
-  ) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
 }
 
 /** Current noise rules, oldest first. */
@@ -460,8 +459,7 @@ export async function addIgnoredSender(
   pattern: string,
   note?: string,
 ): Promise<{ swept: number; error: { message: string } | null }> {
-  const db = directoryDb as unknown as RpcClient;
-  const { data, error } = await db.rpc("admin_add_ignored_sender", {
+  const { data, error } = await directoryDb.rpc("admin_add_ignored_sender", {
     p_match_type: matchType,
     p_pattern: pattern,
     p_note: note ?? null,
@@ -476,15 +474,16 @@ export async function addIgnoredSender(
  * sender from now on", not "that vendor mail was a real reply after all".
  */
 export async function removeIgnoredSender(id: string): Promise<{ message: string } | null> {
-  const db = directoryDb as unknown as RpcClient;
-  const { error } = await db.rpc("admin_remove_ignored_sender", { p_id: id });
+  const { error } = await directoryDb.rpc("admin_remove_ignored_sender", { p_id: id });
   return error;
 }
 
 /** Marks a logged reply as dealt with. Never changes what the reply says — only that a human read it. */
 export async function markReplyHandled(id: string): Promise<{ message: string } | null> {
-  const table = directoryDb.from("inbound_emails") as unknown as WritableTable;
-  const { error } = await table.update({ handled_at: new Date().toISOString() }).eq("id", id);
+  const { error } = await directoryDb
+    .from("inbound_emails")
+    .update({ handled_at: new Date().toISOString() })
+    .eq("id", id);
   return error;
 }
 
@@ -508,7 +507,6 @@ export async function reviewEnrichedEmail(
   id: string,
   decision: "verified" | "rejected",
 ): Promise<{ message: string } | null> {
-  const table = directoryDb.from("businesses") as unknown as WritableTable;
   const values =
     decision === "verified"
       ? { email_confidence: "verified" }
@@ -526,7 +524,7 @@ export async function reviewEnrichedEmail(
           email_review_notes: null,
           email_review_assessed_at: null,
         };
-  const { error } = await table.update(values).eq("id", id);
+  const { error } = await directoryDb.from("businesses").update(values).eq("id", id);
   return error;
 }
 
@@ -541,8 +539,8 @@ export async function setBusinessSuppressed(
   id: string,
   suppressed: boolean,
 ): Promise<{ message: string } | null> {
-  const table = directoryDb.from("businesses") as unknown as WritableTable;
-  const { error } = await table
+  const { error } = await directoryDb
+    .from("businesses")
     .update({ outreach_suppressed_at: suppressed ? new Date().toISOString() : null })
     .eq("id", id);
   return error;
@@ -561,8 +559,10 @@ export async function setBusinessOutreachPaused(
   id: string,
   paused: boolean,
 ): Promise<{ message: string } | null> {
-  const table = directoryDb.from("businesses") as unknown as WritableTable;
-  const { error } = await table.update({ outreach_paused: paused }).eq("id", id);
+  const { error } = await directoryDb
+    .from("businesses")
+    .update({ outreach_paused: paused })
+    .eq("id", id);
   return error;
 }
 
@@ -582,7 +582,7 @@ export async function setBusinessesOutreachPaused(
   ids: string[],
   paused: boolean,
 ): Promise<{ updated: number; error: { message: string } | null }> {
-  const table = directoryDb.from("businesses") as unknown as WritableTable;
+  const table = directoryDb.from("businesses");
   let updated = 0;
 
   for (let i = 0; i < ids.length; i += PUBLISH_CHUNK) {
@@ -659,8 +659,10 @@ export async function applyReplyWebsiteUrl(
   businessId: string,
   url: string,
 ): Promise<{ message: string } | null> {
-  const table = directoryDb.from("businesses") as unknown as WritableTable;
-  const { error } = await table.update({ website_url: url }).eq("id", businessId);
+  const { error } = await directoryDb
+    .from("businesses")
+    .update({ website_url: url })
+    .eq("id", businessId);
   return error;
 }
 

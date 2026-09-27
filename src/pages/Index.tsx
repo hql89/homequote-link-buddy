@@ -20,6 +20,8 @@ import { useActiveVerticals } from "@/hooks/useVerticals";
 import type { Vertical } from "@/hooks/useVerticals";
 import {
   directoryDb,
+  toCities,
+  toListings,
   type DirectoryCity,
   type PublicBusinessListing,
 } from "@/integrations/supabase/directory";
@@ -80,10 +82,10 @@ const Index = () => {
       if (cancelled) return;
 
       if (listingsRes.error) console.error("Featured listings failed:", listingsRes.error.message);
-      else setFeatured((listingsRes.data ?? []) as PublicBusinessListing[]);
+      else setFeatured(toListings(listingsRes.data));
 
       if (citiesRes.error) console.error("Directory cities failed:", citiesRes.error.message);
-      else setCities((citiesRes.data ?? []) as DirectoryCity[]);
+      else setCities(toCities(citiesRes.data));
     })();
 
     return () => { cancelled = true; };

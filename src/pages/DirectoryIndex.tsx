@@ -7,7 +7,7 @@ import { BreadcrumbJsonLd } from "@/components/public/JsonLd";
 import { Button } from "@/components/ui/button";
 import { Loader2, AlertCircle, MapPin, ChevronRight } from "lucide-react";
 import { SITE_URL, pageTitle } from "@/lib/constants";
-import { directoryDb, type DirectoryCity } from "@/integrations/supabase/directory";
+import { directoryDb, toCities, type DirectoryCity } from "@/integrations/supabase/directory";
 
 type LoadState = "loading" | "ready" | "error";
 
@@ -32,7 +32,7 @@ export default function DirectoryIndex() {
       return;
     }
 
-    setCities((data ?? []) as DirectoryCity[]);
+    setCities(toCities(data));
     setState("ready");
   }, []);
 

@@ -15,6 +15,7 @@ import {
   formatPhoneDisplay,
   isFeatured,
   parseServices,
+  toListing,
   toTelHref,
   type PublicBusinessListing,
 } from "@/integrations/supabase/directory";
@@ -52,7 +53,7 @@ export default function DirectoryListing() {
       return;
     }
 
-    setBusiness(data as PublicBusinessListing);
+    setBusiness(toListing(data));
     setState("ready");
   }, [city, slug]);
 

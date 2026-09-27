@@ -7,7 +7,7 @@ import { BreadcrumbJsonLd } from "@/components/public/JsonLd";
 import { Button } from "@/components/ui/button";
 import { Loader2, AlertCircle, MapPin } from "lucide-react";
 import { SITE_URL, pageTitle } from "@/lib/constants";
-import { directoryDb, type PublicBusinessListing } from "@/integrations/supabase/directory";
+import { directoryDb, toListings, type PublicBusinessListing } from "@/integrations/supabase/directory";
 import { DirectoryBusinessCard } from "@/components/directory/DirectoryBusinessCard";
 
 type LoadState = "loading" | "ready" | "error";
@@ -46,7 +46,7 @@ export default function DirectoryCity() {
         return;
       }
 
-      const rows = (data ?? []) as PublicBusinessListing[];
+      const rows = toListings(data);
       setBusinesses((prev) => (offset === 0 ? rows : [...prev, ...rows]));
       setHasMore(rows.length === PAGE_SIZE);
       setState("ready");
