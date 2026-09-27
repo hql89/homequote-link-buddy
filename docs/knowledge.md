@@ -323,7 +323,7 @@ the pattern is in place.
 
 ---
 
-## Hand-declared tables need WritableTable casts for proper typing
+## Hand-declared tables need WritableTable casts  *(superseded 2026-09-27 — see below)*
 **Context**: `PhotoModeration.tsx` failed TypeScript with "Argument of type '{ status:
 'rejected' | 'approved' }' is not assignable to parameter of type 'never'" when updating
 `business_photos`.
@@ -333,12 +333,13 @@ manually typed in the codebase (like `business_photos`, defined only in migratio
 not schema inspection) resolve their write generics as `never` because the client has no
 schema for them. This doesn't affect reads — only writes.
 
-**Pattern**: For hand-declared tables, use the `WritableTable` cast pattern already
-established in `directory.ts` for the `businesses` table. Create a typed function once (e.g.,
-`setBusinessPhotoStatus`), apply the narrow `as unknown as WritableTable` cast there, and
-call that function from everywhere else. This keeps the cast in one place and gives you real
-type-checking on the values passed to it. See `src/integrations/supabase/directory.ts:269`
-for the working example.
+**Superseded**: the diagnosis was right but the premise expired. `types.ts` had simply gone
+stale — the tables were never un-inspectable, and regenerating it (d44cef2, cf9b22e) covered
+all of them. `WritableTable` and the `DirectoryDatabase` shim it propped up were deleted in
+4b1a0a5; writes now go through the real generated builder. **Do not reach for this pattern
+again.** A table resolving to `never` on write means `types.ts` is behind the database, so
+regenerate it first and only hand-declare if the table genuinely is not there. See
+*Regenerate before hand-declaring* below.
 
 ---
 
@@ -423,3 +424,59 @@ rendered an empty badge in production.
 value came back — give the fallback a distinctive sentinel and assert the result is not it.
 Then verify the test by deliberately removing an entry and watching it fail, naming the
 offender. A test that has never been seen to fail is a guess.
+
+---
+
+## `strict: false` means no nullability claim in `types.ts` is ever checked
+**Context**: A task to retire the `DirectoryDatabase` shim was briefed with an expected
+blocker: the generated view Rows type every column as `string | null` (Postgres cannot mark a
+view column NOT NULL) where the hand-written `PublicBusinessListing` declares them
+non-nullable, so the read sites relying on non-null should have failed to compile. They did
+not — not one error.
+
+**Learning**: `tsconfig.app.json` sets `"strict": false` and `tsconfig.json` sets
+`strictNullChecks: false`, so TypeScript erases `| null` before anything can check it.
+Verified directly rather than inferred: probing the inferred type of a read shows
+`businesses.owner_name` — genuinely `string | null` in the generated Row — coming back as
+plain `string`. This is not a view quirk or a supabase-js quirk; it is project-wide and
+applies to every table.
+
+**Pattern**: Never conclude a nullability mismatch is safe because `tsc` is green — it cannot
+fail on one. Reason from the migration or the view SQL instead. Any plan whose safety argument
+is "the compiler will catch it if a column can be null" is unfounded here. Conversely, don't
+budget time for null-related type errors when swapping type sources; they will not appear.
+Turning strict mode on is its own project with a wide blast radius, not a side effect of
+another change.
+
+---
+
+## Regenerate before hand-declaring, and guard what you still hand-write
+**Context**: `directory.ts` carried a hand-rolled `DirectoryDatabase` schema layered over the
+client, plus two cast helpers (`WritableTable`, `RpcClient`) that existed only to feed it —
+twelve `as unknown as` casts in one file. Its stated premise was that the tables and RPCs were
+"absent from the generated `types.ts`". They were not absent; `types.ts` was just stale.
+
+**Learning**: A stale `types.ts` is invisible in CI — Vite does not typecheck, so the build
+stays green while `.from(...)` resolves to `never` and editor tooling rots. The workaround for
+that invisibility (hand-declare the table, cast around the write) then long outlives the
+problem, and each cast that papers over the gap also silently disables checking on everything
+it touches: the `RpcClient` cast was erasing argument checking on RPCs that had been properly
+generated for weeks.
+
+**Pattern**: Two rules.
+
+1. When a table or RPC types as `never`, regenerate `types.ts` first. Hand-declaring is the
+   last resort, and if you do it, write the premise down so the next person can test whether
+   it still holds — that comment is what made this cleanup findable.
+2. Hand-written Row types are still worth keeping where they say what the generator cannot
+   (CHECK-constraint unions like `InboundClassification`, view invariants, deliberate
+   projections like `AdminBusinessRow`). But asserted shapes drift silently, so constrain
+   them: `DeclaresOnlyRealColumns` in `directory.ts` fails the build if a hand-written type
+   names a column the generated schema lacks, while allowing added columns. Verify such a
+   guard by simulating the drift and watching it name the offender — an unexercised guard is
+   a guess (see *Mutation-test any "keep these two lists in sync" test*).
+
+Corollary for the narrowing itself: when a view's Row is genuinely wider than reality, state
+the assumption once at the boundary rows enter the app (`toListings` / `toListing` /
+`toCities`), next to the migration that justifies it — not as an unexplained cast in each of
+the four pages that read the view.
