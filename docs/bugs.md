@@ -352,3 +352,99 @@ this bug produced zero visible symptoms for as long as it existed, and was only 
 reading log data, not by anything the UI ever showed. "Never throws" and "never fails" are
 not the same claim; worth periodically checking Supabase's logs for silent `4xx`/`5xx`
 responses on any function that degrades gracefully by design.
+
+---
+
+## Site analytics silently stopped recording for six months — 2026-08-27
+**Symptom**: `analytics_events` held 127 rows, newest 2026-03-22. The admin analytics
+dashboard rendered a normal-looking report built on a table frozen in March. Nobody could
+answer whether outreach emails brought anyone to the site.
+**Root Cause**: Commit `922bf81` ("integrate GA4 tracking") rewrote `trackEvent()` to send to
+Google Analytics via `gtag` and *removed* the Supabase write rather than adding alongside it.
+Page-view tracking itself was never broken — `PageTracker` → `usePageTracking` had been firing
+correctly the whole time; the events had nowhere to land.
+**Fix**: Restored the `track-event` invoke as a second sink beside `gtag`, under
+`Promise.allSettled` so neither can cost the other. Credential-shaped query params are
+redacted from `page_path`, `page_url` and `referrer` before sending — the outreach claim link
+carries `?token=<claim_token>`, which authorizes claiming a listing and had been about to be
+written into an analytics table in plain text.
+**Prevention**: `tests/unit/analyticsService.test.ts` covers the dual write, token redaction
+(verified in a real browser with a canary token), and failure isolation. Also found and fixed
+in the same pass: local dev shares the production Supabase project, so `npm run dev` began
+filing real page views against the live table — loopback, `*.localhost` and `*.local` now skip
+alongside the Lovable preview hosts.
+
+---
+
+## An expired API key read as a quiet day for 30 days — 2026-09-26
+**Symptom**: Outreach sent nothing for 28 days. The Enrichment page showed no error. Every
+enrichment run logged `status: 'success'`.
+**Root Cause**: Two independent failures stacked. (1) The Perplexity key expired; every row
+failed with HTTP 401, but `enrich-business-email` only logged a failure when the whole
+invocation threw, so 20-of-20 rows failing was a "success" with `verified: 0`. (2) The
+Enrichment page built its summary from run metadata only, and `summariseEnrichment` returns no
+text when `considered` is absent — which it always is for a run that never started — so the
+page rendered `{lastRun && ...}` as nothing at all. A page failing every morning looked
+identical to one that had never run, while `admin_recent_job_runs` was already returning the
+`status` and `error_message` it discarded.
+**Fix**: Run status is now derived in a pure tested function: all rows throwing is a failure,
+some is partial, and the deduplicated error text is written to `error_message`. The page
+renders an explicit failure notice with the catalogued explanation. A daily sweep raises an
+alarm after 3 consecutive failures, and alarms now email the admin.
+**Prevention**: `summariseEnrichmentRun` tests pin the 20-of-20 case directly.
+`Enrichment.test.tsx` covers the failure render, including a failure with no recorded reason.
+The sweep requires the streak to be live within 7 days, after its first run flagged
+`unsubscribe` — 3 failures whose newest was 28 days old, and bot traffic rather than a broken
+job.
+
+---
+
+## Every ten digits on a page was treated as a phone number — 2026-09-26
+**Symptom**: Four businesses sat in the review queue because "the phone on their website did
+not match their licence". Three of the site phones were `(529) 411-7647`, `(942) 938-4556` and
+`(532) 272-9582`.
+**Root Cause**: `extractPhonesFromHtml` matched `\d{3}\d{3}\d{4}` with optional separators, no
+NANP validation and no word boundaries — so licence numbers, tracking codes and substrings of
+longer digit runs all became "phones". The harm was never a false match (junk cannot equal the
+CSLB number) but a misleading one: `email_source_phone` showed a reviewer an invented number
+beside the real licence number, making honest businesses look like the wrong ones.
+**Fix**: Word boundaries, plus `isPlausibleUsPhone` — exchange rules and an assigned
+area-code list. Structural NANP rules alone were not enough and this is worth remembering:
+942 and 532 satisfy them and are rejected only for not existing.
+**Prevention**: The three real junk numbers are regression cases. The area-code list fails
+safe — an unlisted code sends a business to review and can never cause a wrong verification.
+
+---
+
+## One bounce marked six delivered emails as failures — 2026-09-27
+**Symptom**: Found while forcing the first real alarm email. A single blocked message to
+`dgarcia89@gmail.com` set `status: 'bounced'` on six rows at the same instant — itself, four
+delivery probes from 23–26 Sept, and the test email the admin had personally confirmed
+receiving four hours earlier.
+**Root Cause**: `receive-inbound-email` recorded a bounce with
+`.ilike("recipient_email", recipient).eq("status", "sent")` — every outstanding send to that
+address, not the message that bounced.
+**Fix**: Resolve the single most recent outstanding send for that recipient and update only
+that row. A repair migration restored rows sharing a `bounced_at` with a *later* send to the
+same address — a real bounce is always the newest outstanding message when it arrives, so an
+older row stamped at the same instant can only be collateral.
+**Prevention**: This is not cosmetic. The bounce-rate circuit breaker counts exactly these
+rows, so one bounce to a business could have manufactured an entire failing streak and halted
+the campaign on evidence that never happened. When a handler writes a status derived from an
+external event, scope it to the one record that event concerns.
+
+---
+
+## The bounce circuit breaker was set to fire at 50% — 2026-09-26
+**Symptom**: None visible. It had never fired.
+**Root Cause**: `BOUNCE_CIRCUIT_THRESHOLD = 0.5` — sending only halted once half of recent mail
+bounced. Mailbox providers penalise a domain long before that, so it was protection in name
+only. It also discarded both query errors, so an unreadable count became `0 sends` and skipped
+the gate entirely.
+**Fix**: Threshold 0.15 over a 20-send minimum (the two must move together — at 15%, a sample
+of 10 halts on 2 bounces, close enough to noise to stop the campaign for nothing). Overridable
+from `outreach_config`, range-checked rather than merely type-checked, since `rate >= NaN` is
+always false and one malformed value would leave the breaker looking configured while never
+firing. Fails closed on an unreadable count. Tripping now also raises an alarm.
+**Prevention**: `emailSafety.test.ts` includes a regression asserting the old 50% threshold
+would not have fired where the new one does.

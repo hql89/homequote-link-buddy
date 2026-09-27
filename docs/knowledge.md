@@ -339,3 +339,87 @@ established in `directory.ts` for the `businesses` table. Create a typed functio
 call that function from everywhere else. This keeps the cast in one place and gives you real
 type-checking on the values passed to it. See `src/integrations/supabase/directory.ts:269`
 for the working example.
+
+---
+
+## "Sent", "arrived" and "not spam-filtered" are three different claims
+**Context**: Outreach halts itself unless a human confirmed delivery in the last 14 days, and
+that confirmation is deliberately a separate button from "send test email". It looked like
+belt-and-braces until the first real alarm email was forced through on 2026-09-27.
+
+**Learning**: The alarm email was accepted by SMTP, logged `status: 'sent'`, and then rejected
+by MailChannels — the relay inside this domain's SPF record — with `550 5.7.1 [CS] Message
+blocked`. An ordinary test email from the same sender four hours earlier was delivered. The
+sender was not blocked; the *content* was. The subject line had 120 characters of machine
+output pasted into it ("... has failed 3 runs in a row, most recently ... Latest error: ...")
+which reads exactly like the spam it was filtered as.
+
+**Pattern**: Anything this project sends to a human — alerts especially — must look like
+ordinary mail: a short fixed subject, detail in the body, no error strings or IDs in the
+subject. And treat the three states as distinct when reasoning about delivery: SMTP accepting
+a message proves nothing about arrival, and arrival proves nothing about the inbox rather
+than spam. Only a human (or the Gmail connector) reading the inbox settles it. An alert that
+is silently spam-filtered is worse than no alert, because it manufactures false confidence.
+
+---
+
+## A job that reports "success" while achieving nothing is the expensive failure mode
+**Context**: `enrich-business-email` ran for 30 consecutive mornings against an expired
+Perplexity key. Every row failed with HTTP 401. Every run logged `status: 'success'`, because
+the function only called a run failed when the whole invocation threw. The admin page
+summarised it as "0 verified", indistinguishable from a genuinely quiet day, and outreach
+sent nothing for 28 days.
+
+**Learning**: Three separate layers each rendered "broken" as "nothing to report": the
+function's status, the page's summary (which returned no text at all when a run had no
+`considered` count, so the panel simply disappeared), and the alarm sweep (which looks for
+failed runs). Any one of them being honest would have surfaced it within a day.
+
+**Pattern**: Distinguish *findings* from *faults* in run outcomes. `no_url` / `no_email` /
+`fetch_failed` are findings about a business — plenty of contractors have no website — and
+must never make a run look broken. A row that *threw* is a fault. All rows throwing means the
+run achieved nothing and is a failure, not a success. Put the rule in a pure, tested function
+(`summariseEnrichmentRun`) rather than inline, and make the UI render a failed run explicitly
+rather than falling through to a conditional that hides it.
+
+---
+
+## Where a business *is* vs. where it *says it works*
+**Context**: Enrichment marked a business `verified` only when a phone number found on its
+website matched the CSLB licence phone. The operator's judgement, and it is right: contractors
+routinely publish tracking numbers, answering services and mobiles never filed with CSLB, so a
+mismatch says very little. A site placing the business outside the service area says a lot.
+
+**Learning**: Rewriting the rule to lead on location surfaced two traps. First, nearly every
+contractor site carries a long service-area footer, so treating a city *named on the page* as
+evidence of location would verify a Fresno company that happens to list Sherman Oaks — the
+exact case the change existed to catch. An address and a mention are different kinds of
+evidence and must be kept apart. Second, every city this directory covers is a neighbourhood
+of the City of Los Angeles, so an address reading "Los Angeles, CA" is entirely consistent
+with a Tarzana business; the first cut flagged it as out-of-area.
+
+**Pattern**: Three tiers, not two — covered (verify), nearby/greater LA and the Valley
+(unremarkable, neither proof nor flag), genuinely distant (review). Detection had to improve
+alongside the rule: the old address regex demanded `<City>, CA <zip>` exactly and found a
+location on only 8 of 27 businesses, so leading with a signal that missing would have pushed
+everything into the review queue. Out-of-area never auto-rejects, though the column permits
+it — that is a reason for a person to look, not grounds to discard a business unattended.
+
+---
+
+## Mutation-test any "keep these two lists in sync" test
+**Context**: Two tests existed specifically to catch drift — one pinning `alarmDisplay`'s
+titles to the `AlarmKind` union, one that should have pinned the inbound classification set to
+its CHECK constraint. Both passed while the drift they guarded against was present.
+
+**Learning**: The alarm test asserted only that a title was non-empty and different from the
+kind slug. `toDisplayAlarm` falls back to the raw error message for an unknown kind, and that
+fallback satisfied both assertions — so `outreach_bounce_rate` shipped with no display entry
+and the test stayed green. The classification test did not exist at all, despite a comment in
+`directory.ts` recording that the union had already drifted behind the constraint once and
+rendered an empty badge in production.
+
+**Pattern**: A sync test must prove the value came from the mapping, not merely that *some*
+value came back — give the fallback a distinctive sentinel and assert the result is not it.
+Then verify the test by deliberately removing an entry and watching it fail, naming the
+offender. A test that has never been seen to fail is a guess.
