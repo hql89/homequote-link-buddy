@@ -37,3 +37,7 @@ supabase/.temp/
 .env
 .env.local
 .env.*.local
+
+# tsc -b (the typecheck script) writes one of these per referenced project.
+# Build state, not source.
+*.tsbuildinfo

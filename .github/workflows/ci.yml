@@ -1,0 +1,64 @@
+# Runs the checks a contributor runs locally — nothing more, so a red build
+# always means a real defect rather than a CI-only rule nobody can reproduce.
+#
+# Added after a change merged into main with zero checks having run on it. At
+# that point `npm test` also exited 1 on a fresh clone (missing Supabase env
+# vars killed two files before their tests ran), so this workflow could not
+# have been green on the day it was written; the same commit fixes that.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A new push makes the in-flight run's answer obsolete, so stop paying for it.
+# Never applied to main: those runs are the record of what the branch did.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Matches the Node the lockfile was resolved against.
+          node-version: 22
+          cache: npm
+
+      # ci, not install: fails on a lockfile that disagrees with package.json
+      # instead of quietly rewriting it, so a stale lockfile surfaces here
+      # rather than as a mystery version drift later.
+      - run: npm ci
+
+      # Each step names itself so a red X in the PR's check list says which
+      # gate failed without opening the log. They run in the order a
+      # contributor would: cheapest and most localised feedback first.
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      # This step was withheld when the workflow was written: `npm run
+      # typecheck` reported 34 pre-existing errors on main, all from a stale
+      # src/integrations/supabase/types.ts, and turning it on would have
+      # painted every PR red for a reason no PR caused. The instruction left
+      # here was to add it in the change that clears that backlog. Cleared —
+      # the types were regenerated (d44cef2, cf9b22e) and the last of the
+      # errors went with the DirectoryDatabase shim (4b1a0a5). Verified at 0
+      # errors on a run with no cached build state, since `tsc -b` will
+      # otherwise report success from a previous run's .tsbuildinfo.
+      #
+      # It must stay `tsc -b`. The bare `tsc --noEmit` this repo's root
+      # tsconfig invites checks nothing at all — that config is `"files": []`
+      # plus project references, so it resolves zero files and cannot fail.
+      - name: Typecheck
+        run: npm run typecheck
