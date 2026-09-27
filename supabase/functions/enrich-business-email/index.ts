@@ -227,7 +227,7 @@ async function enrichOne(
       phoneMatched: matched,
       location,
       expectedCity: row.city,
-      emailOnDomain: selected.onDomain,
+      emailOrigin: selected.origin,
     });
 
     // Only for rows a human will have to judge. A phone match has already
