@@ -3,11 +3,40 @@ import { AlertTriangle, XCircle, X, Loader2 } from "lucide-react";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
+import { jsonObject } from "@/integrations/supabase/json";
+import type { Database } from "@/integrations/supabase/types";
 import { toDisplayAlarm, unseenAlarms, type AlarmRecord, type DisplayAlarm } from "@/lib/alarmDisplay";
 
 const SETTING_KEY = "admin_notifications";
 
 type LoadState = "loading" | "ok" | "error";
+
+type RecentAlarmRow = Database["public"]["Functions"]["admin_recent_alarms"]["Returns"][number];
+
+/**
+ * Converts one `admin_recent_alarms` row into what {@link toDisplayAlarm} reads.
+ *
+ * The generated row type is the shape of record here, rather than a hand-written
+ * one asserted over it, so renaming a column in the RPC fails the build instead
+ * of showing every alarm as unrecognised. Two things it still cannot say:
+ *
+ * - `error_message` is `job_run_logs.error_message`, which is nullable, but a
+ *   `RETURNS TABLE` column always generates as non-null. `toDisplayAlarm`
+ *   already falls back when it is null, and this keeps that reachable —
+ *   `strict: false` means the generated non-null claim could never have been
+ *   checked anyway.
+ * - `metadata` generates as `Json`, i.e. any JSON value. It is NOT NULL with a
+ *   `'{}'` default and `_shared/alarm.ts` writes an object, so it is read as
+ *   one — but checked, not asserted, since `alarm_kind` is looked up on it.
+ */
+function toAlarmRecord(row: RecentAlarmRow): AlarmRecord {
+  return {
+    id: row.id,
+    errorMessage: row.error_message ?? null,
+    metadata: jsonObject(row.metadata),
+    createdAt: row.created_at,
+  };
+}
 
 /**
  * Surfaces raiseAlarm() records on every admin page.
@@ -49,21 +78,9 @@ export function AlarmBanner() {
     const seenUpTo = (settingsRes.data?.setting_value as { alarms_seen_up_to?: string } | null)
       ?.alarms_seen_up_to ?? null;
 
-    const records = (alarmsRes.data ?? []) as unknown as {
-      id: string;
-      error_message: string | null;
-      metadata: Record<string, unknown> | null;
-      created_at: string;
-    }[];
+    const records: AlarmRecord[] = (alarmsRes.data ?? []).map(toAlarmRecord);
 
-    const asAlarmRecords: AlarmRecord[] = records.map((r) => ({
-      id: r.id,
-      errorMessage: r.error_message,
-      metadata: r.metadata,
-      createdAt: r.created_at,
-    }));
-
-    setAlarms(unseenAlarms(asAlarmRecords.map(toDisplayAlarm), seenUpTo));
+    setAlarms(unseenAlarms(records.map(toDisplayAlarm), seenUpTo));
     setState("ok");
   }, []);
 
