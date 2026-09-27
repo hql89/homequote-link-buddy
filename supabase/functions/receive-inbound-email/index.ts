@@ -101,11 +101,36 @@ async function handleBounce(supabase: SupabaseClient, bodyText: string): Promise
 
   // Record it against the original send, so email_send_log stops claiming
   // "sent" for something that demonstrably did not arrive.
-  await supabase
+  //
+  // The MOST RECENT send only. This previously updated every 'sent' row for
+  // the address, so a single bounce retroactively branded the entire history
+  // to that recipient as failed: on 2026-09-27 one blocked message marked six
+  // rows bounced, including four delivery probes and a test email the admin
+  // had personally confirmed receiving hours earlier.
+  //
+  // That is not just untidy. The bounce-rate circuit breaker in
+  // send-outreach-drip counts these rows, so one bounce to a business could
+  // manufacture a whole streak and halt the campaign — and the delivery
+  // history stops being evidence of anything.
+  //
+  // A bounce concerns exactly one message. Without a message-id to correlate
+  // on, the newest outstanding send to that address is the honest best guess,
+  // and it cannot over-attribute.
+  const { data: originalSend } = await supabase
     .from("email_send_log")
-    .update({ status: "bounced", bounced_at: now, bounce_kind: kind })
+    .select("id")
     .ilike("recipient_email", escapeIlike(recipient))
-    .eq("status", "sent");
+    .eq("status", "sent")
+    .order("sent_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (originalSend) {
+    await supabase
+      .from("email_send_log")
+      .update({ status: "bounced", bounced_at: now, bounce_kind: kind })
+      .eq("id", originalSend.id);
+  }
 
   const { data: business } = await supabase
     .from("businesses")

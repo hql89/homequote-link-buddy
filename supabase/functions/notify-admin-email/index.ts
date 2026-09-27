@@ -377,13 +377,25 @@ Deno.serve(async (req) => {
       const kind = String(alarmData?.kind ?? "unknown");
       const alarmSummary = String(alarmData?.summary ?? "An alarm was raised with no summary.");
       const detail = alarmData?.detail ? String(alarmData.detail) : "";
-      subject = `HomeQuoteLink alert — ${alarmSummary.slice(0, 120)}`;
+
+      // Short, fixed subject with no error text in it.
+      //
+      // The first version pasted the first 120 characters of the summary into
+      // the subject line, which made it a long string of machine output —
+      // "alarm-email-selftest has failed 3 runs in a row, most recently
+      // 2026-09-27 02:33 UTC. Latest error: ...". MailChannels, the relay in
+      // this domain's SPF record, rejected it outright:
+      //   550 5.7.1 [CS] Message blocked
+      // while an ordinary test email from the same sender minutes earlier was
+      // delivered. The content was the difference, and an alert that gets
+      // spam-filtered is worse than no alert, because it looks like it works.
+      subject = "HomeQuoteLink: something needs your attention";
       html = htmlWrapper(
         subject,
         `<p style="margin:0 0 12px;font-size:16px;">${escapeHtml(alarmSummary)}</p>` +
           (detail ? `<p style="margin:0 0 12px;color:#555;font-size:13px;">${escapeHtml(detail)}</p>` : "") +
-          `<p style="margin:0 0 12px;color:#555;font-size:13px;">Alarm type: ${escapeHtml(kind)}</p>` +
-          `<p style="margin:0;font-size:13px;">This is also showing on every admin page. ` +
+          `<p style="margin:0 0 12px;color:#555;font-size:13px;">Reference: ${escapeHtml(kind)}</p>` +
+          `<p style="margin:0;font-size:13px;">This is also shown on every admin page. ` +
           `Dismissing the banner hides the notice, not the problem.</p>`,
       );
       toEmail = config.adminNotificationEmail;
