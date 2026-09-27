@@ -99,9 +99,16 @@ describe("checkTokenMissRate", () => {
     const { client, selectCalls } = fakeClient({ missCount: 10 });
     await checkTokenMissRate(client, "unsubscribe");
 
-    expect(selectCalls).toHaveLength(2);
+    // Order is the property under test: the cheap cooldown check first, the
+    // miss count only if it passes.
     expect(selectCalls[0]["metadata->>alarm_kind"]).toBe("unsubscribe_token_misses");
     expect(selectCalls[1]["error_message"]).toBe("No business for token");
+
+    // A third select follows from raiseAlarm's own email cooldown, which is
+    // not this function's concern — asserting a bare total here made an
+    // unrelated change to alarm.ts fail this test. Only the reads this
+    // function is responsible for are pinned.
+    expect(selectCalls.length).toBeGreaterThanOrEqual(2);
   });
 
   it("degrades quietly when the cooldown check itself fails", async () => {

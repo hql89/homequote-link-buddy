@@ -63,6 +63,24 @@ const KNOWN_ERRORS: KnownError[] = [
     explanation: "Perplexity is configured but switched off, or missing its key. Check Admin → Settings.",
   },
   {
+    jobName: "enrich-business-email",
+    match: (m) => m.includes("Perplexity API returned 401"),
+    explanation:
+      "Perplexity is rejecting the API key — 401 means expired, revoked, or the account has " +
+      "lapsed. Nothing was searched and no credits were used, and every business is still " +
+      "queued. Paste a fresh key into Admin → Settings and run it again.",
+  },
+  {
+    jobName: "enrich-business-email",
+    match: (m) => m.includes("supabase_secret_key"),
+    explanation:
+      "The scheduled run can't authenticate itself, so it never started — nothing was searched " +
+      "and nothing was changed. Add the project's secret (service role) API key in the Supabase " +
+      "dashboard under Project Settings → Vault, named exactly supabase_secret_key. Until then " +
+      "the \u201cRun now\u201d button on this page still works: it uses your own admin login " +
+      "instead of that key.",
+  },
+  {
     jobName: "publish-scheduled-posts",
     match: "Unknown error",
     explanation:

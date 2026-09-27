@@ -181,6 +181,23 @@ type TemplateData = Record<string, unknown> & {
   city?: string;
 };
 
+/**
+ * Minimal HTML escaping for values that land inside the alarm email.
+ *
+ * Alarm summaries quote error text from third parties (a Perplexity
+ * rejection, an SMTP server's refusal), so they are not ours to trust as
+ * markup. The older templates above interpolate unescaped; that is
+ * pre-existing and out of scope here, but new content should not add to it.
+ */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function fillTemplate(template: string, data: TemplateData): string {
   return template.replace(/\{\{([^}]+)\}\}/g, (_, key) => {
     return data[key] !== undefined && data[key] !== null ? String(data[key]).replace(/\n/g, "<br>") : "";
@@ -248,7 +265,7 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const { notificationType, leadData, eventData, buyerInquiry, nurtureData, feedbackData, testData } = body;
+    const { notificationType, leadData, eventData, buyerInquiry, nurtureData, feedbackData, testData, alarmData } = body;
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = readServiceRoleKey();
@@ -352,6 +369,24 @@ Deno.serve(async (req) => {
       html = nurtureData.html;
       toEmail = nurtureData.toEmail;
       recipientKind = "lead";
+    } else if (notificationType === "alarm") {
+      // Alarms are recorded to job_run_logs first and always; this is the
+      // push on top. Plain and unstyled on purpose — it exists to be read on
+      // a phone at a glance, and every alarm already carries a written
+      // summary meant for a person.
+      const kind = String(alarmData?.kind ?? "unknown");
+      const alarmSummary = String(alarmData?.summary ?? "An alarm was raised with no summary.");
+      const detail = alarmData?.detail ? String(alarmData.detail) : "";
+      subject = `HomeQuoteLink alert — ${alarmSummary.slice(0, 120)}`;
+      html = htmlWrapper(
+        subject,
+        `<p style="margin:0 0 12px;font-size:16px;">${escapeHtml(alarmSummary)}</p>` +
+          (detail ? `<p style="margin:0 0 12px;color:#555;font-size:13px;">${escapeHtml(detail)}</p>` : "") +
+          `<p style="margin:0 0 12px;color:#555;font-size:13px;">Alarm type: ${escapeHtml(kind)}</p>` +
+          `<p style="margin:0;font-size:13px;">This is also showing on every admin page. ` +
+          `Dismissing the banner hides the notice, not the problem.</p>`,
+      );
+      toEmail = config.adminNotificationEmail;
     } else if (notificationType === "feedback_submitted") {
       const result = buildDynamicHtml("feedback_submitted", feedbackData, customTemplates);
       subject = result.subject;

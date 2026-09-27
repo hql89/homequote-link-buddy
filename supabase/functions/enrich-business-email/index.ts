@@ -30,10 +30,11 @@ import {
   extractUrlFromModelText,
   extractEmailsFromHtml,
   extractPhonesFromHtml,
-  extractAddressFromHtml,
+  findPageLocation,
   phoneMatchesPage,
   isDisallowedByRobots,
   resolveConfidence,
+  summariseEnrichmentRun,
 } from "../_shared/emailEnrichment.ts";
 import {
   buildAssessmentPrompt,
@@ -184,6 +185,10 @@ async function enrichOne(
   supabase: SupabaseClient,
   apiKey: string,
   row: CandidateRow,
+  /** Collects the reason for any `failed` row, so the run can report why. */
+  errors: string[],
+  /** Cities this directory covers, from ingest_config. Drives the location check. */
+  serviceArea: string[],
 ): Promise<"verified" | "needs_review" | "no_url" | "no_email" | "fetch_failed" | "failed"> {
   try {
     const candidateUrl = await discoverUrl(apiKey, row.business_name, row.city);
@@ -212,8 +217,12 @@ async function enrichOne(
 
     const phones = extractPhonesFromHtml(html);
     const matched = phoneMatchesPage(row.phone, phones);
-    const confidence = resolveConfidence(matched);
-    const address = extractAddressFromHtml(html);
+    const location = findPageLocation(html, serviceArea);
+    const { confidence, reason } = resolveConfidence({
+      phoneMatched: matched,
+      location,
+      expectedCity: row.city,
+    });
 
     // Only for rows a human will have to judge. A phone match has already
     // settled the verified ones deterministically; asking a model to weigh in
@@ -240,13 +249,16 @@ async function enrichOne(
         email: emails[0],
         email_source_url: candidateUrl,
         email_source_phone: phones[0] ?? null,
-        email_source_address: address,
+        email_source_address: location.snippet,
         email_confidence: confidence,
         // Written together with the evidence they describe, and null for a
         // verified row so a stale verdict from an earlier pass can never
         // outlive the finding it was about.
         email_review_verdict: assessment?.verdict ?? null,
-        email_review_notes: assessment?.notes ?? null,
+        // The deterministic reason leads; the model's assessment, when there
+        // is one, follows it. A reviewer should see what the rule concluded
+        // and why before reading a model's opinion of the same page.
+        email_review_notes: [reason, assessment?.notes].filter(Boolean).join("\n\n") || null,
         email_review_assessed_at: assessment ? new Date().toISOString() : null,
         enriched_at: new Date().toISOString(),
       })
@@ -254,7 +266,14 @@ async function enrichOne(
 
     return confidence;
   } catch (err) {
-    console.error(`[${JOB_NAME}] row ${row.id} failed:`, err instanceof Error ? err.message : err);
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[${JOB_NAME}] row ${row.id} failed:`, message);
+    // Recorded, not just logged. A run where every row threw the same thing
+    // (an expired Perplexity key returning 401, say) previously showed up as
+    // a clean "0 verified" — indistinguishable from a day when there was
+    // genuinely nothing to find, with the real reason visible only in the
+    // function logs nobody reads.
+    errors.push(message);
     return "failed";
   }
 }
@@ -304,14 +323,36 @@ Deno.serve(async (req) => {
     const rows = (candidates ?? []) as CandidateRow[];
     summary.considered = rows.length;
 
+    // The cities the directory covers. Read once per run rather than per row.
+    // An empty list simply means no location can be judged in-area, and the
+    // decision falls back to the phone — never a silent "everything is out
+    // of area", which would send the whole batch to review.
+    const { data: ingestRow } = await supabase
+      .from("admin_settings")
+      .select("setting_value")
+      .eq("setting_key", "ingest_config")
+      .maybeSingle();
+    const serviceArea = Array.isArray((ingestRow?.setting_value as { cities?: unknown })?.cities)
+      ? ((ingestRow!.setting_value as { cities: unknown[] }).cities.filter(
+          (c): c is string => typeof c === "string",
+        ))
+      : [];
+
+    const rowErrors: string[] = [];
+
     for (let i = 0; i < rows.length; i++) {
-      const outcome = await enrichOne(supabase, perplexity.api_key, rows[i]);
+      const outcome = await enrichOne(supabase, perplexity.api_key, rows[i], rowErrors, serviceArea);
       summary[outcome]++;
       if (i < rows.length - 1) await sleep(BETWEEN_FETCHES_MS);
     }
 
-    await logRun(supabase, JOB_NAME, "success", Date.now() - startedAt, null, summary);
-    return json({ success: true, ...summary });
+    // Decided in emailEnrichment.ts so the rule is unit-testable — see
+    // summariseEnrichmentRun for why "every row failed" must not be a success.
+    const { status, errorMessage } = summariseEnrichmentRun(summary, rowErrors);
+    const allFailed = status === "failure";
+
+    await logRun(supabase, JOB_NAME, status, Date.now() - startedAt, errorMessage, summary);
+    return json({ success: !allFailed, ...summary, ...(errorMessage ? { error: errorMessage } : {}) });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[${JOB_NAME}]`, message);

@@ -23,7 +23,13 @@ import {
 } from "../_shared/directory.ts";
 import { remainingDailyBudget, startOfUtcDay } from "../_shared/outreachVariants.ts";
 import { loadSmtpConfig, sendOutreachEmail } from "../_shared/mailer.ts";
-import { buildUnsubscribeHeaders } from "../_shared/emailSafety.ts";
+import {
+  buildUnsubscribeHeaders,
+  evaluateBounceCircuit,
+  resolveBounceCircuitSettings,
+} from "../_shared/emailSafety.ts";
+import { raiseAlarm } from "../_shared/alarm.ts";
+import { checkMailDomain, domainOf } from "../_shared/mailDomain.ts";
 
 const JOB_NAME = "send-outreach-drip";
 const DRIP_DELAY_DAYS = 3;
@@ -59,13 +65,14 @@ const DEFAULT_DAILY_LIMIT = 10;
 const DELIVERY_PROOF_MAX_AGE_DAYS = 14;
 
 /**
- * Halt if bounces dominate recent sends. Belt to the gate's braces: it needs
- * bounce ingestion to be running, but when it is, it catches a domain that
- * breaks mid-campaign without waiting for the proof to expire.
+ * Halt if bounces climb across recent sends. Belt to the gate's braces: it
+ * needs bounce ingestion to be running, but when it is, it catches a domain
+ * that breaks mid-campaign without waiting for the delivery proof to expire.
+ *
+ * The thresholds and the decision itself live in emailSafety.ts — pure and
+ * unit-tested, and overridable from `outreach_config` so tightening them does
+ * not need a redeploy. See BOUNCE_CIRCUIT_DEFAULTS for the numbers and why.
  */
-const BOUNCE_CIRCUIT_WINDOW_DAYS = 7;
-const BOUNCE_CIRCUIT_MIN_SAMPLE = 10;
-const BOUNCE_CIRCUIT_THRESHOLD = 0.5;
 
 interface BusinessRow {
   id: string;
@@ -101,6 +108,19 @@ Deno.serve(async (req) => {
     stamp_write_failed: 0,
     /** Sends that went out but couldn't be logged to outreach_sends. */
     send_log_write_failed: 0,
+    /**
+     * Pre-send mail-domain check outcomes, kept apart because they mean
+     * different things to whoever reads the log:
+     *   dead_domain    — DNS proved the domain takes no mail; marked
+     *                    undeliverable and never retried.
+     *   domain_unknown — the lookup failed; nothing was changed and the
+     *                    business is still a candidate tomorrow. A run where
+     *                    this is high means DNS trouble, not bad addresses.
+     *   bad_address    — the stored value has no usable domain to look up.
+     */
+    skipped_dead_domain: 0,
+    skipped_domain_unknown: 0,
+    skipped_bad_address: 0,
   };
   const errors: string[] = [];
 
@@ -121,6 +141,14 @@ Deno.serve(async (req) => {
        * send boundary by resolveBccCopy, not here.
        */
       bcc_email?: string;
+      /**
+       * Bounce-breaker tunables. Absent (the normal case) means
+       * BOUNCE_CIRCUIT_DEFAULTS; unknown rather than number because these come
+       * from operator-edited JSON and are range-checked, not trusted.
+       */
+      bounce_window_days?: unknown;
+      bounce_min_sample?: unknown;
+      bounce_threshold?: unknown;
     };
     const bccCopy = outreachCfg.bcc_email?.trim() || undefined;
     const verifiedAt = outreachCfg.delivery_verified_at
@@ -151,40 +179,68 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ── Gate 2: are recent sends mostly bouncing? ──────────────────────────
+    // ── Gate 2: are recent sends bouncing? ─────────────────────────────────
+    const bounceSettings = resolveBounceCircuitSettings(outreachCfg);
     const windowStart = new Date(
-      Date.now() - BOUNCE_CIRCUIT_WINDOW_DAYS * 86_400_000,
+      Date.now() - bounceSettings.windowDays * 86_400_000,
     ).toISOString();
 
-    const { count: recentSends } = await supabase
+    const { count: recentSends, error: sendsErr } = await supabase
       .from("email_send_log")
       .select("id", { count: "exact", head: true })
       .eq("job_name", JOB_NAME)
       .gte("sent_at", windowStart);
 
-    const { count: recentBounces } = await supabase
+    const { count: recentBounces, error: bouncesErr } = await supabase
       .from("email_send_log")
       .select("id", { count: "exact", head: true })
       .eq("job_name", JOB_NAME)
       .eq("status", "bounced")
       .gte("sent_at", windowStart);
 
-    const sends = recentSends ?? 0;
-    const bounces = recentBounces ?? 0;
+    // Fails closed, matching checkVolumeCircuitBreaker. An unreadable count
+    // means the bounce rate is unknown, and "unknown" must not be treated as
+    // "fine" by a guard whose entire job is to stop a reputation-damaging
+    // campaign. Previously both errors were discarded and a failed query
+    // became `0 sends`, which silently skipped the gate entirely.
+    if (sendsErr || bouncesErr) {
+      throw new Error(
+        `Could not read recent bounce rate: ${(sendsErr ?? bouncesErr)!.message}`,
+      );
+    }
 
-    if (sends >= BOUNCE_CIRCUIT_MIN_SAMPLE && bounces / sends >= BOUNCE_CIRCUIT_THRESHOLD) {
+    const bounceDecision = evaluateBounceCircuit(
+      recentSends ?? 0,
+      recentBounces ?? 0,
+      bounceSettings,
+    );
+
+    if (bounceDecision.tripped) {
+      // Raised as an alarm as well as logged: a job_run_logs row alone is only
+      // visible to someone who goes looking at Background Jobs, whereas
+      // AlarmBanner reads job_name = 'alarm' and surfaces it on every admin
+      // screen. A campaign that has stopped itself should not look like a
+      // campaign that simply had nothing to send.
+      await raiseAlarm(supabase, "outreach_bounce_rate", bounceDecision.reason!, {
+        recent_sends: bounceDecision.sends,
+        recent_bounces: bounceDecision.bounces,
+        bounce_rate: Number(bounceDecision.rate.toFixed(4)),
+        window_days: bounceSettings.windowDays,
+        threshold: bounceSettings.threshold,
+      });
+
       await logRun(supabase, JOB_NAME, "partial", Date.now() - startedAt, null, {
         halted: "bounce_rate",
-        recent_sends: sends,
-        recent_bounces: bounces,
+        recent_sends: bounceDecision.sends,
+        recent_bounces: bounceDecision.bounces,
+        bounce_rate: Number(bounceDecision.rate.toFixed(4)),
+        threshold: bounceSettings.threshold,
         ...summary,
       });
       return json({
         success: true,
         halted: "bounce_rate",
-        reason:
-          `${bounces} of the last ${sends} outreach emails bounced. Sending is stopped until ` +
-          `the cause is fixed — continuing would damage the domain's sending reputation.`,
+        reason: bounceDecision.reason,
         ...summary,
       });
     }
@@ -281,6 +337,48 @@ Deno.serve(async (req) => {
     for (const row of (pendingFirst ?? []) as BusinessRow[]) {
       if (!row.email || !verifyVariant) continue;
       if (budget <= 0) break;
+
+      // ── Can this domain receive mail at all? ────────────────────────────
+      // First contact only. Email 2 goes to an address that already accepted
+      // Email 1, so re-checking spends a lookup to learn nothing.
+      //
+      // Only an authoritative "no" is acted on. `email_undeliverable_at` stops
+      // this business's outreach AND, since 2807d3b, its quote-request
+      // notifications — so a DNS timeout treated as a dead domain would
+      // silence a real contractor's leads. Inconclusive means skip this run
+      // and try again tomorrow, changing nothing.
+      const domain = domainOf(row.email);
+      if (!domain) {
+        summary.skipped_bad_address++;
+        errors.push(`${row.business_name}: "${row.email}" is not a usable address.`);
+        continue;
+      }
+
+      const domainCheck = await checkMailDomain(domain);
+      if (!domainCheck.acceptsMail) {
+        if (!domainCheck.conclusive) {
+          summary.skipped_domain_unknown++;
+          continue;
+        }
+
+        const { error: markErr } = await supabase
+          .from("businesses")
+          .update({
+            email_undeliverable_at: new Date().toISOString(),
+            email_undeliverable_reason: domainCheck.reason,
+          })
+          .eq("id", row.id);
+
+        // A failed mark is not fatal to the run, but it must not be silent:
+        // the address stays in the candidate pool and will be re-checked
+        // tomorrow, so the only cost is a repeated lookup.
+        if (markErr) {
+          errors.push(`Could not mark ${row.business_name} undeliverable: ${markErr.message}`);
+        }
+        summary.skipped_dead_domain++;
+        continue;
+      }
+
       // Routed through the homequotelink.com domain (vercel.json rewrites
       // /unsubscribe to the edge function) rather than the raw supabase.co
       // URL, so the link doesn't look like a mismatched/phishy domain next

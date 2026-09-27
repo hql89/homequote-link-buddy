@@ -171,12 +171,19 @@ export interface AdminSettingsWriter {
 /**
  * Volume-based circuit breaker, independent of bounce detection.
  *
- * HQL's existing safeguard against a bad campaign is send-outreach-drip's
- * bounce-rate check — but that depends on the n8n inbound bridge actually
- * running, and it has never delivered a single message
- * (`select count(*) from inbound_emails` = 0 as of 2026-08). This breaker
- * needs nothing external: it counts recent rows in `email_send_log` itself,
- * across every sender, and works today.
+ * HQL's other safeguard against a bad campaign is send-outreach-drip's
+ * bounce-rate check (evaluateBounceCircuit, below). When this was written that
+ * check was inert, because it depends on the inbound email bridge and
+ * `select count(*) from inbound_emails` was 0. That is no longer true — as of
+ * 2026-08-27 there are 19 inbound rows, and a real bounce on 2026-08-23 was
+ * classified and flipped `email_send_log.status` to `bounced`, so the bounce
+ * breaker is now genuinely fed.
+ *
+ * They remain complementary rather than redundant, and this one still needs
+ * nothing external: it counts recent rows in `email_send_log` itself, across
+ * every sender. Volume catches a runaway loop within minutes; bounce rate
+ * catches a campaign mailing addresses that do not exist, which is slower and
+ * invisible to a volume count.
  *
  * Threshold: 250 sends in 10 minutes. Reasoning, not a guess: the largest
  * legitimate burst this project can currently produce is one
@@ -266,4 +273,113 @@ export async function checkVolumeCircuitBreaker(
   });
 
   return { tripped: true, reason };
+}
+
+// ── Bounce-rate circuit breaker ─────────────────────────────────────────────
+
+/** Defaults, used whenever `outreach_config` does not override them. */
+export const BOUNCE_CIRCUIT_DEFAULTS = {
+  windowDays: 7,
+  /**
+   * Below this many sends in the window, no rate is trustworthy enough to act
+   * on. At a 5/day cap this accumulates in four days, well inside the window.
+   */
+  minSample: 20,
+  /**
+   * 15%. The campaign's real rate is 3.2% (1 bounce in 31 sends as of
+   * 2026-08-27), so ordinary address staleness has wide clearance, while
+   * still tripping far below the sustained rate at which mailbox providers
+   * start penalising a domain.
+   *
+   * Was 0.5 until 2026-08-27. A breaker that waits for half of all mail to
+   * fail does not protect a sending reputation; by then the damage is done.
+   * The sample floor rose from 10 with it — at 15%, a sample of 10 would halt
+   * on 2 bounces, close enough to noise to stop the campaign for no reason.
+   */
+  threshold: 0.15,
+} as const;
+
+export interface BounceCircuitConfig {
+  bounce_window_days?: unknown;
+  bounce_min_sample?: unknown;
+  bounce_threshold?: unknown;
+}
+
+export interface BounceCircuitSettings {
+  windowDays: number;
+  minSample: number;
+  threshold: number;
+}
+
+/**
+ * Reads the tunables out of `outreach_config`, falling back per-field.
+ *
+ * Every value is range-checked, not merely type-checked. A threshold of 0
+ * would halt sending permanently and a threshold of 5 would disable the
+ * breaker outright; both are far likelier to be a typo than an intention. The
+ * NaN case matters most: `bounces / sends >= NaN` is always false, so a single
+ * malformed config value would silently turn the breaker off while leaving it
+ * looking configured.
+ */
+export function resolveBounceCircuitSettings(config: BounceCircuitConfig = {}): BounceCircuitSettings {
+  const num = (raw: unknown, min: number, max: number, fallback: number): number => {
+    const value = typeof raw === "number" ? raw : Number(raw);
+    if (!Number.isFinite(value) || value < min || value > max) return fallback;
+    return value;
+  };
+
+  return {
+    windowDays: num(config.bounce_window_days, 1, 90, BOUNCE_CIRCUIT_DEFAULTS.windowDays),
+    minSample: num(config.bounce_min_sample, 1, 10_000, BOUNCE_CIRCUIT_DEFAULTS.minSample),
+    // Upper bound 1 rather than Infinity: a "threshold" above 100% cannot ever
+    // be met, which is indistinguishable from having no breaker at all.
+    threshold: num(config.bounce_threshold, 0.01, 1, BOUNCE_CIRCUIT_DEFAULTS.threshold),
+  };
+}
+
+export interface BounceCircuitDecision {
+  tripped: boolean;
+  sends: number;
+  bounces: number;
+  rate: number;
+  settings: BounceCircuitSettings;
+  reason?: string;
+}
+
+/**
+ * Decides whether recent bounce rate should stop the campaign.
+ *
+ * Pure, and separated from the queries for the same reason `pickVariant` and
+ * `remainingDailyBudget` were: the arithmetic that decides whether real email
+ * goes out should be directly testable, without a database.
+ */
+export function evaluateBounceCircuit(
+  sends: number,
+  bounces: number,
+  settings: BounceCircuitSettings,
+): BounceCircuitDecision {
+  const safeSends = Number.isFinite(sends) && sends > 0 ? Math.floor(sends) : 0;
+  const safeBounces = Number.isFinite(bounces) && bounces > 0 ? Math.floor(bounces) : 0;
+  const rate = safeSends === 0 ? 0 : safeBounces / safeSends;
+
+  if (safeSends < settings.minSample) {
+    return { tripped: false, sends: safeSends, bounces: safeBounces, rate, settings };
+  }
+
+  if (rate < settings.threshold) {
+    return { tripped: false, sends: safeSends, bounces: safeBounces, rate, settings };
+  }
+
+  return {
+    tripped: true,
+    sends: safeSends,
+    bounces: safeBounces,
+    rate,
+    settings,
+    reason:
+      `${safeBounces} of the last ${safeSends} outreach emails bounced ` +
+      `(${(rate * 100).toFixed(1)}%, limit ${(settings.threshold * 100).toFixed(0)}%). ` +
+      `Sending is stopped until the cause is fixed — continuing would damage the domain's ` +
+      `sending reputation.`,
+  };
 }

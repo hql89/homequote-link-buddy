@@ -45,7 +45,11 @@ export type AlarmKind =
   /** A delivery-canary probe was unconfirmed past its grace period, or could not be sent at all. */
   | "delivery_canary_failed"
   /** A well-formed unsubscribe token repeatedly matched no business — links may be broken. */
-  | "unsubscribe_token_misses";
+  | "unsubscribe_token_misses"
+  /** Outreach halted itself: too many of the recent sends bounced. */
+  | "outreach_bounce_rate"
+  /** A scheduled job has failed several runs in a row and nobody has noticed. */
+  | "job_failing_repeatedly";
 
 /**
  * Records an alarm. Never throws.
@@ -55,6 +59,67 @@ export type AlarmKind =
  * request that was trying to raise it. The console.error is the last-resort
  * trace when even the database write fails.
  */
+/**
+ * How long after one alarm of a kind before another of the same kind mails.
+ *
+ * The record always happens; only the email is throttled. Without this a
+ * condition that re-fires hourly (the delivery canary did exactly that for a
+ * week in August) turns the inbox into the thing that gets ignored, which is
+ * the failure this push exists to prevent.
+ */
+const EMAIL_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * Pushes the alarm to the admin's inbox, on top of the database record.
+ *
+ * The module header explains why RECORD and NOTICE are separate, and that
+ * reasoning still holds for one case: an alarm about email being broken
+ * cannot arrive by email. It is left to try anyway rather than being
+ * special-cased, because the alternative — deciding here which alarms are
+ * "about email" — is a guess that goes stale, and a failed send costs
+ * nothing (the banner still has it). Everything else, an expired API key
+ * most of all, reaches someone the same morning instead of waiting for them
+ * to happen to open the admin.
+ *
+ * Never throws and never blocks the record: called after the insert, with
+ * its own try/catch. notify-admin-email does not itself raise alarms, so
+ * there is no loop back into here.
+ */
+async function emailAlarm(
+  supabase: SupabaseClient,
+  kind: AlarmKind,
+  summary: string,
+  detail: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const since = new Date(Date.now() - EMAIL_COOLDOWN_MS).toISOString();
+    const { count } = await supabase
+      .from("job_run_logs")
+      .select("id", { count: "exact", head: true })
+      .eq("job_name", ALARM_JOB_NAME)
+      .eq("metadata->>alarm_kind", kind)
+      .gte("created_at", since);
+
+    // >1 rather than >0: the row this alarm just wrote is itself inside the
+    // window, so the first alarm of a kind must still send.
+    if ((count ?? 0) > 1) return;
+
+    const url = Deno.env.get("SUPABASE_URL");
+    if (!url) return;
+
+    await fetch(`${url}/functions/v1/notify-admin-email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        notificationType: "alarm",
+        alarmData: { kind, summary, detail: JSON.stringify(detail) },
+      }),
+    });
+  } catch (err) {
+    console.error(`[alarm:${kind}] could not email the alarm:`, err instanceof Error ? err.message : err);
+  }
+}
+
 export async function raiseAlarm(
   supabase: SupabaseClient,
   kind: AlarmKind,
@@ -76,6 +141,7 @@ export async function raiseAlarm(
       return;
     }
     console.error(`[alarm:${kind}] ${summary}`);
+    await emailAlarm(supabase, kind, summary, detail);
   } catch (err) {
     console.error(
       `[alarm:${kind}] FAILED to record alarm: ${err instanceof Error ? err.message : String(err)} — ${summary}`,

@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 import {
   createOutreachVariant,
   deleteOutreachVariant,
@@ -27,6 +28,22 @@ import { Loader2, Play, Plus, Trash2, AlertTriangle, Save, Mail } from "lucide-r
 
 const SETTING_KEY = "outreach_config";
 const DEFAULT_DAILY_LIMIT = 10;
+
+/**
+ * Typed as `string`, not a literal, on purpose.
+ *
+ * postgrest-js infers the result shape by parsing the select string at the
+ * type level. The `->>` JSON accessors make that parse deep enough to trip
+ * TS2589 ("excessively deep"), which poisons inference for the whole file.
+ * Widening to `string` opts out of the parse; the query sent is identical
+ * and the row shape is asserted at the call site.
+ *
+ * Reading the named keys rather than the whole `setting_value` blob is a
+ * deliberate boundary: the stored SMTP password must never reach the
+ * browser. Keep the `->>` accessors.
+ */
+const SMTP_IDENTITY_SELECT: string =
+  "from_email:setting_value->>fromEmail, smtp_username:setting_value->>smtpUsername";
 
 /** Keeps the editor, and the sample-size maths, from sprawling. */
 const MAX_VARIANTS_PER_STAGE = 3;
@@ -244,7 +261,7 @@ export default function OutreachPage() {
     if (trimmed) {
       const { data: idRow } = await supabase
         .from("admin_settings")
-        .select("from_email:setting_value->>fromEmail, smtp_username:setting_value->>smtpUsername")
+        .select(SMTP_IDENTITY_SELECT)
         .eq("setting_key", "smtp_config")
         .maybeSingle();
 
@@ -281,7 +298,7 @@ export default function OutreachPage() {
       .eq("setting_key", SETTING_KEY)
       .maybeSingle();
 
-    const merged = { ...((existing?.setting_value as Record<string, unknown>) ?? {}) };
+    const merged: Record<string, Json> = { ...((existing?.setting_value as Record<string, Json>) ?? {}) };
     if (trimmed) merged.bcc_email = trimmed;
     else delete merged.bcc_email;
 

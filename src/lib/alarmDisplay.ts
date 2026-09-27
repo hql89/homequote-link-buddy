@@ -16,7 +16,9 @@ export type AlarmKind =
   | "suppression_spike"
   | "action_write_failed"
   | "delivery_canary_failed"
-  | "unsubscribe_token_misses";
+  | "unsubscribe_token_misses"
+  | "outreach_bounce_rate"
+  | "job_failing_repeatedly";
 
 export interface AlarmRecord {
   id: string;
@@ -41,6 +43,8 @@ const TITLES: Record<AlarmKind, string> = {
   action_write_failed: "An automatic action ran but its write failed silently",
   delivery_canary_failed: "The delivery check couldn't confirm mail is arriving",
   unsubscribe_token_misses: "Unsubscribe links are failing to match a business",
+  outreach_bounce_rate: "Outreach stopped itself — too many emails are bouncing",
+  job_failing_repeatedly: "A scheduled job has been failing for days",
 };
 
 const SEVERITY: Record<AlarmKind, DisplayAlarm["severity"]> = {
@@ -49,6 +53,13 @@ const SEVERITY: Record<AlarmKind, DisplayAlarm["severity"]> = {
   action_write_failed: "critical",
   delivery_canary_failed: "warning",
   unsubscribe_token_misses: "warning",
+  // Critical: the breaker has already stopped sending, so the campaign is
+  // halted until someone acts.
+  outreach_bounce_rate: "critical",
+  // Critical by the nature of how it is raised — it only fires after several
+  // days of a job failing unseen, which is the condition itself, not a risk
+  // of one.
+  job_failing_repeatedly: "critical",
 };
 
 /**

@@ -13,6 +13,21 @@ import { Loader2, Mail, ChevronDown, ChevronUp, AlertTriangle, XCircle } from "l
 
 const PAGE_SIZE = 50;
 
+/**
+ * Typed as `string`, not a literal, on purpose.
+ *
+ * postgrest-js infers the result shape by parsing the select string at the
+ * type level. The `->>` JSON accessors make that parse deep enough to trip
+ * TS2589 ("excessively deep"), which poisons inference for the whole file.
+ * Widening to `string` opts out of the parse; the query sent is identical
+ * and the row shape is asserted at the call site.
+ *
+ * Reading the named keys rather than the whole `setting_value` blob is a
+ * deliberate boundary: the stored SMTP password must never reach the
+ * browser. Keep the `->>` accessors.
+ */
+const SENDER_NAME_SELECT: string = "from_name:setting_value->>fromName";
+
 const EMAIL_TYPE_LABEL: Record<string, string> = {
   outreach_verify: "Email 1 — verification",
   outreach_preview: "Email 2 — preview",
@@ -168,7 +183,7 @@ export default function OutreachSentPage() {
         .select("business_name, city, owner_name, phone, slug, city_slug, claim_token")
         .eq("id", row.related_business_id)
         .maybeSingle(),
-      supabase.from("admin_settings").select("from_name:setting_value->>fromName").eq("setting_key", "smtp_config").maybeSingle(),
+      supabase.from("admin_settings").select(SENDER_NAME_SELECT).eq("setting_key", "smtp_config").maybeSingle(),
     ]);
 
     const biz = bizRes.data as {
@@ -181,7 +196,7 @@ export default function OutreachSentPage() {
       claim_token: string;
     } | null;
     const body = (variantRes.data as { body: string } | null)?.body;
-    const senderName = (senderRes.data as { from_name: string | null } | null)?.from_name || "The Directory Team";
+    const senderName = (senderRes.data as unknown as { from_name: string | null } | null)?.from_name || "The Directory Team";
 
     if (!body || !biz) {
       setBodies((prev) => ({ ...prev, [row.id]: { state: "unavailable" } }));

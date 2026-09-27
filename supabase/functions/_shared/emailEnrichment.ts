@@ -77,12 +77,97 @@ export function extractEmailsFromHtml(html: string): string[] {
  * the same toE164 used for CSLB data — so a page match and a CSLB record are
  * always compared in the same shape.
  */
+/**
+ * Whether an E.164 US number could actually be dialled.
+ *
+ * Without this, any ten digits on a page became a "phone". Three real
+ * examples pulled from contractor sites on 2026-09-26: +1 529 411 7647,
+ * +1 942 938 4556, +1 532 272 9582. None are dialable — 529/942/532 are not
+ * area codes in service, and 411 can never be an exchange.
+ *
+ * The cost was not a false match (junk never equals the CSLB number) but a
+ * misleading one: `email_source_phone` showed a reviewer an invented number
+ * beside the real licence number, making an honest business look like the
+ * wrong one.
+ *
+ * Structural NANP rules alone are not enough, and that is worth stating
+ * plainly: 942 and 532 both satisfy them. They are rejected only because
+ * they are not area codes that exist. So the check needs the assigned list
+ * below as well as the structural rules.
+ *
+ * The list is a snapshot and new area codes are assigned a few times a year.
+ * It fails in the safe direction: an unlisted code makes a number
+ * "implausible", which sends the business to human review — it can never
+ * cause a wrong verification. Update it when a genuine number is queried.
+ *
+ * Does NOT reject the 555-01xx fiction range: no contractor site carries
+ * one, so it buys nothing real, and it would reject the safe example
+ * numbers used throughout this project's own tests.
+ */
+const ASSIGNED_AREA_CODES = new Set([
+  // Toll-free and premium
+  "800", "833", "844", "855", "866", "877", "888", "900",
+  // California
+  "209", "213", "279", "310", "323", "341", "350", "408", "415", "424", "442",
+  "510", "530", "559", "562", "619", "626", "628", "650", "657", "661", "669",
+  "707", "714", "747", "760", "805", "818", "820", "831", "840", "858", "909",
+  "916", "925", "949", "951",
+  // Rest of the US
+  "201", "202", "203", "205", "206", "207", "208", "210", "212", "214", "215",
+  "216", "217", "218", "219", "220", "223", "224", "225", "228", "229", "231",
+  "234", "239", "240", "248", "251", "252", "253", "254", "256", "260", "262",
+  "267", "269", "270", "272", "276", "281", "283", "301", "302", "303", "304",
+  "305", "307", "308", "309", "312", "313", "314", "315", "316", "317", "318",
+  "319", "320", "321", "325", "326", "330", "331", "332", "334", "336", "337",
+  "339", "346", "351", "352", "360", "361", "364", "380", "385", "386", "401",
+  "402", "404", "405", "406", "407", "409", "410", "412", "413", "414", "417",
+  "419", "423", "425", "430", "432", "434", "435", "440", "443", "445", "447",
+  "458", "463", "464", "469", "470", "475", "478", "479", "480", "484", "501",
+  "502", "503", "504", "505", "507", "508", "509", "512", "513", "515", "516",
+  "517", "518", "520", "534", "539", "540", "541", "551", "559", "561", "563",
+  "564", "567", "570", "571", "573", "574", "575", "580", "585", "586", "601",
+  "602", "603", "605", "606", "607", "608", "609", "610", "612", "614", "615",
+  "616", "617", "618", "620", "623", "624", "630", "631", "636", "640", "641",
+  "646", "651", "660", "662", "667", "678", "680", "681", "682", "689", "701",
+  "702", "703", "704", "706", "708", "712", "713", "715", "716", "717", "718",
+  "719", "720", "724", "725", "726", "727", "731", "732", "734", "737", "740",
+  "743", "754", "757", "762", "763", "765", "769", "770", "772", "773", "774",
+  "775", "779", "781", "785", "786", "801", "802", "803", "804", "806", "808",
+  "810", "812", "813", "814", "815", "816", "817", "828", "830", "832", "838",
+  "843", "845", "847", "848", "850", "854", "856", "857", "859", "860", "862",
+  "863", "864", "865", "870", "872", "878", "901", "903", "904", "906", "907",
+  "908", "910", "912", "913", "914", "915", "917", "918", "919", "920", "930",
+  "931", "934", "936", "937", "938", "940", "941", "947", "952", "954", "956",
+  "959", "970", "971", "972", "973", "975", "978", "979", "980", "984", "985",
+  "986", "989",
+  // Canada — an owner's mobile from across the border is unremarkable
+  "204", "226", "236", "249", "250", "289", "306", "343", "365", "367", "368",
+  "403", "416", "418", "428", "431", "437", "438", "450", "506", "514", "519",
+  "548", "579", "581", "584", "587", "604", "613", "639", "647", "672", "705",
+  "709", "742", "753", "778", "780", "782", "807", "819", "825", "867", "873",
+  "902", "905",
+]);
+
+export function isPlausibleUsPhone(e164: string): boolean {
+  const m = e164.match(/^\+1(\d{3})(\d{3})(\d{4})$/);
+  if (!m) return false;
+  const [, area, exchange, line] = m;
+
+  if (!ASSIGNED_AREA_CODES.has(area)) return false;
+  if (!/^[2-9]/.test(exchange) || /^\d11$/.test(exchange)) return false;
+  if (/^(\d)\1{9}$/.test(area + exchange + line)) return false;
+
+  return true;
+}
+
 export function extractPhonesFromHtml(html: string): string[] {
   const found = new Set<string>();
-  const phoneRe = /(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g;
+  // Boundaries on both sides: without them a longer digit run (an order id,
+  // a timestamp) donates its first ten digits and becomes a phone number.
+  const phoneRe = /(?<![\d-])(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}(?![\d-])/g;
   for (const m of html.matchAll(phoneRe)) {
     const e164 = toE164(m[0]);
-    if (e164) found.add(e164);
+    if (e164 && isPlausibleUsPhone(e164)) found.add(e164);
   }
   return [...found];
 }
@@ -148,7 +233,240 @@ export function isDisallowedByRobots(robotsTxt: string, path: string, userAgent:
 
 export type EmailConfidence = "verified" | "needs_review";
 
-/** The one place confidence is decided — a phone match is the only path to 'verified'. */
-export function resolveConfidence(phoneMatched: boolean): EmailConfidence {
-  return phoneMatched ? "verified" : "needs_review";
+/** Case/punctuation-insensitive city comparison. */
+function normaliseCity(value: string): string {
+  return value.toLowerCase().replace(/[^a-z\s]/g, "").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Places that are not the service area but are not a red flag either.
+ *
+ * Every city this directory covers is a neighbourhood of the City of Los
+ * Angeles, so a site whose address reads "Los Angeles, CA" is entirely
+ * consistent with a Tarzana business — the first run of the new rule flagged
+ * exactly that as "outside the service area", which is wrong and would have
+ * mis-flagged a large share of the 452 still queued. The rest are San
+ * Fernando Valley and immediately adjacent communities: near enough that a
+ * contractor being based there says nothing suspicious, far enough that it
+ * is not proof they serve our cities either.
+ */
+const NEARBY_PLACES = new Set([
+  "los angeles", "van nuys", "north hollywood", "woodland hills", "reseda",
+  "canoga park", "northridge", "west hills", "winnetka", "lake balboa",
+  "panorama city", "north hills", "valley glen", "sun valley", "shadow hills",
+  "granada hills", "mission hills", "chatsworth", "arleta", "pacoima",
+  "sylmar", "tujunga", "sunland", "burbank", "glendale", "calabasas",
+  "hidden hills", "universal city",
+]);
+
+export interface PageLocation {
+  /** An address-shaped snippet, for a reviewer to read. Null when none found. */
+  snippet: string | null;
+  /**
+   * The city from an address-shaped match — where the business says it IS.
+   * Much stronger evidence than a name appearing somewhere on the page.
+   */
+  addressCity: string | null;
+  /** Whether that address city is one the directory covers. */
+  addressInArea: boolean;
+  /**
+   * The address is not in a covered city, but is somewhere that raises no
+   * suspicion — greater Los Angeles or the Valley. Neither proof nor a flag.
+   */
+  addressNearby: boolean;
+  /** Service-area cities named anywhere, address or not. Marketing-grade evidence. */
+  mentioned: string[];
+}
+
+/**
+ * Where a page says the business is.
+ *
+ * Replaces a lone `<City>, CA <zip>` regex that required both the zip and
+ * the two-letter form — it found a location on only 8 of 27 enriched
+ * businesses. Leading the decision with a signal missing two thirds of the
+ * time would just push everything into the review queue.
+ *
+ * The two kinds of evidence are kept apart on purpose, and the distinction
+ * is the whole point. An ADDRESS says where the business is. A city NAMED on
+ * the page says only that they will travel there — nearly every contractor
+ * site lists a long service-area footer, so treating a mention as proof of
+ * location would verify a Fresno company that happens to list Sherman Oaks,
+ * which is precisely the case worth catching.
+ */
+export function findPageLocation(html: string, serviceArea: string[]): PageLocation {
+  const text = html.replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/\s+/g, " ");
+  const area = serviceArea.map(normaliseCity).filter(Boolean);
+
+  const addressRe = /([A-Za-z][A-Za-z.'\s]{1,40}?),\s*(?:CA|California)\b(?:\s+(\d{5})(?:-\d{4})?)?/g;
+
+  let snippet: string | null = null;
+  let addressCity: string | null = null;
+  let addressInArea = false;
+  let addressNearby = false;
+
+  for (const match of text.matchAll(addressRe)) {
+    const words = match[1].trim().split(" ");
+    const tail = normaliseCity(words.slice(-3).join(" "));
+
+    // Longest name first, so "north hollywood" is not read as "hollywood"
+    // and "los angeles" is preferred over a shorter accidental suffix.
+    const known = [...area, ...NEARBY_PLACES].sort((a, b) => b.length - a.length);
+    const hit = known.find((c) => tail.endsWith(c));
+    const city = hit ?? normaliseCity(words.slice(-2).join(" "));
+    const inArea = hit !== undefined && area.includes(hit);
+    const nearby = hit !== undefined && !inArea;
+
+    // An in-area address wins outright; a page may print a corporate address
+    // and a local branch, and the branch is the relevant fact.
+    if (inArea && !addressInArea) {
+      addressCity = city;
+      addressInArea = true;
+      addressNearby = false;
+      snippet = `${city}, CA`;
+    } else if (!addressInArea && addressCity === null) {
+      addressCity = city;
+      addressNearby = nearby;
+      // Rebuilt rather than using the raw match, which trails back into the
+      // preceding sentence ("Andrew Chang Sherman Oaks, CA").
+      snippet = `${city}, CA`;
+    }
+  }
+
+  const normalisedText = normaliseCity(text);
+  const mentioned = area.filter((c) => normalisedText.includes(c));
+
+  return { snippet, addressCity, addressInArea, addressNearby, mentioned };
+}
+
+export interface ConfidenceEvidence {
+  phoneMatched: boolean;
+  location: PageLocation;
+  /** The city on the licence record. */
+  expectedCity: string;
+}
+
+export interface ConfidenceDecision {
+  confidence: EmailConfidence;
+  /** One sentence for the review queue, so it says why rather than implying it. */
+  reason: string;
+}
+
+/**
+ * The one place confidence is decided.
+ *
+ * Was: a phone match, and nothing else, could reach `verified`. That made the
+ * weakest available signal the sole gate. Contractors routinely publish
+ * tracking numbers, answering services and mobiles never filed with CSLB, so
+ * a mismatch says very little — while the page placing the business in
+ * another county says a great deal.
+ *
+ * Location therefore leads and an out-of-area address outranks a phone match.
+ * A phone match remains a valid route when no location can be found, because
+ * a genuine match is real corroboration; it is simply no longer the only door.
+ *
+ * Note what this deliberately does NOT do: `email_confidence` also permits
+ * 'rejected', and an out-of-area address does not take it. That is a strong
+ * reason for a person to look, not grounds to discard a business unattended.
+ */
+export function resolveConfidence(evidence: ConfidenceEvidence): ConfidenceDecision {
+  const { phoneMatched, location, expectedCity } = evidence;
+  const expected = normaliseCity(expectedCity ?? "");
+
+  // An address outside the area dominates everything, including a phone
+  // match and any number of in-area mentions. Nearly every contractor site
+  // lists cities it will travel to; only one says where it is.
+  if (location.addressCity && !location.addressInArea && !location.addressNearby) {
+    return {
+      confidence: "needs_review",
+      reason:
+        `The site's address is in ${location.addressCity}, outside the service area. ` +
+        `It may still travel here, but this could also be a different business with a ` +
+        `similar name.`,
+    };
+  }
+
+  if (location.addressInArea) {
+    return location.addressCity === expected
+      ? { confidence: "verified", reason: `The site's address is in ${expectedCity}, matching the licence.` }
+      : {
+          confidence: "verified",
+          reason:
+            `The site's address is in ${location.addressCity}, which the directory covers, ` +
+            `though the licence says ${expectedCity}. Both are in the area.`,
+        };
+  }
+
+  if (phoneMatched) {
+    return {
+      confidence: "verified",
+      reason: "No address on the site, but the phone number matches the licence exactly.",
+    };
+  }
+
+  if (location.mentioned.length > 0) {
+    return {
+      confidence: "needs_review",
+      reason:
+        `The site names ${location.mentioned[0]}, but only as somewhere it works — there is no ` +
+        `address and no matching phone number, so nothing says the business is based here.`,
+    };
+  }
+
+  return {
+    confidence: "needs_review",
+    reason:
+      "The site gave no address we could read and no matching phone number, so nothing ties " +
+      "it to this licence yet.",
+  };
+}
+
+/** Outcome counts from one enrichment run, as written to job_run_logs.metadata. */
+export interface EnrichmentSummary {
+  considered: number;
+  failed: number;
+}
+
+export interface EnrichmentRunOutcome {
+  status: "success" | "partial" | "failure";
+  errorMessage: string | null;
+}
+
+/**
+ * Decides how an enrichment run should be recorded.
+ *
+ * Pure and separated from the function for the same reason pickVariant and
+ * remainingDailyBudget are: the rule deciding whether a run counts as broken
+ * should be directly testable.
+ *
+ * `failed` is the catch-all for a row that threw. It is deliberately distinct
+ * from no_url / no_email / fetch_failed, which are ordinary findings about a
+ * business — plenty of small contractors have no website — and must never
+ * make a run look broken.
+ *
+ * Every row throwing means the run achieved nothing, and recording that as a
+ * success is exactly how an expired Perplexity key looked like a quiet day
+ * for a month: 20 of 20 rows failing on a 401 was logged `status: success`,
+ * rendered as "0 verified", and never tripped the repeated-failure alarm.
+ */
+export function summariseEnrichmentRun(
+  summary: EnrichmentSummary,
+  errors: string[],
+): EnrichmentRunOutcome {
+  const considered = Number.isFinite(summary.considered) ? Math.max(0, summary.considered) : 0;
+  const failed = Number.isFinite(summary.failed) ? Math.max(0, summary.failed) : 0;
+
+  if (failed === 0) return { status: "success", errorMessage: null };
+
+  // Deduplicated: twenty rows failing for one reason should read as one
+  // reason, not twenty copies of the same sentence.
+  const distinct = [...new Set(errors)];
+  const errorMessage =
+    `${failed} of ${considered} lookups failed. ` +
+    `${distinct.length === 1 ? "Reason" : "Reasons"}: ` +
+    `${distinct.length > 0 ? distinct.slice(0, 3).join(" | ") : "(not recorded)"}`;
+
+  return {
+    status: considered > 0 && failed >= considered ? "failure" : "partial",
+    errorMessage,
+  };
 }

@@ -123,13 +123,15 @@ export interface BusinessPhotoRow {
  * Every value the `inbound_emails.classification` CHECK constraint accepts.
  *
  * Kept in step with the migrations that widen it (bounce: 20260801280000,
- * self_sent: 20260803220000, ignored: 20260823230000). This union having
+ * self_sent: 20260803220000, ignored: 20260823230000,
+ * removal_request: 20260926020000). This union having
  * drifted behind the constraint is not a hypothetical cost: it is typed as a
  * Record key in /admin/replies, so a value missing here renders an EMPTY
  * badge rather than failing to compile — which is exactly what the one
  * production `bounce` row was doing.
  */
 export type InboundClassification =
+  | "removal_request"
   | "unsubscribe"
   | "confirm"
   | "website"
@@ -618,7 +620,7 @@ export async function saveOutreachVariant(
   id: string,
   values: Pick<OutreachVariantRow, "subject" | "body" | "weight" | "is_active">,
 ): Promise<{ message: string } | null> {
-  const { error } = await directoryDb
+  const { error } = await supabase
     .from("outreach_template_variants")
     .update({ ...values, updated_at: new Date().toISOString() })
     .eq("id", id);
@@ -630,7 +632,7 @@ export async function createOutreachVariant(
   values: Pick<OutreachVariantRow, "email_type" | "variant_key" | "subject" | "body"> &
     Partial<Pick<OutreachVariantRow, "weight" | "is_active">>,
 ): Promise<{ message: string } | null> {
-  const { error } = await directoryDb.from("outreach_template_variants").insert({
+  const { error } = await supabase.from("outreach_template_variants").insert({
     weight: 1,
     // New variants start switched off. Adding one is an editing step, not a
     // decision to start mailing it — that's the active toggle, made once the
