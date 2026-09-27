@@ -7,7 +7,10 @@ import {
   isPlausibleUsPhone,
   phoneMatchesPage,
   isDisallowedByRobots,
-  resolveConfidence, summariseEnrichmentRun,
+  registrableDomain,
+  resolveConfidence,
+  selectBusinessEmail,
+  summariseEnrichmentRun,
 } from "../../supabase/functions/_shared/emailEnrichment";
 
 describe("extractUrlFromModelText", () => {
@@ -364,5 +367,121 @@ describe("resolveConfidence", () => {
       const d = resolveConfidence({ phoneMatched, location: nowhere, expectedCity: "Encino" });
       expect(d.reason.length).toBeGreaterThan(20);
     }
+  });
+});
+
+describe("registrableDomain", () => {
+  it("reads the domain off a URL, ignoring scheme, www, path and port", () => {
+    expect(registrableDomain("https://www.capitolplumbing.com/contact")).toBe("capitolplumbing.com");
+    expect(registrableDomain("http://capitolplumbing.com:8080")).toBe("capitolplumbing.com");
+  });
+
+  it("reads the domain off an email address", () => {
+    expect(registrableDomain("micah@micahrich.com")).toBe("micahrich.com");
+  });
+
+  it("treats a subdomain as the same registrable domain", () => {
+    expect(registrableDomain("mail.capitolplumbing.com")).toBe("capitolplumbing.com");
+  });
+
+  it("returns null for input with no domain to read", () => {
+    expect(registrableDomain("")).toBeNull();
+    expect(registrableDomain("localhost")).toBeNull();
+  });
+});
+
+describe("selectBusinessEmail", () => {
+  const site = "https://www.capitolplumbing.com/";
+
+  // The exact production failure: extractEmailsFromHtml returns mailto: links
+  // before its plain-text sweep, so the developer's footer-credit mailto came
+  // out first and `emails[0]` stored it as the business's contact.
+  it("skips a developer's footer-credit address in favour of the business's own", () => {
+    const emails = ["micah@micahrich.com", "office@capitolplumbing.com"];
+    expect(selectBusinessEmail(emails, site)).toEqual({
+      email: "office@capitolplumbing.com",
+      onDomain: true,
+    });
+  });
+
+  it("matches an address on a subdomain of the site", () => {
+    expect(selectBusinessEmail(["info@mail.capitolplumbing.com"], site).onDomain).toBe(true);
+  });
+
+  it("keeps document order among several on-domain addresses", () => {
+    const emails = ["info@capitolplumbing.com", "office@capitolplumbing.com"];
+    expect(selectBusinessEmail(emails, site).email).toBe("info@capitolplumbing.com");
+  });
+
+  it("still surfaces an off-domain address for a human, but flags it as unrelated", () => {
+    // Not discarded: /admin/enrichment should show what was actually found.
+    // The flag is what stops it reaching 'verified' and going into outreach.
+    expect(selectBusinessEmail(["micah@micahrich.com"], site)).toEqual({
+      email: "micah@micahrich.com",
+      onDomain: false,
+    });
+  });
+
+  it("reports nothing found rather than an empty address", () => {
+    expect(selectBusinessEmail([], site)).toEqual({ email: null, onDomain: false });
+  });
+});
+
+// The off-domain gate, which sits IN FRONT of the location reasoning above
+// rather than inside it. These pin that separation: the page checking out is
+// not the same claim as the address belonging to the business.
+describe("resolveConfidence — off-domain address gate", () => {
+  const AREA_CITIES = ["Encino", "Tarzana", "Sherman Oaks"];
+
+  it("refuses an off-domain address even when the address places the business in the covered city", () => {
+    // The Capitol Plumbing shape, and the reason this is a gate: every
+    // page-level signal is as good as it gets. Without the gate this is
+    // 'verified' and goes straight into outreach — to a stranger.
+    const loc = findPageLocation("<p>Encino, CA 91316</p>", AREA_CITIES);
+    const d = resolveConfidence({
+      phoneMatched: true,
+      location: loc,
+      expectedCity: "Encino",
+      emailOnDomain: false,
+    });
+    expect(d.confidence).toBe("needs_review");
+    expect(d.reason).toMatch(/not on the same domain/i);
+  });
+
+  it("still verifies the same page when the address is the business's own", () => {
+    // The control: without it the test above would pass on a function that
+    // simply never verifies anything.
+    const loc = findPageLocation("<p>Encino, CA 91316</p>", AREA_CITIES);
+    expect(
+      resolveConfidence({
+        phoneMatched: true,
+        location: loc,
+        expectedCity: "Encino",
+        emailOnDomain: true,
+      }).confidence,
+    ).toBe("verified");
+  });
+
+  it("leaves callers that pass no domain fact unchanged", () => {
+    // Absent must not mean "off-domain", or omitting the field would silently
+    // send every existing caller's rows to review.
+    const loc = findPageLocation("<p>Encino, CA 91316</p>", AREA_CITIES);
+    expect(
+      resolveConfidence({ phoneMatched: true, location: loc, expectedCity: "Encino" }).confidence,
+    ).toBe("verified");
+  });
+
+  it("does not turn a review verdict into a pass", () => {
+    // The gate may only ever downgrade. An out-of-area address stays in review
+    // whatever the domain says.
+    const loc = findPageLocation("<p>Fresno, CA 93701</p>", AREA_CITIES);
+    expect(
+      resolveConfidence({
+        phoneMatched: true,
+        location: loc,
+        expectedCity: "Encino",
+        emailOnDomain: true,
+      }).confidence,
+    ).toBe("needs_review");
   });
 });

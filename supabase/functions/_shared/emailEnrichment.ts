@@ -338,11 +338,92 @@ export function findPageLocation(html: string, serviceArea: string[]): PageLocat
   return { snippet, addressCity, addressInArea, addressNearby, mentioned };
 }
 
+/**
+ * The registrable-ish domain of a URL or email, for comparing a page against
+ * the addresses printed on it. Strips `www.` and keeps the last two labels,
+ * so `mail.capitolplumbing.com` and `capitolplumbing.com` compare equal.
+ *
+ * Deliberately not a Public Suffix List implementation: the failure it has to
+ * catch is an entirely different registrable domain (`micahrich.com` on
+ * `capitolplumbing.com`), not a `.co.uk` edge case. Over-matching on a
+ * multi-part TLD would at worst let a same-suffix address through, which is
+ * the behaviour that already exists today.
+ */
+export function registrableDomain(urlOrEmail: string): string | null {
+  const raw = urlOrEmail.trim().toLowerCase();
+  if (!raw) return null;
+
+  const host = raw.includes("@")
+    ? raw.split("@")[1]
+    : raw.replace(/^[a-z]+:\/\//, "").split("/")[0].split(":")[0];
+
+  if (!host || !host.includes(".")) return null;
+
+  const labels = host.replace(/^www\./, "").split(".").filter(Boolean);
+  if (labels.length < 2) return null;
+  return labels.slice(-2).join(".");
+}
+
+export interface EmailSelection {
+  /** The address to store, or null when the page yielded none. */
+  email: string | null;
+  /** Whether it is published on the same domain as the page it came from. */
+  onDomain: boolean;
+}
+
+/**
+ * Chooses which of a page's emails actually belongs to the business.
+ *
+ * Previously the caller took `emails[0]` — first in document order, which is
+ * mailto: links first and then a plain-text sweep. That picked up whoever
+ * happened to appear earliest, and in production it picked a web developer's
+ * personal address out of a "site by" footer credit
+ * (`micah@micahrich.com` stored for Capitol Plumbing & Rooter Inc, then sent
+ * cold outreach on 2026-08-21 and 2026-08-25).
+ *
+ * The existing PLACEHOLDER_EMAIL_DOMAINS filter does not help here: the
+ * developer's domain is a real, deliverable mailbox. It is simply not this
+ * business's. Cold-mailing it tells an uninvolved third party we have built
+ * them a listing — a reputation and CAN-SPAM problem that scales with volume.
+ *
+ * So: prefer an address on the same registrable domain as the page. Document
+ * order still breaks ties among on-domain addresses, which preserves the
+ * mailto-before-plain-sweep preference for the normal case.
+ */
+export function selectBusinessEmail(emails: string[], sourceUrl: string): EmailSelection {
+  if (emails.length === 0) return { email: null, onDomain: false };
+
+  const siteDomain = registrableDomain(sourceUrl);
+  if (siteDomain) {
+    const onDomain = emails.find((e) => registrableDomain(e) === siteDomain);
+    if (onDomain) return { email: onDomain, onDomain: true };
+  }
+
+  // Nothing on-domain: keep the address so a human reviewer can see what was
+  // actually found, but flag it as unrelated so confidence can refuse it.
+  return { email: emails[0], onDomain: false };
+}
+
+export type EmailConfidence = "verified" | "needs_review";
+
 export interface ConfidenceEvidence {
   phoneMatched: boolean;
   location: PageLocation;
   /** The city on the licence record. */
   expectedCity: string;
+  /**
+   * Whether the address found is published on the same registrable domain as
+   * the page it came from — see {@link selectBusinessEmail}.
+   *
+   * Separate from every other signal here on purpose. The rest of this
+   * function answers "is this the right PAGE"; this answers "is this address
+   * even the page's". A page can be unmistakably the right business and still
+   * carry a web developer's address in its footer credit.
+   *
+   * Optional so existing callers that only reason about the page keep
+   * compiling; absent is treated as on-domain, i.e. no downgrade.
+   */
+  emailOnDomain?: boolean;
 }
 
 export interface ConfidenceDecision {
@@ -369,8 +450,35 @@ export interface ConfidenceDecision {
  * reason for a person to look, not grounds to discard a business unattended.
  */
 export function resolveConfidence(evidence: ConfidenceEvidence): ConfidenceDecision {
-  const { phoneMatched, location, expectedCity } = evidence;
+  const { phoneMatched, location, expectedCity, emailOnDomain } = evidence;
   const expected = normaliseCity(expectedCity ?? "");
+
+  // An off-domain address can never be `verified`, however well the page
+  // itself checks out.
+  //
+  // This is deliberately a gate in front of the page reasoning below rather
+  // than another signal mixed into it, because it answers a different
+  // question. Everything after this decides whether the PAGE is this
+  // business — address in the service area, phone matching the licence. None
+  // of that says the address printed on the page is the business's own. The
+  // case this exists for passed every one of those checks: the right
+  // company's real website, in the right city, with a web developer's
+  // personal address in the "site by" footer credit, which then received
+  // cold outreach twice.
+  //
+  // Strictly more conservative — it can only move a row from verified to
+  // needs_review, never the reverse — so nothing that was skipped before is
+  // sent now. The address is still stored by the caller so a human sees what
+  // was actually found; it just doesn't go straight into outreach.
+  if (emailOnDomain === false) {
+    return {
+      confidence: "needs_review",
+      reason:
+        "The address found is not on the same domain as the site it came from, so it may " +
+        "belong to someone else — a web designer or a listing service — rather than to this " +
+        "business.",
+    };
+  }
 
   // An address outside the area dominates everything, including a phone
   // match and any number of in-area mentions. Nearly every contractor site

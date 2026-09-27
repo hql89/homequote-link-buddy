@@ -32,6 +32,7 @@ import {
   extractPhonesFromHtml,
   findPageLocation,
   phoneMatchesPage,
+  selectBusinessEmail,
   isDisallowedByRobots,
   resolveConfidence,
   summariseEnrichmentRun,
@@ -218,10 +219,15 @@ async function enrichOne(
     const phones = extractPhonesFromHtml(html);
     const matched = phoneMatchesPage(row.phone, phones);
     const location = findPageLocation(html, serviceArea);
+    // Not emails[0]: that is document order, which is mailto: links first and
+    // then a plain-text sweep, so it stored whoever appeared earliest on the
+    // page rather than whoever owns it. See selectBusinessEmail.
+    const selected = selectBusinessEmail(emails, candidateUrl);
     const { confidence, reason } = resolveConfidence({
       phoneMatched: matched,
       location,
       expectedCity: row.city,
+      emailOnDomain: selected.onDomain,
     });
 
     // Only for rows a human will have to judge. A phone match has already
@@ -246,7 +252,7 @@ async function enrichOne(
     await supabase
       .from("businesses")
       .update({
-        email: emails[0],
+        email: selected.email,
         email_source_url: candidateUrl,
         email_source_phone: phones[0] ?? null,
         email_source_address: location.snippet,
