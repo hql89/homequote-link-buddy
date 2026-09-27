@@ -106,8 +106,31 @@ describe("SMTPSettings — test/confirm/canary flow", () => {
     fireEvent.click(screen.getByRole("button", { name: /Yes, it arrived/i }));
 
     await waitFor(() => expect(screen.getByText(/Turn on the automatic delivery check/i)).toBeInTheDocument());
-    // The false-alarm caveat must be visible right there, not hidden behind another click.
-    expect(screen.getByText(/daily false alarm, not a real one/i)).toBeInTheDocument();
+    // What the check depends on must be visible right there, not hidden behind
+    // another click — an operator deciding whether to turn it on should see
+    // what makes it work and what to look at if it complains.
+    expect(screen.getByText(/watches the inbox and reports back/i)).toBeInTheDocument();
+    expect(screen.getByText(/treat that as\s+real/i)).toBeInTheDocument();
+  });
+
+  it("does not tell the operator to expect false alarms", async () => {
+    // This card used to warn that every check would report "not confirmed"
+    // until the inbox watcher was built. The watcher has been live and
+    // confirming every probe since 2026-08-25, so that warning became untrue —
+    // and a UI that trains someone to ignore a daily delivery alarm is exactly
+    // how the Byethost outage stayed invisible for days. An alarm from this
+    // check is now a real signal, and the copy must not undercut it.
+    renderPanel();
+    fireEvent.click(screen.getByRole("button", { name: /Send Test Email/i }));
+    await waitFor(() => screen.getByRole("button", { name: /Yes, it arrived/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Yes, it arrived/i }));
+
+    const card = await waitFor(() => screen.getByText(/Turn on the automatic delivery check/i));
+    const text = card.closest("div")?.parentElement?.textContent ?? "";
+
+    expect(text).not.toMatch(/false alarm/i);
+    expect(text).not.toMatch(/isn't built yet|not built yet/i);
+    expect(text).not.toMatch(/expected, not a fault/i);
   });
 
   it("turning it on calls the same RPC Background Jobs uses, with the right job name", async () => {

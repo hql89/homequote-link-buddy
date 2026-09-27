@@ -111,10 +111,24 @@ export function SMTPSettings({ config, setConfig, addLog }: SMTPSettingsProps) {
    * Turns on the delivery-canary check (Background Jobs' "Check email
    * delivery" toggle), reusing the same admin_toggle_cron_job RPC that
    * screen calls. Offered here rather than done silently: a confirmed test
-   * proves regular email works, but the canary's OWN confirmation loop needs
-   * a separate watcher (an n8n Gmail trigger) that this cannot verify exists
-   * — so the false-alarm warning stays visible right up to the click, it
-   * just doesn't require leaving this page to act on it.
+   * proves regular email works, and turning on an ongoing check is a
+   * different decision from having sent one message successfully.
+   *
+   * This used to carry a false-alarm warning, because the canary's own
+   * confirmation loop depends on a separate watcher (the n8n Gmail trigger in
+   * n8n/delivery_canary_workflow.json) which did not exist when the canary
+   * shipped. That watcher is now live: every probe from 2026-08-25 to
+   * 2026-09-26 was confirmed, 32 for 32, with no alarms raised. The last
+   * alarm was 2026-08-24.
+   *
+   * The consequence is the opposite of what the old copy said — an alarm from
+   * this check is now a real signal, not expected noise. Telling an operator
+   * to ignore a daily alarm is exactly how the Byethost outage stayed
+   * invisible for days, so the warning was removed rather than softened.
+   *
+   * To re-check this claim rather than trusting it:
+   *   select count(*), count(confirmed_at), count(alarm_raised_at)
+   *   from email_canary_probes where sent_at > now() - interval '30 days';
    */
   async function handleEnableCanary() {
     setEnablingCanary(true);
@@ -130,7 +144,7 @@ export function SMTPSettings({ config, setConfig, addLog }: SMTPSettingsProps) {
       toast({
         title: "Delivery check turned on",
         description:
-          "It will alarm once a day until the separate inbox-watching automation exists — that's expected, not a fault.",
+          "Runs once a day. If it ever reports that email did not arrive, that's a real problem worth acting on.",
       });
     } catch (err) {
       const error = err as Error;
@@ -459,9 +473,9 @@ export function SMTPSettings({ config, setConfig, addLog }: SMTPSettingsProps) {
                 <p className="mt-1 text-xs text-muted-foreground">
                   Checks once a day, going forward, that email is still actually arriving — not just being
                   accepted — so an outage like this one is caught automatically instead of discovered by
-                  accident. One thing to know first: it needs a separate piece (an automation watching the
-                  inbox and reporting back) that isn't built yet. Until it is, every check will correctly
-                  report "not confirmed" — a daily false alarm, not a real one.
+                  accident. It works with a separate automation that watches the inbox and reports back,
+                  which is set up and running. So if a check ever says email did not arrive, treat that as
+                  real and start with that watcher.
                 </p>
                 <div className="mt-3 flex gap-2">
                   <Button size="sm" className="gap-2" disabled={enablingCanary} onClick={handleEnableCanary}>
