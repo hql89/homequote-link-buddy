@@ -179,6 +179,46 @@ describe("summariseEnrichmentRun", () => {
 // reviewer beside the genuine licence number, making an honest business look
 // like the wrong one.
 
+// ── Percent-encoding in addresses ───────────────────────────────────────────
+// Lush Gardens Inc was stored as %20info@lushgardensinc.com, marked verified,
+// emailed on 2026-09-27 and bounced three minutes later. The %20 is a space
+// the page author left inside their own mailto: link.
+
+describe("extractEmailsFromHtml — percent-encoding", () => {
+  it("decodes a mailto: address rather than storing the escape", () => {
+    const html = '<a href="mailto:%20info@lushgardensinc.com">Email us</a>';
+    expect(extractEmailsFromHtml(html)).toEqual(["info@lushgardensinc.com"]);
+  });
+
+  it("decodes a legal character without changing the address", () => {
+    const html = '<a href="mailto:sales%2Bweb@valleyroofingco.com">Email</a>';
+    expect(extractEmailsFromHtml(html)).toEqual(["sales+web@valleyroofingco.com"]);
+  });
+
+  it("discards a malformed escape instead of throwing out of the run", () => {
+    // decodeURIComponent throws on a truncated escape. One bad link on one
+    // page must not abort enrichment for the whole batch.
+    const html = '<a href="mailto:bad%ZZinfo@valleyroofingco.com">Email</a><p>real@valleyroofingco.com</p>';
+    expect(() => extractEmailsFromHtml(html)).not.toThrow();
+    expect(extractEmailsFromHtml(html)).toEqual(["real@valleyroofingco.com"]);
+  });
+
+  it("does not invent an address from encoded plain text", () => {
+    // Page text is not encoded, so "%20info@x.com" written literally is not
+    // an address. Taking the "info@x.com" suffix would be guessing.
+    expect(extractEmailsFromHtml("<p>%20info@lushgardensinc.com</p>")).toEqual([]);
+  });
+
+  it("never takes a suffix of a longer token as a whole address", () => {
+    expect(extractEmailsFromHtml("<p>foo%20bar@valleyroofingco.com</p>")).toEqual([]);
+  });
+
+  it("leaves ordinary addresses exactly as they were", () => {
+    const html = '<a href="mailto:info@valleyroofingco.com">x</a><p>sales@valleyroofingco.com</p>';
+    expect(extractEmailsFromHtml(html).sort()).toEqual(["info@valleyroofingco.com", "sales@valleyroofingco.com"]);
+  });
+});
+
 describe("isPlausibleUsPhone", () => {
   it.each([
     ["+15294117647", "529 is not an area code in service, and 411 can never be an exchange"],

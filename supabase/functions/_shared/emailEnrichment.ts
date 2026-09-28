@@ -47,6 +47,33 @@ const PLACEHOLDER_EMAIL_DOMAINS = new Set([
  * false positives (image filenames, sourcemaps) and known template
  * placeholder domains are filtered out.
  */
+/**
+ * A decoded address must still look like one.
+ *
+ * `%` is deliberately absent from the local part. It is legal in an address
+ * by the RFC, but one appearing after decoding is percent-encoding that did
+ * not decode cleanly, not a literal. Rejecting it costs an unenriched
+ * business; accepting it costs an email to an address that does not exist.
+ */
+const STRICT_EMAIL_RE = /^[a-zA-Z0-9._+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+/**
+ * Percent-decodes a candidate, or returns null when it cannot be read.
+ *
+ * Returns the input untouched when there is nothing to decode, so ordinary
+ * addresses are not round-tripped for no reason. A malformed escape makes
+ * decodeURIComponent throw, and that must mean "discard this candidate" —
+ * never abort the run over one bad link on one page.
+ */
+function decodePercentEscapes(raw: string): string | null {
+  if (!/%[0-9A-Fa-f]{2}/.test(raw)) return raw;
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return null;
+  }
+}
+
 export function extractEmailsFromHtml(html: string): string[] {
   const found = new Set<string>();
 
@@ -57,16 +84,30 @@ export function extractEmailsFromHtml(html: string): string[] {
     return true;
   }
 
+  // A mailto: URI is percent-ENCODED by definition, so its target must be
+  // decoded before it is an address. `%` used to sit in the local-part class
+  // because it is legal in an email address — true in general, wrong here.
+  // `mailto:%20info@example.com` means "mailto: info@example.com" with a
+  // leading space the page author left in, and the old pattern took `%20info`
+  // as the local part verbatim. That address was stored, marked verified, and
+  // bounced on 2026-09-27 when it was mailed.
   const mailtoRe = /mailto:([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/gi;
   for (const m of html.matchAll(mailtoRe)) {
-    const email = m[1].toLowerCase();
-    if (isUsable(email)) found.add(email);
+    const decoded = decodePercentEscapes(m[1]);
+    if (decoded === null) continue;
+    const email = decoded.trim().toLowerCase();
+    if (STRICT_EMAIL_RE.test(email) && isUsable(email)) found.add(email);
   }
 
-  const plainRe = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+  // Plain page text is NOT encoded — a literal "%20info@example.com" there is
+  // simply not an address, and decoding it would be inventing one. The
+  // lookbehind stops a suffix of a longer token being taken as a whole
+  // address, so "%20info@x.com" yields nothing rather than "info@x.com" and
+  // "foo%20bar@x.com" never yields "bar@x.com".
+  const plainRe = /(?<![a-zA-Z0-9._%+-])[a-zA-Z0-9._+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
   for (const m of html.matchAll(plainRe)) {
     const email = m[0].toLowerCase();
-    if (isUsable(email)) found.add(email);
+    if (STRICT_EMAIL_RE.test(email) && isUsable(email)) found.add(email);
   }
 
   return [...found];
