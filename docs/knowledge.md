@@ -480,3 +480,61 @@ Corollary for the narrowing itself: when a view's Row is genuinely wider than re
 the assumption once at the boundary rows enter the app (`toListings` / `toListing` /
 `toCities`), next to the migration that justifies it — not as an unexplained cast in each of
 the four pages that read the view.
+
+---
+
+## SMTP accepting a message is not the end of its journey
+**Context**: Outreach was paused on 2026-09-28 after one of two emails was rejected by
+MailChannels — the relay inside this domain's SPF record — and never reached the contractor.
+
+**Learning**: The rejection arrives *after* SMTP has accepted and closed the connection. The
+send therefore succeeds from the sender's point of view: `logEmailSend` writes `status: 'sent'`
+and returns cleanly, and the bounce turns up seconds later as a separate inbound message. Two
+consequences follow that are not obvious from reading the code:
+
+1. **The Resend fallback in `mailer.ts` can never fire for this failure.** It triggers when
+   SMTP throws. SMTP does not throw — it accepted. Anyone reading that fallback and assuming
+   the project is protected against delivery failure is reading it wrong; it covers
+   *connection* failure only. Moving to Resend therefore means making it the primary route,
+   not configuring the existing fallback (ENH-006).
+2. **`email_send_log.status = 'sent'` is a claim about acceptance, not delivery.** Cross-check
+   against the actual inbox (the Gmail connector works for this) before concluding a send
+   arrived. That is how the blocked message was found: the delivery record said sent, the BCC
+   copy was absent from the inbox.
+
+**Pattern**: Treat "accepted", "delivered" and "not spam-filtered" as three separate claims and
+never let evidence for one be reported as evidence for another. When a send path has an
+after-the-fact rejection mode, the only trustworthy confirmation is the receiving side.
+
+---
+
+## `cron.job` cannot be written from a migration on this project
+**Context**: Pausing outreach by `update cron.job set active = false` failed with
+`42501 permission denied for table job`, despite earlier migrations in the same session having
+successfully called `cron.schedule(...)` and `cron.unschedule(...)`.
+
+**Learning**: The migration role can EXECUTE pg_cron's functions but has no direct DML rights
+on `cron.job`. The project already has the right tool: `public.admin_toggle_cron_job(jobname,
+enable)`, SECURITY DEFINER and gated on `is_admin()`, which unschedules on disable and
+re-creates the entry from a hardcoded schedule/command on enable. 20260814130000 states
+outright that this toggle *is* the off switch for the outreach job.
+
+**Pattern**: To change a scheduled job's state, use `admin_toggle_cron_job` (via Admin →
+Settings → Background Jobs, which calls it) or `cron.schedule`/`cron.unschedule` inside a
+migration — never `UPDATE cron.job`. Note the toggle recreates from a hardcoded definition, so
+a schedule changed by migration must also be changed in that function or the next enable will
+silently revert it.
+
+---
+
+## `example.com` is filtered by this project's own extractor
+**Context**: Three new tests for the email extractor failed returning `[]` for perfectly
+ordinary addresses.
+
+**Learning**: `PLACEHOLDER_EMAIL_DOMAINS` in `emailEnrichment.ts` filters `example.com`,
+`example.org`, `test.com`, `domain.com`, `mysite.com` and similar, because contractor sites
+built from templates ship those addresses verbatim. The filter is correct; the test fixtures
+were wrong.
+
+**Pattern**: Use a plausible business domain in fixtures for anything touching email
+extraction. A failing test here is far more likely to be the fixture than the filter.

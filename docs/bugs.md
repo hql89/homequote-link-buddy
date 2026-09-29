@@ -448,3 +448,52 @@ always false and one malformed value would leave the breaker looking configured 
 firing. Fails closed on an unreadable count. Tripping now also raises an alarm.
 **Prevention**: `emailSafety.test.ts` includes a regression asserting the old 50% threshold
 would not have fired where the new one does.
+
+---
+
+## A space in a contractor's own contact link became part of their email address — 2026-09-28
+**Symptom**: The first batch under the new outreach copy went out on 2026-09-27. One of the two
+bounced within three minutes. The address was `%20info@lushgardensinc.com`.
+**Root Cause**: `extractEmailsFromHtml` allowed `%` in the local-part class — legal in an email
+address by the RFC, but wrong for a `mailto:` URI, which is percent-*encoded* by definition.
+`mailto:%20info@…` means `mailto: info@…` with a leading space the page author left in, and the
+pattern took `%20info` as the local part verbatim. It was stored, marked `verified`, and mailed.
+**Fix**: The mailto target is decoded, trimmed and strictly re-validated before being accepted.
+Plain page text is NOT decoded — a literal `%20info@…` written there is not an address, and
+decoding it would be inventing one — and that branch gained a lookbehind so a suffix of a
+longer token can never be read as a whole address. `%` is now absent from the validator
+entirely: one surviving a decode is encoding that did not decode cleanly, and an unenriched
+business costs less than an email to an address that does not exist. A malformed escape
+discards the candidate rather than throwing out of the run.
+**Prevention**: The real address is a regression case. Checked rather than assumed: it was the
+only malformed address among 28 — but the scanner would have kept producing them across the 436
+still queued. The affected row was repaired by decoding, and its bounce flags cleared, because
+`email_undeliverable_at` also gates quote-request notifications and would have silently
+stopped a real business's leads over our own formatting bug.
+**What worked**: Capping the first run at 2/day instead of 5 is why this surfaced on day one
+rather than week six. Worth repeating for any future copy or extraction change.
+
+---
+
+## Outbound mail is being spam-blocked by the host's own relay — 2026-09-28 (OPEN)
+**Symptom**: The user asked whether spam complaints had been received. There were none — but a
+cross-check of delivery records against the actual inbox showed one of that morning's two
+outreach emails had never arrived, while being recorded as `sent`.
+**Root Cause**: MailChannels, the relay in this domain's SPF record, rejected the message with
+`550 5.7.1 [CS] Message blocked` — a content judgement, not a recipient problem. The same
+filter blocked an alert email on 2026-09-27 (fixed there by shortening a subject line that
+carried 120 characters of machine output). It is now hitting real outreach, and the rejection
+lands after SMTP has accepted, so nothing in the send path notices.
+**Fix**: NOT FIXED — mitigated. Outreach sending was paused on 2026-09-28 by unscheduling
+`send-outreach-drip-daily` through Admin → Settings → Background Jobs. Enrichment, the delivery
+canary and the alarm sweep continue, as none of them email a contractor. The real fix is
+ENH-006: move sending to Resend as the primary route.
+**Prevention**: Two reasons this was stopped rather than ridden out — "sent" currently does not
+mean delivered, so every further send is unverifiable; and repeatedly pushing mail a host's own
+filter rejects is the behaviour most likely to get a shared hosting account acted on, which is
+the specific risk the owner had asked about the day before.
+**Also found**: bounce attribution is still wrong in a second way. Because every outreach email
+BCCs the admin address, a blocked outreach message names that address in its failure notice,
+and the handler pinned the failure on the most recent send to *that* address — the 14:00
+delivery probe, which had actually arrived. Deliberately not queued as its own fix: ENH-006/007
+delete the bounce-parsing mechanism entirely.
