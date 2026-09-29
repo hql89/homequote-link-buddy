@@ -538,3 +538,93 @@ were wrong.
 
 **Pattern**: Use a plausible business domain in fixtures for anything touching email
 extraction. A failing test here is far more likely to be the fixture than the filter.
+
+---
+
+## Measure a new filter's precision against real rows before shipping it
+**Context**: An off-domain email had to stop reaching `verified` after a web developer's
+address was stored as a contractor's contact and cold-mailed twice. The obvious rule —
+refuse any address not on the page's own domain — shipped and deployed before anyone
+counted what it would catch.
+
+**Learning**: Counted afterwards against the 34 enriched businesses, it would have moved
+**7 of 28 verified rows** into the review queue to catch **1** real problem. Six of the
+seven were the business's own address on a shared provider
+(`toptechbuilders@gmail.com` for Top Tech Builders Inc, and three more) or on a
+near-variant of their own domain. Small contractors overwhelmingly use shared mailboxes —
+5 of 34 here — so that was the common case, not an edge one. The missing distinction: a
+shared mail provider is **no information**, not a red flag. `gmail.com` belongs to no
+business; `micahrich.com` belongs to someone specific.
+
+**Pattern**: "Strictly more conservative" is not a free claim. Being conservative about
+sending pushes cost onto the review queue, and a check that fires six times wrongly per
+real catch trains the operator to click past the queue it fills — which costs more than
+the original defect. Before shipping a filter, run its predicate over the real table and
+count what it would flag, how many of those are already flagged, and how many are actually
+wrong. That is one SQL query and it changed the design here. Then pin the legitimate rows
+it must not flag, by name, so a future tightening has to confront them rather than
+rediscovering this.
+
+---
+
+## Metadata that only exists after JS runs is invisible to the check that matters
+**Context**: 553 pages with a correct sitemap, crawling allowed, and zero search traffic
+ever. `PageMeta` computed each route's title, description and canonical correctly — in a
+`useEffect`. Every route served the same static `index.html`, whose canonical named the
+homepage.
+
+**Learning**: The content was right and the delivery was wrong, which is the hard version
+of this bug: nothing a human looks at is broken. A visitor sees the correct page. The
+sitemap is complete. Robots.txt allows everything. Every externally checkable signal
+passes. The only thing that surfaces it is fetching a URL and reading the head — `curl`,
+not a browser, because a browser runs the JS that hides the problem.
+
+**Pattern**: For anything a crawler, a link preview or an email client consumes, the test
+is the raw response, never the rendered page. `curl -sL <url>` and read `<title>` and the
+canonical. Two corollaries: a *wrong* canonical is far worse than a missing one (a missing
+one means "this URL is itself"), so never put a canonical in a shell served for every
+route; and when the same string must be produced for both a crawler and a browser, derive
+both from one function (`src/lib/routeMeta.ts`) — two copies drift, and this drift is
+invisible by construction.
+
+---
+
+## Vercel edge middleware can only be verified in production
+**Context**: The fix above is `middleware.ts`. It cannot run under `vite` or `vitest`.
+
+**Learning**: Unit tests can cover everything the middleware *calls* but not that Vercel
+picks up the file, honours the `matcher`, or exposes `VITE_*` env vars to the edge runtime.
+Certifying it locally would have been a false claim of the kind this project has been
+bitten by before (see *Deployment state is invisible to git*).
+
+**Pattern**: Structure it so the untestable part is as thin as possible — the matcher, the
+shell fetch, the response — and push route matching and data mapping into plain modules
+with the network injected (`crawlerMeta.ts` takes a `RowFetcher`). Then deploy and `curl`,
+in that order, and say plainly that the wiring is unproven until you have. Give the
+middleware a failure posture of doing nothing: returning `undefined` serves the page
+unmodified, because a missing meta tag costs a crawl while a thrown middleware costs the
+visitor the page.
+
+---
+
+## git's auto-merge can delete working code and leave the typecheck green
+**Context**: Recovering an unmerged commit from a diverged remote onto this line.
+`git cherry-pick` reported conflicts in two files, which were resolved. It silently
+auto-merged a third region, dropping three separate JSX blocks — a badge, a button's
+guard condition, and the note that replaced the button.
+
+**Learning**: The result compiled cleanly with zero type errors, and the feature was half
+built: a button appeared where it should have been hidden, and the explanatory text did not
+appear at all. Only the recovered tests caught it. A conflict marker is a *loud* merge
+failure; a successful auto-merge that drops a hunk is a silent one, and TypeScript cannot
+see a missing JSX element because nothing references it.
+
+**Pattern**: After any cherry-pick or merge that touches a component, diff the result
+against the *source* commit's version of that file, not just against your own branch —
+`git diff <source-commit> -- <file>` shows what did not come across. Never treat a green
+typecheck as evidence a merge was complete. If the incoming commit brought tests, run that
+file specifically and first; if it did not, be more suspicious, not less. Related: a hunk
+cut through the middle of a block on both sides means naive "keep both" resolution
+unbalances the braces — the shared tail closes only the last side, and vitest reports
+`Expected '}', got '<eof>'` with no test names, which does not look like a merge error.
+

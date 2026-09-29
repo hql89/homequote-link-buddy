@@ -497,3 +497,78 @@ BCCs the admin address, a blocked outreach message names that address in its fai
 and the handler pinned the failure on the most recent send to *that* address — the 14:00
 delivery probe, which had actually arrived. Deliberately not queued as its own fix: ENH-006/007
 delete the bounce-parsing mechanism entirely.
+
+---
+
+## Every directory page told Google to index the homepage instead — 2026-09-29
+**Symptom**: 536 contractor pages, a complete and correct sitemap, crawling allowed,
+~34 visitors since analytics was restored and **zero** homeowner quote requests ever. It
+read as a demand problem, and was discussed as one three times.
+**Root Cause**: `vercel.json` rewrites every path to the static `index.html`, whose head
+carried `<link rel="canonical" href="https://homequotelink.com/">`. That file is served
+for every route, so all 553 sitemap URLs declared themselves duplicates of the homepage —
+an explicit instruction not to index them. `PageMeta` set the right values, but in a
+`useEffect`, so they existed only after JS ran and nothing prerendered. Verified by
+hashing the responses for `/`, `/directory`, `/directory/encino` and a listing: byte-identical.
+Secondary: `SITE_URL`, the sitemap and the canonical all named the apex while the site
+308s to `www`, so every listed URL redirected.
+**Fix**: Vercel edge middleware injects per-route head tags into the built shell
+(`middleware.ts`, with the logic in `src/lib/routeMeta.ts`, `crawlerMeta.ts` and
+`headInjection.ts`). Static canonical removed from `index.html` — no canonical is correct,
+a wrong one is not. Host settled on `www` in `SITE_URL` and the sitemap's `DEFAULT_DOMAIN`.
+**Prevention**: `routeMeta.test.ts` asserts only the homepage canonicalises to `/` and that
+`index.html` contains no canonical at all; `headInjection.test.ts` pins the no-meta path as
+byte-identical passthrough; `sitemapHost.test.ts` fails if the two host literals diverge.
+Both guards mutation-tested. Note the class of failure: everything externally checkable
+(robots.txt, sitemap, HTTP status) passed. Only `curl` plus reading the head found it.
+
+## A homeowner's confirmation email was recorded as sent before it was attempted — 2026-09-29
+**Symptom**: None visible, which is the problem. `lead_nurture_emails` said `sent`,
+`lead_events` said "Confirmation sent", the handler returned `success: true`.
+**Root Cause**: `send-lead-confirmation` inserted the row with `status: 'sent'` and a
+`sent_at`, then fired `await fetch(...)` and discarded the response. Any
+notify-admin-email failure — SMTP down, circuit breaker tripped, MailChannels content
+block — left the homeowner with no email and nothing anywhere recording it.
+**Fix**: send first, capture `res.ok`, catch a thrown fetch, record the real outcome, and
+return a `success` reflecting the send. On failure the row is left at the column default
+`scheduled`, so `send-nurture-emails` retries it — verified that column is
+`NOT NULL DEFAULT 'scheduled'` against the live schema, without which the "self-healing"
+claim would have been false.
+**Prevention**: applies the pattern `send-nurture-emails` already used correctly
+(`index.ts:156` gates on `res.ok`). No test: nothing in this suite exercises an
+edge-function handler, and building that harness did not belong in a recovered fix —
+recorded as known-untested rather than papered over.
+
+## Outreach fallback mailed as an unauthorised sender and counted it as contact — 2026-09-29
+**Symptom**: Businesses marked `outreach_email_1_sent_at` and never retried, for mail that
+was quarantined before delivery.
+**Root Cause**: `mailer.ts` computed its Resend sender as
+`RESEND_SENDER_EMAIL || fallbackFrom`, falling back to the SMTP identity. With
+`RESEND_SENDER_EMAIL` unset, fallback sends went out as homequotelink.com through Resend —
+not in the domain's SPF, no Resend DKIM key, DMARC `p=quarantine`. Resend still returned
+2xx, so the mailer recorded `success: true, method: "resend"`.
+**Fix**: `resolveResendSender` refuses rather than guessing — no configured sender means no
+fallback send, `method: "none"`, and an error naming both legs. It never falls back to the
+SMTP identity.
+**Prevention**: `emailSafety.test.ts` includes a case asserting a present, plausible
+`smtpFallbackFrom` never becomes the sender.
+
+## A web developer's address was stored as a contractor's contact and cold-mailed — 2026-09-29
+**Symptom**: `micah@micahrich.com` stored as the contact for Capitol Plumbing & Rooter Inc,
+sent outreach 2026-08-21 and 2026-08-25.
+**Root Cause**: `enrich-business-email` took `emails[0]` — document order, which is mailto:
+links before the plain-text sweep. That picks whoever appears earliest, and a "site by"
+footer credit appears early. `PLACEHOLDER_EMAIL_DOMAINS` cannot catch it: the developer's
+domain is a real, deliverable mailbox, just not the business's.
+**Fix**: `selectBusinessEmail` prefers an address on the page's own registrable domain, and
+an off-domain one cannot reach `verified` — a gate in front of `resolveConfidence`, not a
+signal inside it, because the page reasoning answers "is this the right site" and this
+answers "is this address even the site's".
+**Prevention**: The first cut gated on "not the site's own domain" and was measured against
+production before shipping further: it would have downgraded **7 of 28 verified rows to
+catch 1**, the other six being the business's own Gmail or Yahoo. Corrected to three states
+(`own`/`shared`/`foreign`) with only `foreign` refused. The four real Gmail rows are pinned
+by name in `emailEnrichment.test.ts` so a future tightening must confront them. Lesson in
+`docs/knowledge.md` — a filter that false-positives six to one trains the operator to
+ignore the queue it fills.
+
