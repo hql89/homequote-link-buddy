@@ -1,4 +1,14 @@
-export const SITE_URL = "https://homequotelink.com";
+/**
+ * The one host the site claims, and it must be the host that serves 200.
+ *
+ * `www`, not the apex: the apex 308-redirects to `www`, so every canonical, every
+ * sitemap URL and every outreach link built on the apex pointed at a redirect.
+ * Settled 2026-09-29 alongside the crawler head-tag fix — a canonical naming a
+ * host that immediately redirects is a weaker version of the same defect. The
+ * sitemap edge function takes `SITE_DOMAIN=www.homequotelink.com` to match; it
+ * has no access to this constant.
+ */
+export const SITE_URL = "https://www.homequotelink.com";
 
 /**
  * Master brand. Deliberately regional and neutral: the site is a directory of

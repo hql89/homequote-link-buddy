@@ -26,8 +26,14 @@ const corsHeaders = {
  * The canonical public host. `SITE_DOMAIN` overrides it, but the fallback is
  * the real domain rather than a preview host: the previous default was the
  * Lovable preview URL, which would have pointed every entry at the wrong site.
+ *
+ * `www`, not the apex: the apex 308-redirects to `www`, so every one of the 553
+ * entries previously named a URL that immediately redirected. Changed in code
+ * rather than by setting `SITE_DOMAIN` so it needs no deploy-time configuration
+ * and cannot silently differ from `SITE_URL` in src/lib/constants.ts, which
+ * this must match — tests/unit/sitemapHost.test.ts fails if they diverge.
  */
-const DEFAULT_DOMAIN = "homequotelink.com";
+const DEFAULT_DOMAIN = "www.homequotelink.com";
 
 interface Entry {
   loc: string;

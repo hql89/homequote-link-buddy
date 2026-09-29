@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Phone, Globe, MapPin, Wrench, Loader2, AlertCircle, BadgeCheck, ShieldCheck, Star } from "lucide-react";
-import { SITE_URL, pageTitle } from "@/lib/constants";
+import { SITE_URL } from "@/lib/constants";
 import { safeExternalUrl } from "@/lib/safeUrl";
 import {
   directoryDb,
@@ -19,6 +19,7 @@ import {
   toTelHref,
   type PublicBusinessListing,
 } from "@/integrations/supabase/directory";
+import { listingMeta } from "@/lib/routeMeta";
 import { DirectoryQuoteForm } from "@/components/directory/DirectoryQuoteForm";
 import { BusinessGallery } from "@/components/directory/BusinessGallery";
 
@@ -141,17 +142,16 @@ export default function DirectoryListing() {
   }
 
   const hasPhone = Boolean(business.phone);
-  const cta = business.is_claimed ? "Call or request a free quote." : "Call for a free quote.";
-  const metaDescription = services.length
-    ? `${business.business_name} in ${business.city}. ${services.slice(0, 4).join(", ")}. ${cta}`
-    : `${business.business_name} in ${business.city}. ${cta}`;
+  // Head tags come from routeMeta so the crawler path (middleware.ts) and this
+  // one cannot drift — see that module's header.
+  const meta = listingMeta({ ...business, services });
 
   return (
     <>
       <PageMeta
-        title={pageTitle(`${business.business_name} — ${business.city} Home Services`)}
-        description={metaDescription}
-        canonicalPath={`/directory/${business.city_slug}/${business.slug}`}
+        title={meta.title}
+        description={meta.description}
+        canonicalPath={meta.canonicalPath}
         ogType="profile"
       />
       <BreadcrumbJsonLd items={breadcrumbs} />

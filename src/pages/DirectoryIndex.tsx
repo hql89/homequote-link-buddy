@@ -6,7 +6,8 @@ import { PageMeta } from "@/components/PageMeta";
 import { BreadcrumbJsonLd } from "@/components/public/JsonLd";
 import { Button } from "@/components/ui/button";
 import { Loader2, AlertCircle, MapPin, ChevronRight } from "lucide-react";
-import { SITE_URL, pageTitle } from "@/lib/constants";
+import { SITE_URL } from "@/lib/constants";
+import { directoryMeta } from "@/lib/routeMeta";
 import { directoryDb, toCities, type DirectoryCity } from "@/integrations/supabase/directory";
 
 type LoadState = "loading" | "ready" | "error";
@@ -72,9 +73,9 @@ export default function DirectoryIndex() {
   return (
     <>
       <PageMeta
-        title={pageTitle("Home Service Directory")}
-        description="Browse local home service businesses by city. Call directly — no middleman."
-        canonicalPath="/directory"
+        title={directoryMeta().title}
+        description={directoryMeta().description}
+        canonicalPath={directoryMeta().canonicalPath}
       />
       <BreadcrumbJsonLd
         items={[

@@ -6,7 +6,16 @@
     <title>Valley Home Pros — San Fernando Valley Home Service Directory</title>
     <meta name="description" content="Browse independent home service businesses across the San Fernando Valley — tree service, plumbing, HVAC, electrical and landscaping. Call them directly, no middleman.">
     <meta name="author" content="Valley Home Pros" />
-    <link rel="canonical" href="https://homequotelink.com/" />
+    <!--
+      No canonical here on purpose. A static one applies to EVERY route, and
+      this file is served for every route, so it told all 553 URLs they were
+      duplicates of the homepage — an explicit request not to be indexed. A
+      missing canonical is correct behaviour (a URL is its own canonical by
+      default); a wrong one is not. Per-route canonicals are injected by
+      middleware.ts for crawlers and set by PageMeta for client navigation.
+      Do not reinstate this line — tests/unit/headInjection.test.ts fails if
+      it returns.
+    -->
     <link rel="icon" href="/favicon.png" type="image/png" />
 
     <!-- Resource Hints -->

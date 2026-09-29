@@ -6,8 +6,9 @@ import { PageMeta } from "@/components/PageMeta";
 import { BreadcrumbJsonLd } from "@/components/public/JsonLd";
 import { Button } from "@/components/ui/button";
 import { Loader2, AlertCircle, MapPin } from "lucide-react";
-import { SITE_URL, pageTitle } from "@/lib/constants";
+import { SITE_URL } from "@/lib/constants";
 import { directoryDb, toListings, type PublicBusinessListing } from "@/integrations/supabase/directory";
+import { cityLabelFromSlug, cityMeta } from "@/lib/routeMeta";
 import { DirectoryBusinessCard } from "@/components/directory/DirectoryBusinessCard";
 
 type LoadState = "loading" | "ready" | "error";
@@ -60,9 +61,9 @@ export default function DirectoryCity() {
 
   // The slug is the only city identifier available until a row loads; fall back
   // to a de-slugified version so the heading isn't empty on an empty city.
-  const cityLabel =
-    businesses[0]?.city ??
-    (city ?? "").split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+  const cityLabel = businesses[0]?.city ?? cityLabelFromSlug(city ?? "");
+  // Head tags come from routeMeta so the crawler path cannot drift from this one.
+  const meta = cityMeta(city ?? "", cityLabel);
 
   if (state === "loading") {
     return (
@@ -96,9 +97,9 @@ export default function DirectoryCity() {
   return (
     <>
       <PageMeta
-        title={pageTitle(`${cityLabel} Home Service Pros`)}
-        description={`Browse local home service businesses in ${cityLabel}. Call directly — no middleman.`}
-        canonicalPath={`/directory/${city}`}
+        title={meta.title}
+        description={meta.description}
+        canonicalPath={meta.canonicalPath}
       />
       <BreadcrumbJsonLd
         items={[
