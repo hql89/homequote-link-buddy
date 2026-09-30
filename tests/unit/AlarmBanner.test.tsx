@@ -12,6 +12,8 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 let alarmRows: { id: string; error_message: string | null; metadata: Record<string, unknown> | null; created_at: string }[] = [];
 let alarmError: { message: string } | null = null;
 let seenUpTo: string | null = null;
+/** Overrides the whole setting_value, to stand in a shape the column allows but the code does not expect. */
+let rawSettingValue: unknown = undefined;
 const upsertCalls: Record<string, unknown>[] = [];
 
 vi.mock("../../src/integrations/supabase/client", () => ({
@@ -27,7 +29,12 @@ vi.mock("../../src/integrations/supabase/client", () => ({
         eq: () => ({
           maybeSingle: () =>
             Promise.resolve({
-              data: seenUpTo ? { setting_value: { alarms_seen_up_to: seenUpTo } } : { setting_value: {} },
+              data:
+                rawSettingValue !== undefined
+                  ? { setting_value: rawSettingValue }
+                  : seenUpTo
+                    ? { setting_value: { alarms_seen_up_to: seenUpTo } }
+                    : { setting_value: {} },
               error: null,
             }),
         }),
@@ -46,6 +53,7 @@ beforeEach(() => {
   alarmRows = [];
   alarmError = null;
   seenUpTo = null;
+  rawSettingValue = undefined;
   upsertCalls.length = 0;
 });
 
@@ -125,6 +133,26 @@ describe("AlarmBanner", () => {
     await waitFor(() => expect(upsertCalls).toHaveLength(1));
     const written = upsertCalls[0].setting_value as { alarms_seen_up_to: string };
     expect(written.alarms_seen_up_to).toBe("2026-08-20T15:00:00Z");
+  });
+
+  it("does not spread a non-object setting_value into the row it writes back", async () => {
+    // setting_value is jsonb, so a bare string is a legal value for the column.
+    // Spreading one gives {0:"a",1:"b",...} and that would be upserted straight
+    // over the real settings row — a corrupted write, not a failed one. The read
+    // is checked rather than asserted, so the stray value is dropped instead.
+    rawSettingValue = "not an object";
+    alarmRows = [
+      { id: "a1", error_message: "e1", metadata: { alarm_kind: "suppression_spike" }, created_at: "2026-08-20T10:00:00Z" },
+    ];
+    render(<AlarmBanner />);
+
+    await waitFor(() => expect(screen.getByText(/arriving far above the normal rate/)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /dismiss/i }));
+
+    await waitFor(() => expect(upsertCalls).toHaveLength(1));
+    const written = upsertCalls[0].setting_value as Record<string, unknown>;
+    expect(written).toEqual({ alarms_seen_up_to: "2026-08-20T10:00:00Z" });
+    expect(written[0]).toBeUndefined();
   });
 
   it("clears the banner immediately after dismissing", async () => {

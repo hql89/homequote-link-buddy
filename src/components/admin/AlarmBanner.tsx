@@ -109,8 +109,12 @@ export function AlarmBanner() {
       .eq("setting_key", SETTING_KEY)
       .maybeSingle();
 
+    // jsonObject, not a cast: spreading a non-object would corrupt the write
+    // rather than fail it. `...(null)` is a harmless no-op, but a jsonb column
+    // can hold a bare string, and `...("ab")` spreads to `{0:"a",1:"b"}` —
+    // which this would then upsert over the real settings row.
     const merged = {
-      ...((existing?.setting_value as Record<string, unknown>) ?? {}),
+      ...(jsonObject(existing?.setting_value) ?? {}),
       alarms_seen_up_to: newestSeen,
     };
 
