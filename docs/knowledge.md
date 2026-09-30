@@ -670,3 +670,70 @@ earlier migration deliberately skipped `verified` rows on reasoning that later s
 holding), and that the re-queue is inert until a run happens — with the daily job failing
 for a missing Vault secret, that means a manual "Run now".
 
+---
+
+## The generator understates nullability in two fixed, predictable ways
+**Context**: Retiring the last two cast helpers that sat over Supabase RPCs — `ArchiveRpc` in
+`src/lib/archive.ts` and the `admin_recent_alarms` cast in `AlarmBanner.tsx` — both on the
+stated premise that their RPCs were absent from the generated `types.ts`. As with
+`directory.ts` before them, the premise was stale: all of them were present, with signatures
+matching the deployed functions exactly.
+
+**Learning**: Swapping a cast for the generated type does not automatically make the result
+*correct*, because the generator is wrong about nullability in two specific ways, both
+reproducible:
+
+1. A `RETURNS TABLE (...)` column is **always** generated non-null, even when the function
+   selects it straight from a nullable column. `admin_list_archived`'s `archived_by` and
+   `archive_reason`, and `admin_recent_alarms`' `error_message`, all generate as `string` and
+   are genuinely null in production rows.
+2. A `param text DEFAULT NULL` argument generates as `param?: string` — optional, but not
+   nullable. The optionality is the generator rendering the default; it loses that NULL is an
+   accepted value.
+
+Separately, any `jsonb` column or output generates as `Json`, which includes scalars and
+arrays, not just objects. Combined with `strict: false` (see *`strict: false` means no
+nullability claim in `types.ts` is ever checked*), none of the three can ever surface as a
+compile error, so "it now uses the generated type" is not evidence of anything.
+
+**Pattern**: Re-state the real nullability at the boundary rather than inheriting the
+generator's optimism — `?? null` where the column is nullable, `?? {}` where a caller will
+`Object.entries` the value. Confirm it from the migration or, better, the deployed function
+(`pg_get_function_result` / `pg_get_function_identity_arguments`), because the migration may
+not be what is running.
+
+And prefer a mapping function that **names every column** over a keyof-subset guard like
+`DeclaresOnlyRealColumns`. It is strictly stronger: the property accesses fail the build if a
+column is renamed *and* force the nullability decision to be made per column rather than
+inherited wholesale. Verified by renaming `archive_reason`, `error_message` and `table_name` in
+the generated types and confirming the build failed naming each one — under the previous casts
+all three compiled silently and would have rendered blank.
+
+Counter-rule learned the same day: do not change a verified wire format for the sake of type
+tidiness. `admin_archive_row`'s `p_reason` was almost switched from an explicit `null` to an
+omitted key, on the correct-but-unverified reasoning that PostgREST would fall through to
+`DEFAULT NULL`. An existing test pinned the null. The generated type being imprecise is not a
+reason to alter what an audited path sends.
+
+---
+
+## Spreading an unchecked jsonb value corrupts the write instead of failing it
+**Context**: Three admin screens merge the existing `admin_settings.setting_value` into the row
+they upsert back, so that writing one preference does not clobber the others — a deliberate
+pattern, added after earlier clobbering bugs. Each spelled the read
+`...((existing?.setting_value as Record<string, unknown>) ?? {})`.
+
+**Learning**: The `?? {}` in that expression protects the one case that needs no protection.
+`...(null)` and `...(undefined)` are both no-ops in an object literal, so null was always
+harmless. The dangerous values are the ones the cast asserts away: `setting_value` is jsonb,
+a bare string is legal in it, and `{..."ab"}` spreads to `{0:"a",1:"b"}`. That result is then
+upserted over the real settings row — the write succeeds, reports success, and the settings
+are gone. A number or boolean spreads to `{}`, quietly discarding whatever was there.
+
+**Pattern**: On any jsonb read that feeds a spread, `Object.entries`, `Object.keys` or a
+property access chain, check the shape instead of asserting it — `jsonObject()` in
+`src/integrations/supabase/json.ts` does exactly this and returns null for anything that is not
+a plain object. Reach for it rather than writing another `as Record<string, unknown>`. The
+general shape of the mistake is worth remembering beyond jsonb: a `?? fallback` next to a cast
+often guards the benign branch while the cast hides the harmful one, which makes the line
+*look* defensive. Ask which values the cast is suppressing, not which one the fallback catches.

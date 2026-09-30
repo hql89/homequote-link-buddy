@@ -579,3 +579,29 @@ and re-queued both affected rows. It clears rather than flags because `email_con
 gates no send path — see the knowledge entry. Mr Pipe's near-variant address was left in
 place for a re-run to judge rather than deleted on a rule.
 
+## Dismissing the alerts banner could corrupt the settings row it merged into — 2026-09-29
+**Symptom**: None observed — latent, and found by audit rather than by anyone hitting it.
+"Mark as seen" on the admin alerts banner reads `admin_settings.setting_value`, merges the
+dismissal timestamp in, and upserts the result back. Had that column ever held a JSON scalar,
+the write would have replaced the real settings row with character-indexed garbage and
+reported success.
+**Root Cause**: `...((existing?.setting_value as Record<string, unknown>) ?? {})`. The cast
+asserted an object over a column the generated types describe as `Json` — any JSON value — and
+the `?? {}` guarded only null, which is the *harmless* case: `...(null)` is a no-op. A bare
+string is a legal jsonb value, and `{..."ab"}` spreads to `{0:"a",1:"b"}`, which would then be
+written over the settings row. A corrupting write rather than a failing one, and invisible
+afterwards. No occurrence found in production — the hazard was the unchecked assertion, not a
+value known to have been there.
+**Fix**: The read goes through `jsonObject()` (added in d068fc1 two files away, and already
+imported in this component for the alarm rows), which checks instead of asserting. A
+non-object becomes null, so the `?? {}` fallback finally does the job it looked like it was
+doing. Fixed in 6734ef3.
+**Prevention**: `AlarmBanner.test.tsx` stands a bare string in `setting_value` and asserts the
+upserted row contains only `alarms_seen_up_to`. Confirmed to fail against the old cast, which
+produced `{'0':'n','1':'o','2':'t',…}` — a test that cannot fail proves nothing. The same
+spread-an-unchecked-jsonb-value pattern survives in two other settings writers (Outreach,
+SMTPSettings); both are listed in ENH-019 rather than left to a note.
+**Note on how it was found**: d068fc1 introduced `jsonObject()` and converted two call sites,
+leaving this one — in a file that same commit edited — still casting. It surfaced only because
+"is this thread done?" was answered by auditing rather than by recalling. See
+`backlog-not-notes`.
