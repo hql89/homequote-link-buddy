@@ -628,3 +628,45 @@ cut through the middle of a block on both sides means naive "keep both" resoluti
 unbalances the braces — the shared tail closes only the last side, and vitest reports
 `Expected '}', got '<eof>'` with no test names, which does not look like a merge error.
 
+---
+
+## Marking a row "needs review" stops nothing from being sent
+**Context**: A web developer's address was stored as a contractor's contact and cold-mailed
+twice. The code path was fixed, but that row still held the wrong address. The obvious
+cautious cleanup was to drop it from `verified` to `needs_review` and let a human look.
+
+**Learning**: That would have been theatre. `email_confidence` is **not consulted by
+anything that sends**. `emailSkipReason()` in `supabase/functions/_shared/directory.ts`
+gates on `email_undeliverable_at` and `outreach_suppressed_at` and nothing else, so a row
+at `needs_review` still receives homeowner quote-request notifications. Flagging it would
+have shown as handled on `/admin/enrichment` while an uninvolved third party kept receiving
+a homeowner's name and phone number. Only clearing the address — or suppressing the
+business — actually stops a send.
+
+**Pattern**: `email_confidence` is an input to *human review*, not a send gate. Before
+treating a confidence change as remediation, read the gate that the send path actually
+consults and confirm your field appears in it. More generally: a status column only protects
+you if something reads it, and "it appears on the admin screen" is not the same as "it is
+enforced". Check the enforcement point, not the display.
+
+---
+
+## A code fix to enrichment is forward-only — a rule change needs a re-queue
+**Context**: The off-domain email rule shipped and deployed, then two rows were found still
+carrying verdicts the new rule would not have given them.
+
+**Learning**: `enrich-business-email` selects candidates on `enriched_at IS NULL`, so it
+never revisits a row it has already processed. Every enrichment rule change is therefore
+forward-only by construction: it governs rows not yet seen and leaves existing verdicts
+exactly as the old rule left them. Deploying the fix is half the job.
+
+**Pattern**: Ship the rule, then re-queue the rows the old rule judged, by clearing
+`enriched_at` — the pattern `20260926050000` and `20260929000000` both use. Clear only
+`enriched_at`, not the email: a run that finds no website that day would otherwise lose a
+genuine address, and a successful run overwrites it anyway. Candidates come back ordered
+`created_at` ascending, so old rows return near the front rather than behind the backlog.
+Two things to state when you do it: which rows and why they were previously spared (the
+earlier migration deliberately skipped `verified` rows on reasoning that later stopped
+holding), and that the re-queue is inert until a run happens — with the daily job failing
+for a missing Vault secret, that means a manual "Run now".
+

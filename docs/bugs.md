@@ -571,4 +571,11 @@ catch 1**, the other six being the business's own Gmail or Yahoo. Corrected to t
 by name in `emailEnrichment.test.ts` so a future tightening must confront them. Lesson in
 `docs/knowledge.md` — a filter that false-positives six to one trains the operator to
 ignore the queue it fills.
+**Data remediation** (20260929000000, applied 2026-09-29): the code fix is forward-only —
+enrichment selects on `enriched_at IS NULL` and never revisits a processed row — so the
+stored address survived it. That migration cleared Capitol Plumbing's address and the
+evidence behind it, using the same columns `reviewEnrichedEmail(id, 'rejected')` clears,
+and re-queued both affected rows. It clears rather than flags because `email_confidence`
+gates no send path — see the knowledge entry. Mr Pipe's near-variant address was left in
+place for a re-run to judge rather than deleted on a rule.
 
