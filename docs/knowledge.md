@@ -737,3 +737,44 @@ a plain object. Reach for it rather than writing another `as Record<string, unkn
 general shape of the mistake is worth remembering beyond jsonb: a `?? fallback` next to a cast
 often guards the benign branch while the cast hides the harmful one, which makes the line
 *look* defensive. Ask which values the cast is suppressing, not which one the fallback catches.
+
+---
+
+## Written guidance outlives the problem it describes, and then misleads
+**Context**: Two saved notes were checked against the code in the same two days, for unrelated
+reasons, and both turned out to be wrong in the same direction.
+
+**Learning**: The failure shape is identical each time. A note is written while a hazard is
+live, describing the hazard and prescribing a workaround. The hazard is later fixed — often by
+a different session, correctly, with tests. Nobody revisits the note, because fixing code and
+revisiting documentation are separate acts and only one of them is in the commit. What is left
+is confident guidance to work around something that no longer exists.
+
+- The note on the retired Supabase project claimed the only surviving references were
+  explanatory comments. `public/llms.txt` was still pointing crawlers at the dead project, and
+  had been for two months. Now ENH-023.
+- The note on service categories said "never index `VERTICALS` directly — use `getVertical()`".
+  Both were deleted when the hardcoded map was retired in favour of `useActiveVerticals()`.
+  Following that note literally would mean reaching for two symbols that do not exist, and
+  distrusting a table that is now the source of truth.
+
+The second is the more dangerous kind, because the first merely understates work remaining
+while the second actively points away from the correct approach.
+
+**Pattern**: Before acting on any documented instruction — a knowledge entry, a code comment, a
+memory note — check that the symbols it names still exist. `grep` for the function, the
+constant, the file. It costs seconds and it is the only thing that distinguishes guidance from
+folklore. Both findings above came from checking rather than complying; neither would have
+surfaced from reading.
+
+When you do fix something a note describes, correct the note in the same session, and say in it
+what changed and when — a note carrying its own correction is trustworthy in a way that a
+silently-edited one is not. Keep whatever lesson outlived the specifics (a hardcoded list
+shadowing a database table wins silently, because the fetch runs and its result is discarded)
+and mark the rest as gone rather than deleting the entry, so the next person can tell the
+difference between "this was never true" and "this was true and is now handled".
+
+Corollary for the checks themselves: make sure the check can actually fail. Validating this
+project's backlog table with `awk -F'|'` cannot distinguish an escaped pipe from a real cell
+separator, so it reported a row as broken after the fix that repaired it. See *Mutation-test
+any "keep these two lists in sync" test*.
