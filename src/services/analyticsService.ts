@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 declare global {
   interface Window {
     gtag?: (command: string, action: string, params?: Record<string, unknown>) => void;
+    fbq?: (command: string, event: string, params?: Record<string, unknown>) => void;
   }
 }
 
@@ -224,6 +225,35 @@ export function trackFormStep(stepName: string, metadata?: Record<string, unknow
   return trackEvent({ eventType: "form_step", eventName: stepName, metadata });
 }
 
+/** Meta Pixel. Base code and init live in index.html; absent fbq is a no-op, not an error. */
+function sendToMetaPixel(event: string, params?: Record<string, unknown>) {
+  if (typeof window.fbq !== "function") return;
+  window.fbq("track", event, params);
+}
+
 export function trackConversion(eventName: string, metadata?: Record<string, unknown>) {
+  // Meta optimization event: a successfully submitted Get Matched request is
+  // a Lead. useLeadFormSubmit calls trackConversion("lead_submitted") only
+  // after the lead has been saved, so failed or blocked submissions never
+  // reach this. Sent as its own sink under the same exclusions as trackEvent
+  // (admin opt-out, non-production hosts) because Meta needs its standard
+  // event name and parameters, not our internal ones.
+  if (
+    eventName === "lead_submitted" &&
+    !isTrackingDisabled() &&
+    !isNonProductionHost(window.location.hostname)
+  ) {
+    try {
+      sendToMetaPixel("Lead", {
+        content_name: "Get Matched request",
+        content_category: typeof metadata?.service === "string" ? metadata.service : undefined,
+        city: typeof metadata?.city === "string" ? metadata.city : undefined,
+      });
+    } catch (e) {
+      // A failing pixel must never break the app or mask the conversion sink.
+      console.error("Meta pixel track error:", e);
+    }
+  }
+
   return trackEvent({ eventType: "conversion", eventName, metadata });
 }
