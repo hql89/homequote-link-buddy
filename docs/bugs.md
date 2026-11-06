@@ -605,3 +605,37 @@ SMTPSettings); both are listed in ENH-019 rather than left to a note.
 leaving this one — in a file that same commit edited — still casting. It surfaced only because
 "is this thread done?" was answered by auditing rather than by recalling. See
 `backlog-not-notes`.
+
+## The email canary died silently on a dead API key, for four days — 2026-11-06
+**Symptom**: Nothing. No error, no failing job, no alarm. `email-canary` — the daily
+probe whose only purpose is to prove outbound mail still arrives — logged a clean success
+at 14:00 UTC every day through 2026-11-02 and then wrote nothing at all. Found only by
+going looking for an absence while building an unrelated monitor.
+**Root Cause**: The `email-canary-check` pg_cron entry carried a legacy anon JWT in its
+own `net.http_post` command. Those keys were disabled 2026-08-08; Supabase appears to have
+enforced it around 2026-11-03. Every firing since returned HTTP 401 "Legacy API keys are
+disabled" (confirmed in `net._http_response` for the 2026-11-06 14:00 firing) before
+reaching the function. Migration 20260808170000 removed that token from
+`admin_toggle_cron_job` — the function that CREATES jobs — but the already-scheduled row
+was never recreated, so it kept the dead credential. That migration predicted this exact
+outcome in its own header: "The sharpest case is email-canary-check: that job exists to
+detect silently failing outbound email. Scheduled with a dead token it would itself fail
+silently — the detector for silent failure, failing silently."
+**Why nothing caught it**: three indicators all read healthy. `cron.job_run_details`
+showed 8 of 8 "succeeded", because that reports only whether `net.http_post` queued the
+request. `job_run_logs` held no failure rows, because the function never ran to write one.
+`admin_raise_alarms_for_failing_jobs` counts failure rows, so a job writing none is
+indistinguishable from a healthy one — structurally, not as a tuning problem.
+**Fix**: 20261106220000 re-schedules the job with no Authorization header at all.
+`email-canary` is `verify_jwt = false`, so the platform never inspected that header — it
+authorizes internally. The header was doing nothing even while the key was alive; it was
+only ever enough to get the request rejected at the gateway once the key died. Same
+treatment 20260808170000 gave the other three verify_jwt=false functions: remove the
+credential rather than replace it, so there is nothing to go stale next rotation. Verified
+by calling the endpoint exactly as the cron now does — HTTP 200, `probe_sent: true`, and
+the first `job_run_logs` row since 2026-11-02.
+**Prevention**: 20261106210000 adds `admin_raise_alarms_for_silent_jobs()` and a
+`job_heartbeat_expectations` table, alarming on absence rather than failure — the one
+check the existing alarm could never perform. Confirmed against live data that it flags
+the canary's four-day gap. Third occurrence of this shape: see the dead project ref
+(2026-07-25) and the dead anon key (2026-08-08) above.

@@ -778,3 +778,35 @@ Corollary for the checks themselves: make sure the check can actually fail. Vali
 project's backlog table with `awk -F'|'` cannot distinguish an escaped pipe from a real cell
 separator, so it reported a row as broken after the fix that repaired it. See *Mutation-test
 any "keep these two lists in sync" test*.
+
+---
+
+## A credential inside a scheduled job outlives the migration that removes it
+**Context**: `email-canary` went silent for four days on a legacy API key disabled three
+months earlier. The migration that retired that key had already fixed the function which
+creates cron jobs, and had even named this job as the dangerous case.
+
+**Learning**: Fixing the factory does not fix what it already built. `cron.schedule()`
+copies the command text into a row; that row is then independent of every function and
+migration that produced it. A credential, URL or schedule embedded there survives until
+someone re-schedules that specific jobname. This project has now been bitten three times
+by exactly that — a dead project ref (2026-07-25), a dead anon key (2026-08-08), and this.
+
+Two things make it invisible rather than noisy. `cron.job_run_details` reports "succeeded"
+for a firing whose only job was to *queue* an HTTP request, so the scheduler's own history
+is not evidence the work happened. And an alarm that counts failure rows cannot see a job
+that writes none — silence and health are the same shape to it.
+
+**Pattern**: After changing a credential, URL or schedule that appears in a cron command,
+grep the live `cron.job` table, not just the migrations:
+`SELECT jobname, command FROM cron.job` — and re-schedule every affected jobname in the
+same migration. Where the target is `verify_jwt = false`, remove the Authorization header
+instead of replacing it: fewer credentials in database objects, nothing to update next
+rotation. Reserve the Vault-reading SQL-function pattern (`run_enrich_business_email()`)
+for functions that genuinely need a privileged caller, so a working check does not inherit
+an unrelated secret's availability as a dependency.
+
+Monitor for absence as well as failure. `admin_raise_alarms_for_silent_jobs()` and
+`job_heartbeat_expectations` do this now; keep the thresholds loose (36h for a daily job),
+because a false alarm is how an alarm system stops being read — the same way "30
+vulnerabilities" stopped meaning anything here.
