@@ -144,7 +144,12 @@ export default function DirectoryListing() {
   const hasPhone = Boolean(business.phone);
   // Head tags come from routeMeta so the crawler path (middleware.ts) and this
   // one cannot drift — see that module's header.
-  const meta = listingMeta({ ...business, services, vertical_slug: business.vertical_slug });
+  const meta = listingMeta({
+    ...business,
+    services,
+    vertical_slug: business.vertical_slug,
+    license_number: business.license_number,
+  });
 
   return (
     <>
@@ -262,6 +267,38 @@ export default function DirectoryListing() {
                     ? "Call directly or request a free quote below."
                     : "Call directly to get in touch."}
                 </p>
+              )}
+
+              {/* The licence is the most checkable fact on the page, and the
+                  reason it links out to CSLB rather than asserting "verified":
+                  a homeowner confirming it at the source trusts the result more
+                  than any badge this directory could award itself. The number
+                  is shown without a status — every row reads ACTIVE but
+                  `license_expires_at` is NULL on all of them, so nothing
+                  records when that was last true. */}
+              {business.license_number && (
+                <div className="mt-6 rounded-lg border border-border bg-muted/40 p-4">
+                  <div className="flex items-start gap-3">
+                    <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-accent" aria-hidden="true" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold">
+                        CSLB licence #{business.license_number}
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        California contractors must be licensed.{" "}
+                        <a
+                          href={`https://www.cslb.ca.gov/OnlineServices/CheckLicenseII/LicenseDetail.aspx?LicNum=${encodeURIComponent(business.license_number)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline"
+                        >
+                          Check this licence on the state's register
+                        </a>{" "}
+                        for its current status before hiring.
+                      </p>
+                    </div>
+                  </div>
+                </div>
               )}
 
               <h2 className="mt-10 text-2xl font-bold">Services</h2>

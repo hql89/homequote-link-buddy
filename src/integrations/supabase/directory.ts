@@ -35,6 +35,17 @@ export interface PublicBusinessListing {
   tier_rank: number;
   created_at: string;
   vertical_slug: string | null;
+  /**
+   * CSLB contractor licence, as held on the row. Public record — the state
+   * publishes it and contractors must print it on their advertising — so it is
+   * on the public view deliberately (20261106170000).
+   *
+   * Nullable by nature even though all 536 published rows carry one today.
+   * Note what is NOT here: `license_status` reads 'ACTIVE' on every row but
+   * `license_expires_at` is NULL everywhere, so nothing records how old that
+   * status is. The number is a fact; "active" would be a claim.
+   */
+  license_number: string | null;
 }
 
 /**

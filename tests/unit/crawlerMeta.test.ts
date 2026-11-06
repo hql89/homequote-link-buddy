@@ -87,6 +87,19 @@ describe("metaForPath — the trade reaches the crawler", () => {
     expect(m?.description).toContain("is an electrician serving Encino");
   });
 
+  it("asks the view for license_number too — the crawler is the whole point of it", async () => {
+    const fetcher = vi.fn(async () => [LISTING_ROW]);
+    await metaForPath("/directory/encino/capitol-plumbing-rooter-inc", fetcher);
+    expect(String(fetcher.mock.calls[0][0])).toContain("license_number");
+  });
+
+  it("serves the licence to a crawler", async () => {
+    const m = await metaForPath("/directory/encino/capitol-plumbing-rooter-inc", rows([
+      { ...LISTING_ROW, services: [], vertical_slug: "electrical", license_number: "1031050" },
+    ]));
+    expect(m?.description).toContain("CSLB licence #1031050");
+  });
+
   it("degrades to the old wording for a row with no trade, rather than 'undefined'", async () => {
     const m = await metaForPath("/directory/encino/capitol-plumbing-rooter-inc", rows([
       { ...LISTING_ROW, services: [], vertical_slug: null },

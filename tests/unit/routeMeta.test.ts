@@ -94,6 +94,28 @@ describe("listingMeta", () => {
       expect(d).toContain("Drain cleaning");
     });
 
+    it("puts the CSLB licence in the description, as a number and not a status", () => {
+      // The most checkable fact these listings have, and unique per listing
+      // where almost nothing else is. Stated as a bare number on purpose:
+      // license_status reads ACTIVE on all 536 rows but license_expires_at is
+      // NULL on all of them, so "licensed" or "active" would outrun the data.
+      const d = listingMeta({ ...ELECTRICIAN, license_number: "1031050" }).description;
+      expect(d).toBe(
+        "Capitol Plumbing & Rooter Inc is an electrician serving Encino. CSLB licence #1031050. Call for a free quote.",
+      );
+      expect(d).not.toMatch(/active/i);
+      expect(d).not.toMatch(/verified/i);
+    });
+
+    it("leaves the description clean when there is no licence", () => {
+      for (const v of [null, undefined]) {
+        const d = listingMeta({ ...ELECTRICIAN, license_number: v }).description;
+        expect(d).toBe("Capitol Plumbing & Rooter Inc is an electrician serving Encino. Call for a free quote.");
+        expect(d).not.toContain("undefined");
+        expect(d).not.toContain("  ");
+      }
+    });
+
     /**
      * The trades are rows in the `verticals` table, so a sixth can be added
      * without touching this file. An unknown slug must read as it did before

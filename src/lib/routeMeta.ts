@@ -102,6 +102,8 @@ export interface ListingMetaInput {
   services: string[];
   /** The trade this listing is filed under. Null is normal and handled. */
   vertical_slug?: string | null;
+  /** CSLB licence number. Null is normal and handled. */
+  license_number?: string | null;
 }
 
 /**
@@ -127,6 +129,13 @@ export function listingMeta(business: ListingMetaInput): RouteMeta {
     ? `${business.business_name} is ${phrase} serving ${business.city}`
     : `${business.business_name} in ${business.city}`;
 
+  // The licence goes in the description because it is the most specific,
+  // checkable thing these listings have — a reader can verify it at cslb.ca.gov
+  // without trusting this directory, and it is unique per listing where almost
+  // nothing else is. Stated as the number only: `license_status` reads ACTIVE
+  // on every row but has no recorded age, so "licensed" would outrun the data.
+  const licence = business.license_number ? ` CSLB licence #${business.license_number}.` : "";
+
   return {
     title: pageTitle(
       title
@@ -134,8 +143,8 @@ export function listingMeta(business: ListingMetaInput): RouteMeta {
         : `${business.business_name} — ${business.city} Home Services`,
     ),
     description: services.length
-      ? `${subject}. ${services.join(", ")}. ${cta}`
-      : `${subject}. ${cta}`,
+      ? `${subject}. ${services.join(", ")}.${licence} ${cta}`
+      : `${subject}.${licence} ${cta}`,
     canonicalPath: `/directory/${business.city_slug}/${business.slug}`,
   };
 }
