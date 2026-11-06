@@ -70,6 +70,18 @@ describe("listingMeta", () => {
       );
     });
 
+    it("reads correctly for the general-contractor trade", () => {
+      const d = listingMeta({
+        ...BUSINESS,
+        services: [],
+        vertical_slug: "general-contractor",
+      }).description;
+      expect(d).toContain("is a general contractor serving Encino");
+      expect(
+        listingMeta({ ...BUSINESS, vertical_slug: "general-contractor" }).title,
+      ).toContain("General Contractor in Encino");
+    });
+
     it("gives the page body the same article-correct phrase as the meta", () => {
       // Built separately in the page once, which rendered "a electrician" on
       // all 263 electrician listings. One function, both callers.
@@ -143,7 +155,14 @@ describe("listingMeta", () => {
       // These five are what `select slug from verticals where is_active` returned
       // on 2026-11-06. A new row added without a word here degrades safely, but
       // the listing loses the distinguishing fact — so this is a prompt, not a gate.
-      for (const slug of ["electrical", "plumbing", "hvac", "landscaping", "tree-service"]) {
+      for (const slug of [
+        "electrical",
+        "plumbing",
+        "hvac",
+        "landscaping",
+        "tree-service",
+        "general-contractor",
+      ]) {
         expect(tradeNoun(slug)).toBeTruthy();
         expect(tradeTitle(slug)).toBeTruthy();
       }

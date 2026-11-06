@@ -49,6 +49,10 @@ const TRADE_NOUNS: Record<string, string> = {
   hvac: "heating and air conditioning contractor",
   landscaping: "landscaper",
   "tree-service": "tree service",
+  // Sixth trade, added 20261106190000. Unlike the other five it did not come
+  // from a CSLB class import — it exists because a remodel or an addition is
+  // what a homeowner plans, and none of the single-class specialties covered it.
+  "general-contractor": "general contractor",
 };
 
 /** Title-case form, for a heading or a badge. */
@@ -58,6 +62,7 @@ const TRADE_TITLES: Record<string, string> = {
   hvac: "HVAC Contractor",
   landscaping: "Landscaper",
   "tree-service": "Tree Service",
+  "general-contractor": "General Contractor",
 };
 
 /**
