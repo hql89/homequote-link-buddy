@@ -64,3 +64,15 @@ export function markInitials(businessName: string): string {
   if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
   return (words[0][0] + words[1][0]).toUpperCase();
 }
+
+/**
+ * A business name followed by a full stop, without doubling one it already has.
+ *
+ * "West Valley Builders Inc." is a real registered name and renders as
+ * "...straight to West Valley Builders Inc.." when a template appends its own.
+ * One listing in 537 ends this way today, and incorporated names routinely do,
+ * so this will recur as the directory grows rather than being a one-off.
+ */
+export function endSentence(name: string): string {
+  return /[.!?]$/.test(name.trim()) ? `${name.trim()} ` : `${name.trim()}. `;
+}
