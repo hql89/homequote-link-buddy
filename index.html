@@ -28,6 +28,32 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Merriweather:wght@700;900&display=swap" />
     <link rel="dns-prefetch" href="https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev" />
 
+    <!-- Tracking opt-out guard. MUST stay above the Google and Meta snippets:
+         both start collecting the moment they load, so a check that runs after
+         them is a check that runs too late. Deliberately inline and dependency
+         free for the same reason — it has to execute before any bundle.
+
+         Mirrors src/lib/trackingChoice.ts, which cannot be imported here.
+         The key and values are duplicated there; change both together.
+
+         Honours Global Privacy Control as well as the stored choice, because
+         California treats a GPC signal as a valid opt-out request in itself. -->
+    <script>
+      (function () {
+        var optedOut = false;
+        try { optedOut = navigator.globalPrivacyControl === true; } catch (e) {}
+        try {
+          if (localStorage.getItem('hql_tracking_choice') === 'opted_out') optedOut = true;
+        } catch (e) { /* storage blocked; fall through to the default */ }
+
+        window.__hqlTrackingOptedOut = optedOut;
+
+        // Google's own kill switch, read by gtag.js when it loads. Setting it
+        // here means the script may still download but collects nothing.
+        if (optedOut) window['ga-disable-G-LKDJ4LMYFR'] = true;
+      })();
+    </script>
+
     <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-LKDJ4LMYFR"></script>
     <script>
@@ -35,11 +61,17 @@
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());
 
-      gtag('config', 'G-LKDJ4LMYFR');
+      if (!window.__hqlTrackingOptedOut) {
+        gtag('config', 'G-LKDJ4LMYFR');
+      }
     </script>
 
-    <!-- Meta Pixel Code — Valley Home Pros dataset -->
+    <!-- Meta Pixel Code — Valley Home Pros dataset.
+         Wrapped rather than flag-disabled: fbevents.js has no supported kill
+         switch equivalent to ga-disable-*, so for an opted-out visitor the
+         only reliable answer is never to load or initialise it at all. -->
     <script>
+      if (!window.__hqlTrackingOptedOut) {
       !function(f,b,e,v,n,t,s)
       {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
       n.callMethod.apply(n,arguments):n.queue.push(arguments)};
@@ -50,6 +82,7 @@
       'https://connect.facebook.net/en_US/fbevents.js');
       fbq('init', '1102708245809446');
       fbq('track', 'PageView');
+      }
     </script>
     <!-- End Meta Pixel Code -->
 
@@ -86,7 +119,11 @@
          <head> may only contain <link>, <style> or <meta>, and an <img> there
          is invalid HTML that vite refuses to build (parse5
          disallowed-content-in-noscript-in-head). -->
-    <noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=1102708245809446&ev=PageView&noscript=1" alt="" /></noscript>
+    <!-- The Meta <noscript> fallback was removed with the opt-out: it fires a
+         tracking pixel through plain HTML, so no script can hold it back and a
+         visitor who has opted out would still be reported. Its coverage was
+         visitors with JavaScript disabled, who cannot use the site's forms
+         anyway. -->
     <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[100] focus:bg-primary focus:text-primary-foreground focus:px-4 focus:py-2 focus:rounded">Skip to main content</a>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>

@@ -46,6 +46,9 @@ export function Footer() {
             <ul className="space-y-1 text-sm text-primary-foreground/70">
               <li><Link to="/feedback" className="hover:underline focus:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded">Feedback</Link></li>
               <li><Link to="/privacy" className="hover:underline focus:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded">Privacy Policy</Link></li>
+              {/* California expects this control to be reachable from every
+                  page, in these words, not buried inside the policy text. */}
+              <li><Link to="/privacy-choices" className="hover:underline focus:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded">Your Privacy Choices</Link></li>
               <li><Link to="/terms" className="hover:underline focus:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded">Terms of Service</Link></li>
             </ul>
           </nav>

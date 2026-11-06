@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { isTrackingOptedOut } from "@/lib/trackingChoice";
 
 declare global {
   interface Window {
@@ -8,8 +9,25 @@ declare global {
 }
 
 // Check if tracking is disabled (admin exclusion)
+/**
+ * Two different "no"s, deliberately kept apart:
+ *
+ *   hql_ignore_tracking  — the ADMIN's own switch, so the operator's visits do
+ *                          not pollute their own analytics. Internal hygiene.
+ *   isTrackingOptedOut() — the VISITOR's privacy decision, or their browser's
+ *                          Global Privacy Control signal. A legal right.
+ *
+ * They are checked together everywhere, but they are not the same thing and
+ * must not be collapsed: clearing the admin switch must never clear someone's
+ * privacy choice.
+ */
 function isTrackingDisabled(): boolean {
-  return localStorage.getItem("hql_ignore_tracking") === "true";
+  try {
+    if (localStorage.getItem("hql_ignore_tracking") === "true") return true;
+  } catch {
+    /* storage blocked; fall through to the privacy check */
+  }
+  return isTrackingOptedOut();
 }
 
 // Persistent anonymous visitor ID

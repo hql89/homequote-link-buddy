@@ -13,11 +13,13 @@ import { Footer } from "@/components/public/Footer";
  * - The `track-event` edge function stores IP address, referrer and a
  *   localStorage visitor id in `analytics_events`.
  *
- * Two things are deliberately NOT claimed here, because they are not built:
- * there is no consent banner or in-app opt-out toggle, and nothing honours
- * Global Privacy Control or Do Not Track signals. Saying otherwise would make
- * this page the untrue part. See ENH-026 and ENH-027 — if either ships, this
- * page changes in the same commit.
+ * Updated 2026-11-06: an opt-out now exists at /privacy-choices, and Global
+ * Privacy Control IS honoured — see src/lib/trackingChoice.ts and the guard at
+ * the top of index.html, which runs before the Google and Meta snippets.
+ *
+ * Still deliberately NOT claimed: there is no consent banner, so tracking
+ * remains on by default for a visitor who has made no choice and sends no GPC
+ * signal. Saying otherwise would make this page the untrue part.
  */
 export default function PrivacyPolicy() {
   return (
@@ -26,7 +28,7 @@ export default function PrivacyPolicy() {
       <Header />
       <main className="container py-16 max-w-3xl">
         <h1 className="text-3xl font-bold mb-2 font-sans">Privacy Policy</h1>
-        <p className="text-sm text-muted-foreground mb-8">Last updated: November 2, 2026</p>
+        <p className="text-sm text-muted-foreground mb-8">Last updated: November 6, 2026</p>
 
         <section className="mb-8">
           <h2 className="text-xl font-semibold mb-3 font-sans">Information We Collect</h2>
@@ -62,7 +64,8 @@ export default function PrivacyPolicy() {
             </li>
           </ul>
           <p className="text-muted-foreground leading-relaxed mt-4">
-            These tools set their own cookies and may combine what they collect here with information they already hold about you, including to show you advertising elsewhere. We do not currently offer an on-site banner or toggle for turning them off; the choices available to you are described below.
+            These tools set their own cookies and may combine what they collect here with information they already hold about you, including to show you advertising elsewhere. You can switch them off for your browser at any time on{" "}
+            <a href="/privacy-choices" className="underline text-primary">Your Privacy Choices</a>. We do not show a consent banner, so they are on until you say otherwise, or unless your browser sends a Global Privacy Control signal — which we honour.
           </p>
         </section>
 
@@ -82,7 +85,12 @@ export default function PrivacyPolicy() {
             If you are a California resident, you have the right to know what personal information we hold about you, to request its deletion, to correct it, and to opt out of the sharing described above. We will not treat you differently for exercising any of these rights.
           </p>
           <p className="text-muted-foreground leading-relaxed mt-4">
-            To opt out of sharing for advertising, or to make any other request, email us at{" "}
+            To opt out of sharing for advertising, use{" "}
+            <a href="/privacy-choices" className="underline text-primary">Your Privacy Choices</a>{" "}
+            — it takes effect immediately on the browser you are using, and needs nothing from us.
+            If your browser sends a Global Privacy Control signal we treat that as an opt-out on
+            its own. For anything else — to know what we hold, to have it deleted or corrected, or
+            to reach information already shared — email us at{" "}
             <a href="mailto:privacy@homequotelink.com" className="underline text-primary">privacy@homequotelink.com</a>{" "}
             and say what you would like us to do. You do not need an account, and you may have an authorised agent make the request for you. We will confirm we received it and respond within 45 days.
           </p>

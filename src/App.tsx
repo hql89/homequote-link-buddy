@@ -13,6 +13,7 @@ import { Loader2 } from "lucide-react";
 const Index = lazy(() => import("./pages/Index"));
 const ThankYou = lazy(() => import("./pages/ThankYou"));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
+const PrivacyChoices = lazy(() => import("./pages/PrivacyChoices"));
 const TermsOfService = lazy(() => import("./pages/TermsOfService"));
 const FAQ = lazy(() => import("./pages/FAQ"));
 const Blog = lazy(() => import("./pages/Blog"));
@@ -109,6 +110,7 @@ const App = () => (
               <Route path="/services/brush-clearing" element={<BrushClearing />} />
               <Route path="/services/palm-tree-trimming" element={<PalmTreeTrimming />} />
               <Route path="/privacy" element={<PrivacyPolicy />} />
+              <Route path="/privacy-choices" element={<PrivacyChoices />} />
               <Route path="/terms" element={<TermsOfService />} />
               <Route path="/faq" element={<FAQ />} />
               <Route path="/blog" element={<Blog />} />
