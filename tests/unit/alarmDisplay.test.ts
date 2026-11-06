@@ -82,6 +82,47 @@ describe("toDisplayAlarm", () => {
   });
 });
 
+/**
+ * The silent-job alarm exists because the failure-streak alarm structurally
+ * cannot see it: that one counts `status = 'failure'` rows, and a job that
+ * stops running writes none. On 2026-11-06 `email-canary` — the probe whose
+ * only job is to prove outbound mail still arrives — had been silent four
+ * days while pg_cron's own history read "succeeded" for every firing.
+ */
+describe("job_went_silent", () => {
+  it("renders as a plain sentence, not the raw kind", () => {
+    const d = toDisplayAlarm({
+      id: "s1",
+      errorMessage: "email-canary has not run since 2026-11-02 14:00 UTC",
+      metadata: { alarm_kind: "job_went_silent" },
+      createdAt: "2026-11-06T16:30:00Z",
+    });
+    expect(d.title).toBe("A scheduled job has stopped running altogether");
+    expect(d.title).not.toContain("job_went_silent");
+  });
+
+  it("is critical — a silent job cannot raise any alarm of its own", () => {
+    const d = toDisplayAlarm({
+      id: "s2",
+      errorMessage: "x",
+      metadata: { alarm_kind: "job_went_silent" },
+      createdAt: "2026-11-06T16:30:00Z",
+    });
+    expect(d.severity).toBe("critical");
+  });
+
+  it("keeps the recorded detail, which names the job and how long", () => {
+    const msg = "email-canary has not run since 2026-11-02 14:00 UTC — silent for 4d 07h";
+    const d = toDisplayAlarm({
+      id: "s3",
+      errorMessage: msg,
+      metadata: { alarm_kind: "job_went_silent" },
+      createdAt: "2026-11-06T16:30:00Z",
+    });
+    expect(d.detail).toBe(msg);
+  });
+});
+
 describe("unseenAlarms", () => {
   const alarms = [
     toDisplayAlarm(record({ id: "a", createdAt: "2026-08-18T00:00:00Z" })),

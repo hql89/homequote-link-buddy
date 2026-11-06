@@ -18,7 +18,8 @@ export type AlarmKind =
   | "delivery_canary_failed"
   | "unsubscribe_token_misses"
   | "outreach_bounce_rate"
-  | "job_failing_repeatedly";
+  | "job_failing_repeatedly"
+  | "job_went_silent";
 
 export interface AlarmRecord {
   id: string;
@@ -45,6 +46,7 @@ const TITLES: Record<AlarmKind, string> = {
   unsubscribe_token_misses: "Unsubscribe links are failing to match a business",
   outreach_bounce_rate: "Outreach stopped itself — too many emails are bouncing",
   job_failing_repeatedly: "A scheduled job has been failing for days",
+  job_went_silent: "A scheduled job has stopped running altogether",
 };
 
 const SEVERITY: Record<AlarmKind, DisplayAlarm["severity"]> = {
@@ -60,6 +62,12 @@ const SEVERITY: Record<AlarmKind, DisplayAlarm["severity"]> = {
   // days of a job failing unseen, which is the condition itself, not a risk
   // of one.
   job_failing_repeatedly: "critical",
+  // Critical for a sharper reason: a job that has stopped reporting has also
+  // stopped being able to raise its own alarms, so this is the only evidence
+  // that will ever arrive. The canary went silent for four days in November
+  // 2026 with every other indicator — including pg_cron's own history —
+  // reading healthy.
+  job_went_silent: "critical",
 };
 
 /**

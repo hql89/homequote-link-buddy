@@ -49,7 +49,14 @@ export type AlarmKind =
   /** Outreach halted itself: too many of the recent sends bounced. */
   | "outreach_bounce_rate"
   /** A scheduled job has failed several runs in a row and nobody has noticed. */
-  | "job_failing_repeatedly";
+  | "job_failing_repeatedly"
+  /**
+   * A scheduled job has stopped reporting entirely — not failing, absent.
+   * Raised in SQL by admin_raise_alarms_for_silent_jobs(), because the
+   * failure-streak alarm counts failure rows and a dead job writes none, so
+   * silence and health are indistinguishable to it.
+   */
+  | "job_went_silent";
 
 /**
  * Records an alarm. Never throws.
