@@ -23,6 +23,7 @@ interface ListingRow {
   slug: string | null;
   is_claimed: boolean | null;
   services: unknown;
+  vertical_slug: string | null;
 }
 
 /** Normalises the `services` JSONB column, which may arrive as a JSON string. */
@@ -58,7 +59,7 @@ async function fetchListing(
 ): Promise<ListingRow | null> {
   const rows = await fetchRows(
     `public_business_listings` +
-      `?select=business_name,city,city_slug,slug,is_claimed,services` +
+      `?select=business_name,city,city_slug,slug,is_claimed,services,vertical_slug` +
       `&city_slug=eq.${encodeURIComponent(citySlug)}` +
       `&slug=eq.${encodeURIComponent(slug)}&limit=1`,
   );
@@ -104,6 +105,10 @@ export async function metaForPath(
       slug: row.slug,
       is_claimed: row.is_claimed ?? false,
       services: parseServices(row.services),
+      // Without this the crawler's description falls back to the generic
+      // wording while a visitor's browser shows the trade — the exact
+      // page-vs-crawler drift this module exists to prevent.
+      vertical_slug: row.vertical_slug,
     });
   }
 

@@ -7,6 +7,9 @@ import {
   directoryMeta,
   homeMeta,
   listingMeta,
+  tradeNoun,
+  tradeTitle,
+  tradeWithArticle,
 } from "../../src/lib/routeMeta";
 import { SITE_URL } from "../../src/lib/constants";
 
@@ -41,6 +44,90 @@ describe("listingMeta", () => {
   it("omits the service list rather than leaving a gap when there are none", () => {
     const d = listingMeta({ ...BUSINESS, services: [] }).description;
     expect(d).toBe("Capitol Plumbing & Rooter Inc in Encino. Call for a free quote.");
+  });
+
+  /**
+   * Why the trade is in the head tags at all: on 2026-11-06 Google had indexed
+   * 2 of 553 submitted URLs — the homepage and /directory — and zero listings,
+   * five weeks after the crawler head-tag fix shipped and worked. The pages
+   * were crawled and declined. All 536 listings have no services, no blurb and
+   * no website, so every title read "<name> — <city> Home Services" and every
+   * description "<name> in <city>. Call for a free quote." The trade is the one
+   * distinguishing fact already in the database.
+   */
+  describe("the trade", () => {
+    const ELECTRICIAN = { ...BUSINESS, services: [], vertical_slug: "electrical" };
+
+    it("names the trade in the title instead of the generic 'Home Services'", () => {
+      const t = listingMeta(ELECTRICIAN).title;
+      expect(t).toContain("Electrician in Encino");
+      expect(t).not.toContain("Home Services");
+    });
+
+    it("makes the description a sentence about the trade, not the name twice", () => {
+      expect(listingMeta(ELECTRICIAN).description).toBe(
+        "Capitol Plumbing & Rooter Inc is an electrician serving Encino. Call for a free quote.",
+      );
+    });
+
+    it("gives the page body the same article-correct phrase as the meta", () => {
+      // Built separately in the page once, which rendered "a electrician" on
+      // all 263 electrician listings. One function, both callers.
+      expect(tradeWithArticle("electrical")).toBe("an electrician");
+      expect(tradeWithArticle("plumbing")).toBe("a plumber");
+      expect(tradeWithArticle("hvac")).toBe("a heating and air conditioning contractor");
+      expect(tradeWithArticle("roofing")).toBeNull();
+      expect(tradeWithArticle(null)).toBeNull();
+    });
+
+    it("picks the right article for a vowel-initial trade", () => {
+      // "a electrician" is the kind of thing that ships to 263 pages at once.
+      expect(listingMeta(ELECTRICIAN).description).toContain("is an electrician");
+      expect(
+        listingMeta({ ...BUSINESS, services: [], vertical_slug: "plumbing" }).description,
+      ).toContain("is a plumber");
+    });
+
+    it("still lists services when there are some, after the trade", () => {
+      const d = listingMeta({ ...BUSINESS, vertical_slug: "plumbing" }).description;
+      expect(d).toContain("is a plumber serving Encino");
+      expect(d).toContain("Drain cleaning");
+    });
+
+    /**
+     * The trades are rows in the `verticals` table, so a sixth can be added
+     * without touching this file. An unknown slug must read as it did before
+     * trades were shown — never "undefined", which is exactly how the retired
+     * hardcoded VERTICALS map used to fail.
+     */
+    it("falls back to the old wording for a trade this build does not know", () => {
+      const unknown = { ...BUSINESS, services: [], vertical_slug: "roofing" };
+      expect(listingMeta(unknown).description).toBe(
+        "Capitol Plumbing & Rooter Inc in Encino. Call for a free quote.",
+      );
+      expect(listingMeta(unknown).title).toContain("Encino Home Services");
+      expect(listingMeta(unknown).description).not.toContain("undefined");
+      expect(listingMeta(unknown).title).not.toContain("undefined");
+    });
+
+    it("treats a missing trade the same as an unknown one", () => {
+      for (const v of [null, undefined]) {
+        const d = listingMeta({ ...BUSINESS, services: [], vertical_slug: v }).description;
+        expect(d).toBe("Capitol Plumbing & Rooter Inc in Encino. Call for a free quote.");
+      }
+    });
+
+    it("covers every trade currently in the verticals table", () => {
+      // These five are what `select slug from verticals where is_active` returned
+      // on 2026-11-06. A new row added without a word here degrades safely, but
+      // the listing loses the distinguishing fact — so this is a prompt, not a gate.
+      for (const slug of ["electrical", "plumbing", "hvac", "landscaping", "tree-service"]) {
+        expect(tradeNoun(slug)).toBeTruthy();
+        expect(tradeTitle(slug)).toBeTruthy();
+      }
+      expect(tradeNoun("roofing")).toBeNull();
+      expect(tradeTitle("roofing")).toBeNull();
+    });
   });
 
   it("invites a quote request only once the listing is claimed", () => {

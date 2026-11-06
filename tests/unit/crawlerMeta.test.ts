@@ -65,6 +65,37 @@ describe("metaForPath — city pages", () => {
   });
 });
 
+describe("metaForPath — the trade reaches the crawler", () => {
+  /**
+   * The trade is the one fact separating 536 otherwise-identical listings, and
+   * on 2026-11-06 Google had indexed zero of them. It is useless if it only
+   * reaches the browser: a crawler never runs the React page, so the trade has
+   * to come out of the SELECT this module issues.
+   */
+  it("asks the view for vertical_slug — without it the crawler gets the generic wording", async () => {
+    const fetcher = vi.fn(async () => [LISTING_ROW]);
+    await metaForPath("/directory/encino/capitol-plumbing-rooter-inc", fetcher);
+    const query = String(fetcher.mock.calls[0][0]);
+    expect(query).toContain("vertical_slug");
+  });
+
+  it("puts the trade in what a crawler is served", async () => {
+    const m = await metaForPath("/directory/encino/capitol-plumbing-rooter-inc", rows([
+      { ...LISTING_ROW, services: [], vertical_slug: "electrical" },
+    ]));
+    expect(m?.title).toContain("Electrician in Encino");
+    expect(m?.description).toContain("is an electrician serving Encino");
+  });
+
+  it("degrades to the old wording for a row with no trade, rather than 'undefined'", async () => {
+    const m = await metaForPath("/directory/encino/capitol-plumbing-rooter-inc", rows([
+      { ...LISTING_ROW, services: [], vertical_slug: null },
+    ]));
+    expect(m?.description).toBe("Capitol Plumbing & Rooter Inc in Encino. Call for a free quote.");
+    expect(m?.title).not.toContain("undefined");
+  });
+});
+
 describe("metaForPath — listing pages", () => {
   it("maps a row to that business's own title and canonical", async () => {
     const m = await metaForPath("/directory/encino/capitol-plumbing-rooter-inc", rows([LISTING_ROW]));

@@ -19,7 +19,7 @@ import {
   toTelHref,
   type PublicBusinessListing,
 } from "@/integrations/supabase/directory";
-import { listingMeta } from "@/lib/routeMeta";
+import { listingMeta, tradeTitle, tradeWithArticle } from "@/lib/routeMeta";
 import { DirectoryQuoteForm } from "@/components/directory/DirectoryQuoteForm";
 import { BusinessGallery } from "@/components/directory/BusinessGallery";
 
@@ -144,7 +144,7 @@ export default function DirectoryListing() {
   const hasPhone = Boolean(business.phone);
   // Head tags come from routeMeta so the crawler path (middleware.ts) and this
   // one cannot drift — see that module's header.
-  const meta = listingMeta({ ...business, services });
+  const meta = listingMeta({ ...business, services, vertical_slug: business.vertical_slug });
 
   return (
     <>
@@ -168,6 +168,17 @@ export default function DirectoryListing() {
             />
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
+              {/* The trade was previously shown only as the BusinessMark icon,
+                  so it existed on the page as a picture and nowhere as a word —
+                  invisible to search engines and to anyone using a screen
+                  reader. It is the one fact that distinguishes these 536
+                  listings from each other. */}
+              {tradeTitle(business.vertical_slug) && (
+                <Badge variant="secondary" className="gap-1">
+                  <Wrench className="h-3 w-3" aria-hidden="true" />
+                  {tradeTitle(business.vertical_slug)}
+                </Badge>
+              )}
               <Badge variant="secondary" className="gap-1">
                 <MapPin className="h-3 w-3" aria-hidden="true" />
                 {business.city}
@@ -244,7 +255,9 @@ export default function DirectoryListing() {
                 </p>
               ) : (
                 <p className="mt-3 text-muted-foreground">
-                  {business.business_name} serves homeowners in {business.city}.{" "}
+                  {tradeWithArticle(business.vertical_slug)
+                    ? `${business.business_name} is ${tradeWithArticle(business.vertical_slug)} serving homeowners in ${business.city}.`
+                    : `${business.business_name} serves homeowners in ${business.city}.`}{" "}
                   {business.is_claimed
                     ? "Call directly or request a free quote below."
                     : "Call directly to get in touch."}
@@ -266,7 +279,9 @@ export default function DirectoryListing() {
                 </ul>
               ) : (
                 <p className="mt-3 text-muted-foreground">
-                  Service list coming soon — call for details.
+                  {tradeTitle(business.vertical_slug)
+                    ? `${business.business_name} is listed under ${tradeTitle(business.vertical_slug)}. Call for the specific work you need — a full service list hasn't been added yet.`
+                    : "Service list coming soon — call for details."}
                 </p>
               )}
 
