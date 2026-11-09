@@ -5,12 +5,22 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, CheckCircle2, AlertCircle, ShieldCheck } from "lucide-react";
+import { Loader2, CheckCircle2, AlertCircle, ShieldCheck, Phone } from "lucide-react";
 import { extractEdgeError } from "@/lib/edgeFunctionError";
+import { formatPhoneDisplay, toTelHref } from "@/integrations/supabase/directory";
 
 interface DirectoryQuoteFormProps {
   businessId: string;
   businessName: string;
+  /**
+   * Shown on both success endings, not just the failed one. The email may be
+   * accepted for delivery and dropped silently afterwards (ENH-006), so
+   * "we reached them" is never certain — a number the homeowner can call is
+   * correct either way, and costs nothing when the email did arrive. Every
+   * published listing has one (537/537 at the time of writing), so there is
+   * no case where this leaves someone with no way to proceed.
+   */
+  businessPhone: string;
   /**
    * Featured-tier perk. `submit-directory-lead` already accepts, stores and
    * forwards `preferred_time` for every listing — this only controls whether
@@ -24,6 +34,7 @@ type Status = "idle" | "submitting" | "success" | "error";
 export function DirectoryQuoteForm({
   businessId,
   businessName,
+  businessPhone,
   showPreferredTime = false,
 }: DirectoryQuoteFormProps) {
   const [fullName, setFullName] = useState("");
@@ -32,6 +43,8 @@ export function DirectoryQuoteForm({
   const [message, setMessage] = useState("");
   const [preferredTime, setPreferredTime] = useState("");
   const [status, setStatus] = useState<Status>("idle");
+  /** Whether the business was actually emailed. Null until the server says. */
+  const [notified, setNotified] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const digits = phone.replace(/\D/g, "");
@@ -62,6 +75,9 @@ export function DirectoryQuoteForm({
         throw new Error(await extractEdgeError(fnError, data, "Could not send your request."));
       }
 
+      // Absent (an older deployed function) is treated as "we do not know",
+      // which takes the honest branch rather than the reassuring one.
+      setNotified(data?.notified === true);
       setStatus("success");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not send your request.");
@@ -70,12 +86,39 @@ export function DirectoryQuoteForm({
   }
 
   if (status === "success") {
+    // Neither ending claims the business "has been notified and will reach
+    // out", which is what this used to say unconditionally — including for a
+    // business with no email address at all. See ENH-030.
+    const phoneLink = (
+      <a href={toTelHref(businessPhone)} className="font-medium text-accent hover:underline">
+        {formatPhoneDisplay(businessPhone)}
+      </a>
+    );
+
+    if (notified) {
+      return (
+        <div className="rounded-lg border border-border bg-card p-6 text-center">
+          <CheckCircle2 className="mx-auto h-10 w-10 text-green-600" aria-hidden="true" />
+          <h3 className="mt-3 text-lg font-semibold">Request sent</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {businessName} should be in touch. If you would rather not wait, call {phoneLink}.
+          </p>
+        </div>
+      );
+    }
+
     return (
       <div className="rounded-lg border border-border bg-card p-6 text-center">
-        <CheckCircle2 className="mx-auto h-10 w-10 text-green-600" aria-hidden="true" />
-        <h3 className="mt-3 text-lg font-semibold">Request sent</h3>
+        <Phone className="mx-auto h-10 w-10 text-accent" aria-hidden="true" />
+        <h3 className="mt-3 text-lg font-semibold">We have your request</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          {businessName} has been notified and will reach out shortly.
+          {/* Plain name, NOT endSentence(): that helper appends a full stop to a
+              name that lacks one, which is right when the name ends a sentence
+              and wrong here. "Aria Electric. by email" — correct for the one
+              business whose name already ends in "Inc." and broken for the
+              other 536. Pinned by a test using a name with no trailing dot. */}
+          We could not reach {businessName} by email, so please call them directly
+          on {phoneLink}.
         </p>
       </div>
     );

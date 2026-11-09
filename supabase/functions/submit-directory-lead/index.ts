@@ -307,7 +307,15 @@ Deno.serve(async (req) => {
 
     // The lead is saved either way — never fail the user's submission just
     // because the notification email bounced.
-    return json({ success: true, leadId: lead.id });
+    //
+    // `notified` is returned so the page can stop claiming a callback it
+    // cannot promise. Deliberately a bare boolean: `skipReason` names
+    // suppression and bounce states, which are this platform's business and
+    // not a visitor's. And note what `notified: true` does and does not mean
+    // — the message was accepted for delivery, nothing more. The relay can
+    // still drop it silently afterwards (ENH-006), which is why even the
+    // positive copy stops short of promising contact.
+    return json({ success: true, leadId: lead.id, notified });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[${JOB_NAME}]`, message);

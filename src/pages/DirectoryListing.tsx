@@ -360,6 +360,7 @@ export default function DirectoryListing() {
                 <DirectoryQuoteForm
                   businessId={business.id}
                   businessName={business.business_name}
+                  businessPhone={business.phone}
                   showPreferredTime={isFeatured(business)}
                 />
               </aside>
