@@ -93,16 +93,41 @@ export function isExpired(raw: string | null | undefined, now: Date = new Date()
 
 /** The subset of `businesses` needed to decide whether it's safe to email them. */
 export interface EmailGateFields {
+  email: string | null;
+  email_confidence: string | null;
   email_undeliverable_at: string | null;
   outreach_suppressed_at: string | null;
 }
 
 /**
- * Mirrors the `.is("email_undeliverable_at", null).is("outreach_suppressed_at",
- * null)` filter send-outreach-drip applies before it will queue a send. That
- * filter runs at query time there because it's picking candidates out of a
- * table; call sites with one specific business already in hand (e.g.
- * submit-directory-lead) use this instead so the two paths can't drift.
+ * `email_confidence` values that mean "do not send". Deliberately an explicit
+ * list rather than `!== "verified"`.
+ *
+ * NULL is NOT in here, and that distinction is the whole point: 494 of the 537
+ * published businesses sit at NULL because enrichment has never looked at them.
+ * NULL means "nobody has checked", which is not the same claim as "we checked
+ * and we are unsure". It is also what a hand-entered address from a business
+ * that claimed its own listing arrives as — the most trustworthy kind there
+ * is. Gating on `!== "verified"` would silently suppress exactly those.
+ */
+const UNSENDABLE_CONFIDENCE = new Set(["needs_review", "rejected"]);
+
+/**
+ * Mirrors the filters send-outreach-drip applies before it will queue a send —
+ * `.is("email_undeliverable_at", null).is("outreach_suppressed_at", null)` and
+ * `.eq("email_confidence", "verified")`. Those run at query time there because
+ * it is picking candidates out of a table; call sites with one specific
+ * business already in hand (e.g. submit-directory-lead) use this instead so
+ * the two paths can't drift.
+ *
+ * Returning a reason has a second job beyond not sending: the caller writes it
+ * to `directory_leads.notify_skipped_reason`, which the admin Overview counts.
+ * So every path through here leaves a record. A request that reaches nobody
+ * and explains nothing is the failure this function exists to prevent — see
+ * the `email` check below, which was that exact bug.
+ *
+ * Order is most-specific-first, because the reason that gets recorded is the
+ * one a person will read months later when asking why a lead went nowhere.
  */
 export function emailSkipReason(business: EmailGateFields): string | null {
   if (business.email_undeliverable_at) {
@@ -110,6 +135,21 @@ export function emailSkipReason(business: EmailGateFields): string | null {
   }
   if (business.outreach_suppressed_at) {
     return `Business outreach suppressed on ${business.outreach_suppressed_at}.`;
+  }
+  if (UNSENDABLE_CONFIDENCE.has(String(business.email_confidence ?? ""))) {
+    // The address was scraped from a site whose phone number did not match
+    // CSLB's, and no admin has confirmed it belongs to this business. Sending
+    // here would hand a homeowner's name and phone number to a company that
+    // may be unrelated. Resolved by Confirm or Dismiss on Admin → Enrichment.
+    return `Business email is "${business.email_confidence}" — not confirmed to belong to this business, so it was not sent a homeowner's details.`;
+  }
+  if (!business.email) {
+    // Previously this fell through to an `else if (business.email)` in
+    // submit-directory-lead, so the lead was stored, nobody was emailed, and
+    // nothing recorded that nobody was emailed — invisible on the Overview
+    // because that only counts rows with a skip reason. Named here so it is
+    // counted like every other reason.
+    return "Business has no email address on file, so there was nobody to notify.";
   }
   return null;
 }

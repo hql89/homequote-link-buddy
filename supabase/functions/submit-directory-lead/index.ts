@@ -176,7 +176,12 @@ Deno.serve(async (req) => {
     const { data: business, error: bizError } = await supabase
       .from("businesses")
       .select(
-        "id, business_name, email, phone, city, slug, city_slug, is_published, is_claimed, email_undeliverable_at, outreach_suppressed_at",
+        // email_confidence is load-bearing: emailSkipReason() gates on it, and
+        // an omitted column arrives as `undefined`, which would make that gate
+        // read as working while never firing. `strict: false` erases the type,
+        // so tsc cannot catch it — tests/unit/emailSkipReason.test.ts asserts
+        // this string instead.
+        "id, business_name, email, email_confidence, phone, city, slug, city_slug, is_published, is_claimed, email_undeliverable_at, outreach_suppressed_at",
       )
       .eq("id", businessId)
       .maybeSingle();
@@ -223,15 +228,31 @@ Deno.serve(async (req) => {
     const skipReason = emailSkipReason(business);
 
     if (skipReason) {
-      // Known-dead or opted-out address. Sending here would (a) waste the
-      // attempt, (b) risk sender reputation on a proven-bad mailbox, and (c)
-      // be indistinguishable in the data from "we tried and it broke" if we
-      // wrote it to notify_error instead — hence the separate column.
+      // Dead, opted-out, unconfirmed, or no address at all. Sending (where
+      // there is anywhere to send) would (a) waste the attempt, (b) risk
+      // sender reputation on a proven-bad mailbox, (c) in the unconfirmed
+      // case, hand a homeowner's details to a possibly unrelated company,
+      // and (d) be indistinguishable in the data from "we tried and it broke"
+      // if we wrote it to notify_error instead — hence the separate column.
       await supabase
         .from("directory_leads")
         .update({ notify_skipped_reason: skipReason })
         .eq("id", lead.id);
-    } else if (business.email) {
+    } else {
+      // No `business.email` guard here on purpose. emailSkipReason() returns a
+      // reason for a missing address, so reaching this branch means there is
+      // one. Pinned by the "no email on file" case in
+      // tests/unit/emailSkipReason.test.ts.
+      //
+      // This replaced a third `else` that set `notifyError = "Business has no
+      // email on file."`. That was not nothing, but it went to the wrong
+      // place: notifyError is only written to `directory_leads.notify_error`
+      // inside this send branch, so for a business with no address it reached
+      // job_run_logs as a "partial" run and never touched the lead row. The
+      // Overview's "notifications skipped" count reads
+      // `notify_skipped_reason`, so these leads were missing from the one
+      // number that is supposed to prove nothing went unanswered. Routing it
+      // through emailSkipReason puts it where someone will actually look.
       const { config } = await loadSmtpConfig(supabase);
       const lines = [
         `New quote request for ${business.business_name}`,
@@ -273,8 +294,6 @@ Deno.serve(async (req) => {
           notify_error: notifyError,
         })
         .eq("id", lead.id);
-    } else {
-      notifyError = "Business has no email on file.";
     }
 
     await logRun(

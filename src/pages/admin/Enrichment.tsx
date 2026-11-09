@@ -363,6 +363,19 @@ export default function EnrichmentPage() {
                 (toll-free and tracking numbers are common); what actually settles it is whether
                 the name, location and the kind of work on the site match the licence.
               </p>
+              {/* States the consequence, because the paragraph above used to
+                  read as though these addresses were being held back when
+                  nothing was holding them. emailSkipReason() now does, so this
+                  describes real behaviour rather than reassuring about it. */}
+              <p className="mt-2 text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">
+                  Quote requests are held while a business sits here.
+                </span>{" "}
+                A homeowner's name and phone number are never sent to an address nobody has
+                confirmed. The request is still saved, and counted under "notifications skipped"
+                on the Overview. <span className="text-foreground">Confirm</span> releases it;{" "}
+                <span className="text-foreground">Dismiss</span> clears the address for good.
+              </p>
 
               {needsReview.length === 0 ? (
                 <div className="mt-6 flex flex-col items-center gap-2 py-10 text-center text-muted-foreground">

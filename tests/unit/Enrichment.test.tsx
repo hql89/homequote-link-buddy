@@ -221,6 +221,29 @@ describe("EnrichmentPage — Ready for outreach", () => {
     expect(screen.getByText("Valley Roofing Co")).toBeInTheDocument();
   });
 
+  /**
+   * ENH-020. The queue's description used to imply these addresses were being
+   * held back while nothing held them — submit-directory-lead would email a
+   * homeowner's name and phone number to an unconfirmed address. The gate now
+   * holds them, and this pins the screen to saying so: a future change that
+   * removes the enforcement must also remove this claim, not leave the screen
+   * reassuring about something that stopped being true.
+   */
+  it("says plainly that quote requests are held while a business is in the queue", async () => {
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText("Maybe Plumbing")).toBeInTheDocument());
+
+    expect(screen.getByText(/Quote requests are held while a business sits here/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/never sent to an address nobody has confirmed/i),
+    ).toBeInTheDocument();
+    // Names the two actions that actually resolve it, so the screen is not
+    // just a warning with no way out.
+    expect(screen.getByText(/releases it/i)).toBeInTheDocument();
+    expect(screen.getByText(/clears the address for good/i)).toBeInTheDocument();
+  });
+
   it("shows the automated read, labelled as automated", async () => {
     renderPage();
 
