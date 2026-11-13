@@ -810,3 +810,31 @@ Monitor for absence as well as failure. `admin_raise_alarms_for_silent_jobs()` a
 `job_heartbeat_expectations` do this now; keep the thresholds loose (36h for a daily job),
 because a false alarm is how an alarm system stops being read — the same way "30
 vulnerabilities" stopped meaning anything here.
+
+## A copy bug hides behind the one fixture that happens to be shaped right
+
+**Context**: Twice in a week, user-facing copy shipped (or nearly shipped)
+grammatically broken for hundreds of businesses while every test passed.
+
+2026-11-06: listing pages read "a electrician" for 263 of 536 businesses. The
+article was hardcoded `a`, and the trade used while building was "general
+contractor", which happens to take `a`.
+
+2026-11-13: the quote form's failure message ran the business name through
+`endSentence()`, which appends a full stop to a name that lacks one. It read
+"We could not reach Aria Electric. by email" for 536 of 537 businesses — but
+the fixture throughout was "West Valley Builders Inc.", whose name already
+ends in a dot, so it rendered perfectly.
+
+**Learning**: Both bugs were invisible to the tests because the tests used the
+same single fixture the code was written against, and that fixture happened to
+have the property the code assumed. Neither was caught by types, lint or a
+passing suite. Both were caught by opening the page and reading the sentence.
+
+**Pattern**: Any string built by concatenating a name, a trade or an article
+needs a fixture chosen to *lack* the convenient property — a name with no
+trailing punctuation, a trade starting with a vowel, a single-word city. Add
+that case in the same commit as the copy. And when a change alters a sentence
+a member of the public will read, render it and read it; a green suite says
+the code does what it was told, not that the sentence is English.
+
